@@ -26,6 +26,13 @@ uploadButton.addEventListener("click", async () => {
     }
     if (response.ok || response.status === 202) {
       uploadStatus.textContent = `Status: ${body.status} (source ${body.source_id})`;
+      // A newly uploaded document should get a fresh conversation — otherwise
+      // the agent keeps its prior chat session, and multi-turn history can
+      // anchor it on an earlier document instead of the new one.
+      if (sessionId !== null) {
+        sessionId = null;
+        appendMessage("System", "New document uploaded — starting a fresh conversation.");
+      }
     } else {
       uploadStatus.textContent = `Error: ${body.detail || response.statusText}`;
     }
