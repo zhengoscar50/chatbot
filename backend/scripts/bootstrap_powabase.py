@@ -1,9 +1,9 @@
-from __future__ import annotations
-
 """One-time setup: create the Powabase Knowledge Base and Agent for this project.
 
 Run from backend/ with: python -m scripts.bootstrap_powabase
 """
+from __future__ import annotations
+
 import os
 
 from app.clients.powabase_client import PowabaseClient
