@@ -1,19 +1,24 @@
-const uploadButton = document.getElementById("upload-button");
+const attachButton = document.getElementById("attach-button");
 const fileInput = document.getElementById("file-input");
-const uploadStatus = document.getElementById("upload-status");
+const attachmentChip = document.getElementById("attachment-chip");
+const attachmentName = document.getElementById("attachment-name");
+const attachmentStatus = document.getElementById("attachment-status");
 const chatForm = document.getElementById("chat-form");
 const chatInput = document.getElementById("chat-input");
 const messages = document.getElementById("messages");
+const emptyState = document.getElementById("empty-state");
 
 let sessionId = null;
 
-uploadButton.addEventListener("click", async () => {
+attachButton.addEventListener("click", () => {
+  fileInput.click();
+});
+
+fileInput.addEventListener("change", async () => {
   const file = fileInput.files[0];
-  if (!file) {
-    setStatus("Choose a PDF first.", "error");
-    return;
-  }
-  setStatus("Uploading and indexing…", null);
+  if (!file) return;
+
+  showAttachment(file.name, "Uploading and indexing…", null);
   const formData = new FormData();
   formData.append("file", file);
   try {
@@ -25,27 +30,28 @@ uploadButton.addEventListener("click", async () => {
       body = { detail: `${response.status} ${response.statusText}` };
     }
     if (response.ok || response.status === 202) {
-      setStatus(`${body.status} · ${body.source_id}`, body.status === "indexed" ? "ok" : null);
+      showAttachment(file.name, body.status, body.status === "indexed" ? "ok" : null);
       // A newly uploaded document should get a fresh conversation — otherwise
       // the agent keeps its prior chat session, and multi-turn history can
       // anchor it on an earlier document instead of the new one.
       if (sessionId !== null) {
         sessionId = null;
-        appendMessage("system", "System", "New document uploaded — starting a fresh conversation.");
+        appendMessage("system", null, "New document uploaded — starting a fresh conversation.");
       }
     } else {
-      setStatus(body.detail || response.statusText, "error");
+      showAttachment(file.name, body.detail || response.statusText, "error");
     }
   } catch (err) {
-    setStatus(err.message, "error");
+    showAttachment(file.name, err.message, "error");
   }
+  fileInput.value = "";
 });
 
 chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const query = chatInput.value.trim();
   if (!query) return;
-  appendMessage("user", "You", query);
+  appendMessage("user", null, query);
   chatInput.value = "";
 
   try {
@@ -62,43 +68,66 @@ chatForm.addEventListener("submit", async (event) => {
     }
     if (response.ok) {
       sessionId = body.session_id;
-      appendMessage("assistant", "Assistant", body.answer, body.citations);
+      appendMessage("assistant", "AI", body.answer, body.citations);
     } else {
-      appendMessage("error", "Error", body.detail || response.statusText);
+      appendMessage("error", "!", body.detail || response.statusText);
     }
   } catch (err) {
-    appendMessage("error", "Error", err.message);
+    appendMessage("error", "!", err.message);
   }
 });
 
-function setStatus(text, state) {
-  uploadStatus.textContent = text;
+function showAttachment(name, statusText, state) {
+  attachmentChip.hidden = false;
+  attachmentName.textContent = name;
+  attachmentStatus.textContent = statusText;
   if (state) {
-    uploadStatus.dataset.state = state;
+    attachmentStatus.dataset.state = state;
   } else {
-    delete uploadStatus.dataset.state;
+    delete attachmentStatus.dataset.state;
   }
 }
 
-function appendMessage(role, who, text, citations) {
-  const wrapper = document.createElement("div");
-  wrapper.className = `msg msg--${role}`;
-
-  const label = document.createElement("span");
-  label.className = "msg__who";
-  label.textContent = who;
-  wrapper.appendChild(label);
-
-  const body = document.createElement("p");
-  body.className = "msg__body";
-  body.textContent = text;
-  wrapper.appendChild(body);
-
-  if (citations && citations.length > 0) {
-    wrapper.appendChild(buildReferenceList(citations));
+function appendMessage(role, avatarText, text, citations) {
+  if (emptyState && emptyState.parentNode) {
+    emptyState.remove();
   }
 
-  messages.appendChild(wrapper);
+  const row = document.createElement("div");
+  row.className = `row row--${role}`;
+
+  if (role === "user") {
+    const bubble = document.createElement("div");
+    bubble.className = "bubble";
+    const p = document.createElement("p");
+    p.textContent = text;
+    bubble.appendChild(p);
+    row.appendChild(bubble);
+  } else if (role === "system") {
+    const content = document.createElement("div");
+    content.className = "content";
+    const p = document.createElement("p");
+    p.textContent = text;
+    content.appendChild(p);
+    row.appendChild(content);
+  } else {
+    const avatar = document.createElement("span");
+    avatar.className = "avatar";
+    avatar.textContent = avatarText;
+    row.appendChild(avatar);
+
+    const content = document.createElement("div");
+    content.className = "content";
+    const p = document.createElement("p");
+    p.textContent = text;
+    content.appendChild(p);
+    if (citations && citations.length > 0) {
+      content.appendChild(buildReferenceList(citations));
+    }
+    row.appendChild(content);
+  }
+
+  messages.appendChild(row);
   messages.scrollTop = messages.scrollHeight;
 }
 
@@ -107,22 +136,19 @@ function buildReferenceList(citations) {
   list.className = "refs";
   citations.forEach((citation, index) => {
     const item = document.createElement("li");
+    if (citation.text_excerpt) {
+      item.title = citation.text_excerpt;
+    }
 
     const tag = document.createElement("span");
     tag.className = "ref__tag";
-    tag.textContent = `[${citation.key || index + 1}] `;
+    tag.textContent = `[${citation.key || index + 1}]`;
     item.appendChild(tag);
 
     const name = citation.source_name || citation.source_id || "source";
-    const excerpt = citation.text_excerpt ? ` — "${truncate(citation.text_excerpt, 140)}"` : "";
-    item.appendChild(document.createTextNode(`${name}${excerpt}`));
+    item.appendChild(document.createTextNode(` ${name}`));
 
     list.appendChild(item);
   });
   return list;
-}
-
-function truncate(text, maxLength) {
-  const clean = text.trim().replace(/\s+/g, " ");
-  return clean.length > maxLength ? `${clean.slice(0, maxLength)}…` : clean;
 }

@@ -3,39 +3,46 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>RAG · Chat</title>
+    <title>RAG Chat</title>
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
-    <div class="page">
-      <header class="titleblock">
-        <span class="titleblock__mark">RAG·CHAT</span>
-        <span class="titleblock__meta">Document Q&amp;A · Powabase</span>
+    <div class="app">
+      <header class="topbar">
+        <span class="topbar__title">RAG Chat</span>
       </header>
 
-      <section class="panel" aria-labelledby="upload-heading">
-        <h2 class="eyebrow" id="upload-heading"><span class="eyebrow__num">§01</span> Source</h2>
-        <div class="upload-row">
-          <input type="file" id="file-input" accept="application/pdf" aria-label="Choose a PDF file" />
-          <button id="upload-button" class="btn">Upload</button>
-        </div>
-        <p id="upload-status" class="status" aria-live="polite"></p>
-      </section>
+      <main class="thread" id="messages" aria-live="polite">
+        <div class="empty-state" id="empty-state">Upload a PDF, then ask anything about it.</div>
+      </main>
 
-      <section class="panel" aria-labelledby="chat-heading">
-        <h2 class="eyebrow" id="chat-heading"><span class="eyebrow__num">§02</span> Query</h2>
-        <div id="messages" aria-live="polite"></div>
-        <form id="chat-form">
+      <footer class="composer-wrap">
+        <div class="attachment-chip" id="attachment-chip" hidden>
+          <span id="attachment-name"></span>
+          <span class="attachment-chip__status" id="attachment-status"></span>
+        </div>
+        <form id="chat-form" class="composer">
+          <button type="button" id="attach-button" class="icon-btn" aria-label="Attach a PDF" title="Attach a PDF">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.44 11.05l-9.19 9.19a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a1.5 1.5 0 0 1-2.12-2.12l8.49-8.48" />
+            </svg>
+          </button>
+          <input type="file" id="file-input" accept="application/pdf" hidden />
           <input
             type="text"
             id="chat-input"
-            placeholder="Ask a question about the source…"
-            aria-label="Ask a question about the source"
+            class="composer__input"
+            placeholder="Ask a question about your document…"
+            aria-label="Message"
             autocomplete="off"
           />
-          <button type="submit" class="btn btn--accent">Send</button>
+          <button type="submit" id="send-button" class="icon-btn icon-btn--accent" aria-label="Send message">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
+          </button>
         </form>
-      </section>
+      </footer>
     </div>
     <script src="/app.js"></script>
   </body>
