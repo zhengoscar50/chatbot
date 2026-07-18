@@ -49,12 +49,22 @@ for the Swagger UI.
 
 ## 5. Manual verification checklist
 
-- [ ] `GET /health` returns `200` with your configured `kb_id`/`agent_id`/`model`.
-- [ ] `POST /ingest/file` with a real PDF returns `{"source_id": ..., "status": "indexed"}`.
-- [ ] `POST /chat` with a question about that PDF's content returns an answer
+- [x] `GET /health` returns `200` with your configured `kb_id`/`agent_id`/`model`.
+- [x] `POST /ingest/file` with a real PDF returns `{"source_id": ..., "status": "indexed"}`.
+- [x] `POST /chat` with a question about that PDF's content returns an answer
       grounded in it, with non-empty `citations`.
-- [ ] Re-running `POST /ingest/file` with the *same* file succeeds without
+- [x] Re-running `POST /ingest/file` with the *same* file succeeds without
       error (exercises the `409 duplicate_source` path).
+
+Verified 2026-07-18 against a live Powabase project with `openrouter/openai/gpt-oss-20b:free`.
+Along the way, two real bugs surfaced and were fixed (see git history): the
+SSE parser assumed a literal `event:` line that Powabase's actual stream
+never sends (the event type lives inside the JSON body's `event` key
+instead — see `references/streaming-sse.md` in the Powabase skill), and the
+final-answer field is `content`, not `answer`. `ChatService` and the `/chat`
+route were updated to match the real wire format and to surface a clear
+error when an agent run fails downstream (e.g. a provider rejects the call)
+instead of a bare 500.
 
 ```bash
 curl http://127.0.0.1:8000/health

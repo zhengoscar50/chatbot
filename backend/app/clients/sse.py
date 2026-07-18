@@ -14,7 +14,13 @@ def parse_sse(text: str) -> list[dict]:
             data = json.loads(payload)
         except json.JSONDecodeError:
             data = {"raw": payload}
-        events.append({"event": event_name or "message", "data": data})
+        # Real Powabase agent-run streams never send a literal "event:" line —
+        # the discriminator lives inside the JSON body's own "event" key. A
+        # literal "event:" line still wins if a server ever sends one.
+        name = event_name
+        if name is None and isinstance(data, dict):
+            name = data.get("event")
+        events.append({"event": name or "message", "data": data})
 
     for line in text.splitlines():
         if line == "":
@@ -22,6 +28,8 @@ def parse_sse(text: str) -> list[dict]:
             event_name = None
             data_lines = []
             continue
+        if line.startswith(":"):
+            continue  # SSE keepalive comment
         if line.startswith("event:"):
             event_name = line[len("event:"):].strip()
         elif line.startswith("data:"):

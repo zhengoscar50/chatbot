@@ -32,19 +32,24 @@ class ChatService:
             if name == "start":
                 result_session_id = data.get("session_id", result_session_id)
             elif name == "error":
-                self._raise_for_error(data)
+                # Standalone error events: {message, code?} per the docs.
+                self._raise_for_error(data.get("code", ""), data.get("message", str(data)))
             elif name == "complete":
-                answer = data.get("answer")
+                # A "complete" event can itself report failure (status:
+                # "failed" plus a raw provider error string) rather than a
+                # separate "error" event — e.g. a downstream LLM provider
+                # rejecting the call. Real answer text lives in "content".
+                if data.get("status") == "failed" or data.get("error"):
+                    self._raise_for_error("", data.get("error") or "Agent run failed")
+                answer = data.get("content")
                 citations = data.get("citations", [])
 
-        if answer is None:
+        if not answer:
             raise RuntimeError("Agent run completed without a final answer")
 
         return {"answer": answer, "session_id": result_session_id, "citations": citations}
 
-    def _raise_for_error(self, data: dict) -> None:
-        code = data.get("error", "")
-        message = data.get("message", str(data))
+    def _raise_for_error(self, code: str, message: str) -> None:
         if code == "insufficient_credits":
             raise InsufficientCreditsError(message)
         if code == "provider_key_decrypt_failed":

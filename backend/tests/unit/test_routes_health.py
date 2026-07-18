@@ -10,6 +10,11 @@ def set_env(monkeypatch):
     monkeypatch.setenv("POWABASE_SERVICE_ROLE_KEY", "test-key")
     monkeypatch.setenv("POWABASE_KB_ID", "kb-123")
     monkeypatch.setenv("POWABASE_AGENT_ID", "agent-456")
+    # Explicit, not relying on the class default: a real backend/.env (used
+    # for live verification against a real Powabase project) would otherwise
+    # supply this value via pydantic-settings' env_file fallback and silently
+    # override the default this test asserts on.
+    monkeypatch.setenv("POWABASE_AGENT_MODEL", "gpt-4o-mini")
     get_settings.cache_clear()
 
 

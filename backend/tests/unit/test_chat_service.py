@@ -18,12 +18,14 @@ class FakeClient:
 
 
 def test_ask_returns_answer_and_session_id():
+    # Real Powabase "complete" events carry the final text under "content",
+    # not "answer" (see references/streaming-sse.md).
     client = FakeClient(
         events=[
             {"event": "start", "data": {"session_id": "sess-1"}},
             {
                 "event": "complete",
-                "data": {"answer": "42", "citations": [{"source_id": "src-1"}]},
+                "data": {"content": "42", "citations": [{"source_id": "src-1"}]},
             },
         ]
     )
@@ -40,11 +42,12 @@ def test_ask_returns_answer_and_session_id():
 
 
 def test_ask_raises_insufficient_credits():
+    # Standalone "error" events carry {message, code} per the docs.
     client = FakeClient(
         events=[
             {
                 "event": "error",
-                "data": {"error": "insufficient_credits", "message": "no credits"},
+                "data": {"code": "insufficient_credits", "message": "no credits"},
             }
         ]
     )
@@ -59,11 +62,35 @@ def test_ask_raises_provider_key_error():
         events=[
             {
                 "event": "error",
-                "data": {"error": "provider_key_decrypt_failed", "message": "bad key"},
+                "data": {"code": "provider_key_decrypt_failed", "message": "bad key"},
             }
         ]
     )
     service = ChatService(client, agent_id="agent-1")
 
     with pytest.raises(ProviderKeyError):
+        service.ask("hello")
+
+
+def test_ask_raises_runtime_error_when_complete_event_reports_failure():
+    # Real-world observed shape: a "complete" event can carry status:"failed"
+    # plus a raw provider error string in "error" (e.g. a downstream LLM
+    # provider rejecting the call) — this is not one of the documented
+    # standalone "error" event codes, so it surfaces as a generic failure.
+    client = FakeClient(
+        events=[
+            {"event": "start", "data": {"session_id": "sess-1"}},
+            {
+                "event": "complete",
+                "data": {
+                    "content": "",
+                    "status": "failed",
+                    "error": "litellm.APIError: insufficient OpenRouter credits",
+                },
+            },
+        ]
+    )
+    service = ChatService(client, agent_id="agent-1")
+
+    with pytest.raises(RuntimeError, match="insufficient OpenRouter credits"):
         service.ask("hello")

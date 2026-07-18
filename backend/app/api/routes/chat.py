@@ -24,3 +24,5 @@ def chat(req: ChatRequest, client: PowabaseClient = Depends(get_powabase_client)
         )
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))

@@ -70,3 +70,21 @@ def test_chat_returns_424_on_provider_key_error(monkeypatch):
     detail = response.json()["detail"]
     assert "bad key" in detail
     assert "Powabase Studio" in detail
+
+
+def test_chat_returns_502_when_agent_run_fails(monkeypatch):
+    # ChatService raises a bare RuntimeError when the agent run itself fails
+    # downstream (e.g. the configured LLM provider rejects the call) — this
+    # must surface the real message, not a bare 500 Internal Server Error.
+    set_env(monkeypatch)
+
+    class FailedRunService(FakeChatService):
+        def ask(self, query, session_id=None):
+            raise RuntimeError("litellm.APIError: insufficient OpenRouter credits")
+
+    monkeypatch.setattr(chat_route, "ChatService", FailedRunService)
+
+    response = TestClient(build_app()).post("/chat", json={"query": "hi"})
+
+    assert response.status_code == 502
+    assert "insufficient OpenRouter credits" in response.json()["detail"]
