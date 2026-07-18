@@ -1,0 +1,149 @@
+from __future__ import annotations
+
+import time
+
+import httpx
+from fastapi import Request
+
+from app.clients.sse import parse_sse
+
+
+class PowabaseAPIError(Exception):
+    def __init__(self, status_code: int, body):
+        self.status_code = status_code
+        self.body = body
+        super().__init__(f"Powabase API error {status_code}: {body}")
+
+
+class PowabaseClient:
+    def __init__(self, base_url: str, service_role_key: str):
+        headers = {
+            "apikey": service_role_key,
+            "Authorization": f"Bearer {service_role_key}",
+        }
+        self._client = httpx.Client(
+            base_url=base_url.rstrip("/"), headers=headers, timeout=30.0
+        )
+
+    def close(self) -> None:
+        self._client.close()
+
+    def _raise_for_status(self, response: httpx.Response) -> None:
+        if response.status_code >= 400:
+            try:
+                body = response.json()
+            except ValueError:
+                body = response.text
+            raise PowabaseAPIError(response.status_code, body)
+
+    # Sources -----------------------------------------------------------
+
+    def upload_source(self, filename: str, content: bytes) -> dict:
+        response = self._client.post(
+            "/api/sources/upload", files={"file": (filename, content)}
+        )
+        if response.status_code == 409:
+            body = response.json()
+            return body.get("duplicate", body)
+        self._raise_for_status(response)
+        return response.json()
+
+    def get_source(self, source_id: str) -> dict:
+        response = self._client.get(f"/api/sources/{source_id}")
+        self._raise_for_status(response)
+        return response.json()
+
+    # Knowledge bases -----------------------------------------------------
+
+    def list_knowledge_bases(self) -> dict:
+        response = self._client.get("/api/knowledge-bases")
+        self._raise_for_status(response)
+        return response.json()
+
+    def create_knowledge_base(self, name: str, description: str = "") -> dict:
+        response = self._client.post(
+            "/api/knowledge-bases", json={"name": name, "description": description}
+        )
+        self._raise_for_status(response)
+        return response.json()
+
+    def get_knowledge_base(self, kb_id: str) -> dict:
+        response = self._client.get(f"/api/knowledge-bases/{kb_id}")
+        self._raise_for_status(response)
+        return response.json()
+
+    def add_source_to_kb(self, kb_id: str, source_id: str) -> dict:
+        response = self._client.post(
+            f"/api/knowledge-bases/{kb_id}/sources", json={"source_id": source_id}
+        )
+        self._raise_for_status(response)
+        return response.json()
+
+    def list_kb_sources(self, kb_id: str) -> dict:
+        response = self._client.get(f"/api/knowledge-bases/{kb_id}/sources")
+        self._raise_for_status(response)
+        return response.json()
+
+    # Agents --------------------------------------------------------------
+
+    def list_agents(self) -> dict:
+        response = self._client.get("/api/agents")
+        self._raise_for_status(response)
+        return response.json()
+
+    def create_agent(self, name: str, model: str, system_prompt: str) -> dict:
+        response = self._client.post(
+            "/api/agents",
+            json={"name": name, "model": model, "system_prompt": system_prompt},
+        )
+        self._raise_for_status(response)
+        return response.json()
+
+    def get_agent(self, agent_id: str) -> dict:
+        response = self._client.get(f"/api/agents/{agent_id}")
+        self._raise_for_status(response)
+        return response.json()
+
+    def link_kb_to_agent(self, agent_id: str, kb_id: str) -> dict:
+        response = self._client.post(
+            f"/api/agents/{agent_id}/knowledge-bases",
+            json={"knowledge_base_id": kb_id},
+        )
+        self._raise_for_status(response)
+        return response.json()
+
+    def run_agent(
+        self,
+        agent_id: str,
+        message: str,
+        session_id: str | None = None,
+        citations_enabled: bool = True,
+    ) -> list[dict]:
+        payload: dict = {"message": message, "citations_enabled": citations_enabled}
+        if session_id:
+            payload["session_id"] = session_id
+
+        response = self._client.post(
+            f"/api/agents/{agent_id}/run/stream", json=payload, timeout=120.0
+        )
+        if response.status_code == 503:
+            time.sleep(1.0)
+            response = self._client.post(
+                f"/api/agents/{agent_id}/run/stream", json=payload, timeout=120.0
+            )
+        self._raise_for_status(response)
+        return parse_sse(response.text)
+
+    # Provider keys ---------------------------------------------------------
+
+    def create_provider_key(self, provider: str, api_key: str) -> dict:
+        response = self._client.post(
+            "/api/ai-provider-keys", json={"provider": provider, "api_key": api_key}
+        )
+        self._raise_for_status(response)
+        return response.json()
+
+
+def get_powabase_client(request: Request) -> PowabaseClient:
+    """FastAPI dependency returning the shared PowabaseClient created at startup."""
+    return request.app.state.powabase_client
