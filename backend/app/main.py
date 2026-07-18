@@ -15,18 +15,21 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     client = PowabaseClient(settings.powabase_base_url, settings.powabase_service_role_key)
     try:
-        client.get_knowledge_base(settings.powabase_kb_id)
-    except PowabaseAPIError as e:
-        raise RuntimeError(
-            f"Powabase Knowledge Base {settings.powabase_kb_id} is not reachable: {e}"
-        ) from e
-    try:
-        client.get_agent(settings.powabase_agent_id)
-    except PowabaseAPIError as e:
-        raise RuntimeError(
-            f"Powabase Agent {settings.powabase_agent_id} is not reachable: {e}"
-        ) from e
-    yield
+        try:
+            client.get_knowledge_base(settings.powabase_kb_id)
+        except PowabaseAPIError as e:
+            raise RuntimeError(
+                f"Powabase Knowledge Base {settings.powabase_kb_id} is not reachable: {e}"
+            ) from e
+        try:
+            client.get_agent(settings.powabase_agent_id)
+        except PowabaseAPIError as e:
+            raise RuntimeError(
+                f"Powabase Agent {settings.powabase_agent_id} is not reachable: {e}"
+            ) from e
+        yield
+    finally:
+        client.close()
 
 
 def create_app() -> FastAPI:
