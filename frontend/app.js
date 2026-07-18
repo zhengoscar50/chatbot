@@ -18,7 +18,12 @@ uploadButton.addEventListener("click", async () => {
   formData.append("file", file);
   try {
     const response = await fetch("/ingest/file", { method: "POST", body: formData });
-    const body = await response.json();
+    let body;
+    try {
+      body = await response.json();
+    } catch (parseErr) {
+      body = { detail: `${response.status} ${response.statusText}` };
+    }
     if (response.ok || response.status === 202) {
       uploadStatus.textContent = `Status: ${body.status} (source ${body.source_id})`;
     } else {
@@ -42,7 +47,12 @@ chatForm.addEventListener("submit", async (event) => {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, session_id: sessionId }),
     });
-    const body = await response.json();
+    let body;
+    try {
+      body = await response.json();
+    } catch (parseErr) {
+      body = { detail: `${response.status} ${response.statusText}` };
+    }
     if (response.ok) {
       sessionId = body.session_id;
       appendMessage("Assistant", body.answer);
