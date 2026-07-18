@@ -3,6 +3,7 @@ from __future__ import annotations
 import time
 
 import httpx
+from fastapi import Request
 
 from app.clients.sse import parse_sse
 
@@ -141,3 +142,8 @@ class PowabaseClient:
         )
         self._raise_for_status(response)
         return response.json()
+
+
+def get_powabase_client(request: Request) -> PowabaseClient:
+    """FastAPI dependency returning the shared PowabaseClient created at startup."""
+    return request.app.state.powabase_client

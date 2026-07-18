@@ -27,6 +27,7 @@ def test_app_starts_when_kb_and_agent_are_reachable(monkeypatch):
     with TestClient(app) as client:
         response = client.get("/health")
         assert response.status_code == 200
+        assert isinstance(app.state.powabase_client, main_module.PowabaseClient)
 
 
 def test_app_fails_to_start_when_kb_is_unreachable(monkeypatch):

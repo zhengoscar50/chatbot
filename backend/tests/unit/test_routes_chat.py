@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.routes import chat as chat_route
+from app.clients.powabase_client import get_powabase_client
 from app.core.config import get_settings
 
 
@@ -17,6 +18,7 @@ def set_env(monkeypatch):
 def build_app():
     app = FastAPI()
     app.include_router(chat_route.router)
+    app.dependency_overrides[get_powabase_client] = lambda: object()
     return app
 
 

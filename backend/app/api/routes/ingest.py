@@ -1,7 +1,8 @@
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
-from app.clients.powabase_client import PowabaseAPIError, PowabaseClient
+from app.clients.powabase_client import PowabaseAPIError, PowabaseClient, get_powabase_client
 from app.core.config import get_settings
 from app.models.schemas import IngestResponse
 from app.services.ingest_service import (
@@ -16,10 +17,12 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 
 @router.post("/file", response_model=IngestResponse)
-async def ingest_file(file: UploadFile = File(...)):
+async def ingest_file(
+    file: UploadFile = File(...),
+    client: PowabaseClient = Depends(get_powabase_client),
+):
     content = await file.read()
     settings = get_settings()
-    client = PowabaseClient(settings.powabase_base_url, settings.powabase_service_role_key)
     service = IngestService(
         client,
         settings.powabase_kb_id,
@@ -27,7 +30,7 @@ async def ingest_file(file: UploadFile = File(...)):
         max_wait=settings.ingest_max_wait_seconds,
     )
     try:
-        result = service.ingest_pdf(file.filename, content)
+        result = await run_in_threadpool(service.ingest_pdf, file.filename, content)
         return IngestResponse(**result)
     except AttentionRequiredError as e:
         raise HTTPException(

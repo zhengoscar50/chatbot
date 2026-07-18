@@ -27,6 +27,7 @@ async def lifespan(app: FastAPI):
             raise RuntimeError(
                 f"Powabase Agent {settings.powabase_agent_id} is not reachable: {e}"
             ) from e
+        app.state.powabase_client = client
         yield
     finally:
         client.close()

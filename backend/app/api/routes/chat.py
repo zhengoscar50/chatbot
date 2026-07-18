@@ -1,6 +1,6 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
-from app.clients.powabase_client import PowabaseAPIError, PowabaseClient
+from app.clients.powabase_client import PowabaseAPIError, PowabaseClient, get_powabase_client
 from app.core.config import get_settings
 from app.models.schemas import ChatRequest, ChatResponse
 from app.services.chat_service import ChatService, InsufficientCreditsError, ProviderKeyError
@@ -9,9 +9,8 @@ router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 @router.post("", response_model=ChatResponse)
-def chat(req: ChatRequest):
+def chat(req: ChatRequest, client: PowabaseClient = Depends(get_powabase_client)):
     settings = get_settings()
-    client = PowabaseClient(settings.powabase_base_url, settings.powabase_service_role_key)
     service = ChatService(client, settings.powabase_agent_id)
     try:
         result = service.ask(req.query, session_id=req.session_id)
