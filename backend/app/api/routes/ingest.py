@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -12,20 +12,27 @@ from app.services.ingest_service import (
     IngestService,
     IngestTimeoutError,
 )
+from app.services.profile_service import ProfileService, get_profile_service
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 
 @router.post("/file", response_model=IngestResponse)
 async def ingest_file(
+    profile: str = Form(...),
     file: UploadFile = File(...),
     client: PowabaseClient = Depends(get_powabase_client),
+    profiles: ProfileService = Depends(get_profile_service),
 ):
     content = await file.read()
     settings = get_settings()
+    try:
+        resolved = await run_in_threadpool(profiles.resolve, profile)
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     service = IngestService(
         client,
-        settings.powabase_kb_id,
+        resolved["kb_id"],
         poll_interval=settings.poll_interval_seconds,
         max_wait=settings.ingest_max_wait_seconds,
     )
