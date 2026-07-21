@@ -13,6 +13,19 @@
         <span class="topbar__title">RAG Chat</span>
       </header>
 
+      <div class="profilebar">
+        <label class="profilebar__label" for="profile-input">Profile</label>
+        <input
+          type="text"
+          id="profile-input"
+          class="profilebar__input"
+          placeholder="Type a name and press Enter…"
+          autocomplete="off"
+          aria-label="Profile name"
+        />
+        <span class="profilebar__status" id="profile-status"></span>
+      </div>
+
       <main class="thread" id="messages" aria-live="polite">
         <div class="empty-state" id="empty-state">Upload a PDF, then ask anything about it.</div>
       </main>

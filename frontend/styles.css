@@ -320,3 +320,52 @@ body {
     max-width: 88%;
   }
 }
+
+.profilebar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: 48rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.profilebar__label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.profilebar__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 0.4rem 0.65rem;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.profilebar__input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.profilebar__status {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.profilebar__status[data-state="ok"] {
+  color: var(--ok);
+}
+
+.profilebar__status[data-state="error"] {
+  color: var(--error);
+}
