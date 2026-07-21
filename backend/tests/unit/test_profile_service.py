@@ -16,7 +16,9 @@ class FakeClient:
 
     def list_knowledge_bases(self):
         self.list_kb_calls += 1
-        return {"items": self.kbs}
+        # Real Powabase GET /api/knowledge-bases keys the list under
+        # "knowledge_bases" (not "items") — match the live wire format.
+        return {"knowledge_bases": self.kbs}
 
     def create_knowledge_base(self, name, description=""):
         kb = {"id": f"kb-{name}", "name": name}

@@ -60,7 +60,15 @@ class ProfileService:
         kb_name = f"profile-{slug}-kb"
         agent_name = f"profile-{slug}-agent"
 
-        kb = _find_by_name(self.client.list_knowledge_bases().get("items", []), kb_name)
+        # GET /api/knowledge-bases lists KBs under the "knowledge_bases" key
+        # (verified against the live API — NOT "items", which is the key used
+        # by the /knowledge-bases/{id}/sources list). Reading the wrong key
+        # makes find-existing always miss, re-creating a duplicate KB on every
+        # cold start while reusing the existing agent still linked to the old
+        # KB — which silently breaks a returning profile's retrieval.
+        kb = _find_by_name(
+            self.client.list_knowledge_bases().get("knowledge_bases", []), kb_name
+        )
         if kb is None:
             kb = self.client.create_knowledge_base(
                 kb_name, description=f"Knowledge base for profile {slug}"

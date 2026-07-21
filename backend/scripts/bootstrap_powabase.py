@@ -30,7 +30,7 @@ def bootstrap(
     if provider and provider_key:
         client.create_provider_key(provider, provider_key)
 
-    existing_kbs = client.list_knowledge_bases().get("items", [])
+    existing_kbs = client.list_knowledge_bases().get("knowledge_bases", [])
     kb = find_by_name(existing_kbs, KB_NAME)
     if kb is None:
         kb = client.create_knowledge_base(KB_NAME, description="RAG chatbot knowledge base")

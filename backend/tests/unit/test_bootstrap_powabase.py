@@ -14,7 +14,7 @@ class FakeClient:
         self.provider_keys.append((provider, api_key))
 
     def list_knowledge_bases(self):
-        return {"items": self.existing_kbs}
+        return {"knowledge_bases": self.existing_kbs}
 
     def create_knowledge_base(self, name, description=""):
         kb = {"id": "kb-new", "name": name}
