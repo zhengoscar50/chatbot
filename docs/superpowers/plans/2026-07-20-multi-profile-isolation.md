@@ -394,7 +394,6 @@ class IngestResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     query: str = Field(..., min_length=1)
-    profile: str = Field(..., min_length=1)
     session_id: Optional[str] = None
 
 
@@ -412,6 +411,12 @@ class ProfileResponse(BaseModel):
     profile: str
     slug: str
 ```
+
+> **Sequencing note:** `ChatRequest` does NOT gain the `profile` field in this
+> task. Making it required here would break the still-old `test_routes_chat.py`
+> (which sends no profile) until Task 5, leaving the suite red between tasks.
+> Task 5 adds `profile` to `ChatRequest` alongside the chat.py + chat-test
+> rewrite so the change lands green in one step.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -705,12 +710,24 @@ git commit -m "feat: scope PDF ingestion to the caller's profile KB"
 ### Task 5: Chat route — profile-scoped
 
 **Files:**
+- Modify: `backend/app/models/schemas.py` (add `profile: str = Field(..., min_length=1)` to `ChatRequest` — deferred from Task 3 so the suite stays green between tasks)
 - Modify: `backend/app/api/routes/chat.py`
 - Test: `backend/tests/unit/test_routes_chat.py` (rewrite)
 
 **Interfaces:**
-- Consumes: `get_profile_service` (Task 1), `ChatService` (unchanged), `ChatRequest.profile` (Task 3).
-- Produces: `POST /chat` now requires `profile` and runs against that profile's agent.
+- Consumes: `get_profile_service` (Task 1), `ChatService` (unchanged).
+- Produces: `ChatRequest.profile`; `POST /chat` now requires `profile` and runs against that profile's agent.
+
+- [ ] **Step 0: Add `profile` to `ChatRequest` in `backend/app/models/schemas.py`**
+
+Change `ChatRequest` so it reads:
+
+```python
+class ChatRequest(BaseModel):
+    query: str = Field(..., min_length=1)
+    profile: str = Field(..., min_length=1)
+    session_id: Optional[str] = None
+```
 
 - [ ] **Step 1: Rewrite the chat route tests**
 
