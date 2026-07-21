@@ -69,6 +69,16 @@ visible to `bob`.
 control. There are no passwords — anyone using the app can select any profile
 name.
 
+**Limitations (by design, for the local demo):**
+
+- **Run single-worker** (the default `uvicorn app.main:app --reload` is). The
+  profile→resources map is cached per process; under `--workers N` two workers
+  could concurrently provision the same new profile and create duplicate
+  Knowledge Bases, breaking that profile's retrieval. Single-worker avoids this.
+- **Profile names are matched by a normalized slug** (lowercased, trimmed,
+  non-alphanumeric runs collapsed to `-`). So `Alice`, `alice`, and
+  `alice!` all map to the same profile and share its data.
+
 ## 6. Verification
 
 Automated suite (faked Powabase, no network):
