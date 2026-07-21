@@ -10,6 +10,7 @@ class IngestResponse(BaseModel):
 
 class ChatRequest(BaseModel):
     query: str = Field(..., min_length=1)
+    profile: str = Field(..., min_length=1)
     session_id: Optional[str] = None
 
 
