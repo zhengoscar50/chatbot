@@ -103,3 +103,20 @@ def test_chat_returns_502_when_agent_run_fails(monkeypatch):
 
     assert response.status_code == 502
     assert "insufficient OpenRouter credits" in response.json()["detail"]
+
+
+def test_chat_returns_503_when_model_busy(monkeypatch):
+    set_env(monkeypatch)
+
+    class BusyService(FakeChatService):
+        def ask(self, query, session_id=None):
+            raise chat_route.ModelBusyError(
+                "The model is busy right now. Please wait a few seconds and try again."
+            )
+
+    monkeypatch.setattr(chat_route, "ChatService", BusyService)
+
+    response = post(TestClient(build_app()), {"query": "hi", "profile": "alice"})
+
+    assert response.status_code == 503
+    assert "try again" in response.json()["detail"].lower()

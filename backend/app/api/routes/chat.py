@@ -2,7 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient, get_powabase_client
 from app.models.schemas import ChatRequest, ChatResponse
-from app.services.chat_service import ChatService, InsufficientCreditsError, ProviderKeyError
+from app.services.chat_service import (
+    ChatService,
+    InsufficientCreditsError,
+    ModelBusyError,
+    ProviderKeyError,
+)
 from app.services.profile_service import ProfileService, get_profile_service
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -22,6 +27,8 @@ def chat(
     try:
         result = service.ask(req.query, session_id=req.session_id)
         return ChatResponse(**result)
+    except ModelBusyError as e:
+        raise HTTPException(status_code=503, detail=e.message)
     except InsufficientCreditsError as e:
         raise HTTPException(status_code=402, detail=e.message)
     except ProviderKeyError as e:

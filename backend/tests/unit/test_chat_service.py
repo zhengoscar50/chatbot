@@ -3,6 +3,7 @@ import pytest
 from app.services.chat_service import (
     ChatService,
     InsufficientCreditsError,
+    ModelBusyError,
     ProviderKeyError,
 )
 
@@ -94,3 +95,61 @@ def test_ask_raises_runtime_error_when_complete_event_reports_failure():
 
     with pytest.raises(RuntimeError, match="insufficient OpenRouter credits"):
         service.ask("hello")
+
+
+def test_ask_raises_model_busy_on_resource_exhausted():
+    # Real observed Nvidia/OpenRouter overload error (surfaced as an "error"
+    # event carrying the raw provider text under the "error" key).
+    client = FakeClient(
+        events=[
+            {
+                "event": "error",
+                "data": {
+                    "error": (
+                        "Stream iteration failed: litellm.MidStreamFallbackError: "
+                        "OpenrouterException - Upstream error from Nvidia: "
+                        "ResourceExhausted: Worker local total request limit reached "
+                        "(100/32), Metadata: {'error_type': 'provider_unavailable'}"
+                    )
+                },
+            }
+        ]
+    )
+    service = ChatService(client, agent_id="agent-1")
+
+    with pytest.raises(ModelBusyError):
+        service.ask("hi")
+
+
+def test_ask_raises_model_busy_on_rate_limit_in_complete_event():
+    client = FakeClient(
+        events=[
+            {"event": "start", "data": {"session_id": "s"}},
+            {
+                "event": "complete",
+                "data": {
+                    "content": "",
+                    "status": "failed",
+                    "error": "litellm.RateLimitError: OpenrouterException code 429 rate_limit_exceeded",
+                },
+            },
+        ]
+    )
+    service = ChatService(client, agent_id="agent-1")
+
+    with pytest.raises(ModelBusyError):
+        service.ask("hi")
+
+
+def test_ask_non_throttle_error_uses_error_field_not_dict_repr():
+    client = FakeClient(
+        events=[{"event": "error", "data": {"error": "some unexpected failure"}}]
+    )
+    service = ChatService(client, agent_id="agent-1")
+
+    with pytest.raises(RuntimeError) as exc:
+        service.ask("hi")
+
+    msg = str(exc.value)
+    assert "some unexpected failure" in msg
+    assert "'event'" not in msg  # not the raw dict repr

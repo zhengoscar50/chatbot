@@ -1,5 +1,33 @@
 from __future__ import annotations
 
+# Substrings (checked case-insensitively) that mark a transient
+# rate-limit / provider-overload failure — the model is momentarily busy
+# rather than the request being wrong. Covers the shapes actually seen from
+# OpenRouter/LiteLLM: 429 rate limits and upstream "ResourceExhausted /
+# provider_unavailable" overloads.
+_THROTTLE_SIGNALS = (
+    "rate limit",
+    "ratelimit",
+    "rate_limit",
+    "429",
+    "too many requests",
+    "resourceexhausted",
+    "resource exhausted",
+    "resource_exhausted",
+    "provider_unavailable",
+    "provider unavailable",
+    "overloaded",
+    "request limit reached",
+    "temporarily rate-limited",
+)
+
+_MODEL_BUSY_MESSAGE = "The model is busy right now. Please wait a few seconds and try again."
+
+
+def _looks_throttled(text: str) -> bool:
+    lowered = (text or "").lower()
+    return any(signal in lowered for signal in _THROTTLE_SIGNALS)
+
 
 class InsufficientCreditsError(Exception):
     def __init__(self, message: str):
@@ -8,6 +36,14 @@ class InsufficientCreditsError(Exception):
 
 
 class ProviderKeyError(Exception):
+    def __init__(self, message: str):
+        self.message = message
+        super().__init__(message)
+
+
+class ModelBusyError(Exception):
+    """Transient provider rate-limit / overload — retrying shortly should work."""
+
     def __init__(self, message: str):
         self.message = message
         super().__init__(message)
@@ -32,8 +68,13 @@ class ChatService:
             if name == "start":
                 result_session_id = data.get("session_id", result_session_id)
             elif name == "error":
-                # Standalone error events: {message, code?} per the docs.
-                self._raise_for_error(data.get("code", ""), data.get("message", str(data)))
+                # Standalone error events carry the text under "message" or
+                # (as seen live) "error"; fall back to the raw dict only if
+                # neither is present, so users never see a Python dict repr.
+                self._raise_for_error(
+                    data.get("code", ""),
+                    data.get("message") or data.get("error") or str(data),
+                )
             elif name == "complete":
                 # A "complete" event can itself report failure (status:
                 # "failed" plus a raw provider error string) rather than a
@@ -54,4 +95,6 @@ class ChatService:
             raise InsufficientCreditsError(message)
         if code == "provider_key_decrypt_failed":
             raise ProviderKeyError(message)
+        if _looks_throttled(code) or _looks_throttled(message):
+            raise ModelBusyError(_MODEL_BUSY_MESSAGE)
         raise RuntimeError(message)
