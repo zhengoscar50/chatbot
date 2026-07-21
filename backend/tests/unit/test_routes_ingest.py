@@ -80,3 +80,18 @@ def test_ingest_file_returns_202_on_timeout(monkeypatch):
 
     assert response.status_code == 202
     assert response.json() == {"source_id": "src-3", "status": "pending"}
+
+
+def test_ingest_file_returns_422_when_attention_required(monkeypatch):
+    set_env(monkeypatch)
+
+    class AttentionService(FakeIngestService):
+        def ingest_pdf(self, filename, content):
+            raise ingest_route.AttentionRequiredError("src-2")
+
+    monkeypatch.setattr(ingest_route, "IngestService", AttentionService)
+
+    response = upload(TestClient(build_app()))
+
+    assert response.status_code == 422
+    assert "src-2" in response.json()["detail"]
