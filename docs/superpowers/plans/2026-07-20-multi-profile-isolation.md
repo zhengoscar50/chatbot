@@ -248,6 +248,7 @@ git commit -m "feat: add ProfileService (per-profile KB/agent find-or-create)"
 
 **Files:**
 - Modify: `backend/app/main.py`
+- Modify: `backend/app/core/config.py` (make `powabase_kb_id`/`powabase_agent_id` `Optional[str] = None` — a sequencing fix so the new lifespan test, which no longer sets those env vars, doesn't trip `Settings` validation; Task 6 removes them entirely)
 - Test: `backend/tests/unit/test_main_lifespan.py` (rewrite)
 
 **Interfaces:**
