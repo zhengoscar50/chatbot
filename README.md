@@ -2,7 +2,8 @@
 
 A RAG chatbot backend (FastAPI) + simple frontend, backed by
 [Powabase](https://powabase.ai)'s native Sources/Knowledge-Base/Agent
-pipeline for ingestion, retrieval, and generation.
+pipeline for ingestion, retrieval, and generation. Supports multiple
+**profiles**, each with its own isolated documents.
 
 ## 1. Create a Powabase project (one-time, human step)
 
@@ -16,8 +17,11 @@ pipeline for ingestion, retrieval, and generation.
    `openrouter/<org>/<model>`). Then either:
    - add the provider's key by hand in Studio → **Settings → LLM Provider
      Keys**, or
-   - set `POWABASE_PROVIDER_NAME` / `POWABASE_PROVIDER_KEY` in `.env` and
-     let the bootstrap script register it for you.
+   - set `POWABASE_PROVIDER_NAME` / `POWABASE_PROVIDER_KEY` in `.env` (the
+     bootstrap script in step 3 below registers it for you).
+
+You do **not** need `POWABASE_KB_ID` / `POWABASE_AGENT_ID` — each profile
+creates and manages its own Knowledge Base and agent automatically.
 
 ## 2. Install dependencies
 
@@ -28,15 +32,17 @@ source .venv/bin/activate
 pip install -r requirements-dev.txt
 ```
 
-## 3. Run the bootstrap script
+## 3. (Optional) Register a provider key
 
-Creates the Knowledge Base and Agent (idempotent — safe to re-run):
+`scripts/bootstrap_powabase.py` is now optional — profiles auto-provision
+their own resources, so you no longer need to pre-create a KB/agent. Its one
+remaining use is registering a BYOK provider key from your `.env` if you set
+`POWABASE_PROVIDER_NAME` / `POWABASE_PROVIDER_KEY` (equivalent to adding the
+key in Studio → Settings → LLM Provider Keys):
 
 ```bash
 python -m scripts.bootstrap_powabase
 ```
-
-Copy the printed `POWABASE_KB_ID` and `POWABASE_AGENT_ID` into `backend/.env`.
 
 ## 4. Run the app
 
@@ -47,39 +53,64 @@ uvicorn app.main:app --reload
 Open http://127.0.0.1:8000/ for the chat UI, or http://127.0.0.1:8000/docs
 for the Swagger UI.
 
-## 5. Manual verification checklist
+## 5. Profiles & data isolation
 
-- [x] `GET /health` returns `200` with your configured `kb_id`/`agent_id`/`model`.
-- [x] `POST /ingest/file` with a real PDF returns `{"source_id": ..., "status": "indexed"}`.
-- [x] `POST /chat` with a question about that PDF's content returns an answer
-      grounded in it, with non-empty `citations`.
-- [x] Re-running `POST /ingest/file` with the *same* file succeeds without
-      error (exercises the `409 duplicate_source` path).
+Each **profile** has its own isolated Knowledge Base and agent. Type a name
+in the Profile bar at the top and press Enter — the first time a name is used,
+its Knowledge Base and agent are created automatically. Documents you upload
+are added only to the current profile's Knowledge Base, and chats only search
+that profile's documents.
 
-Verified 2026-07-18 against a live Powabase project with `openrouter/openai/gpt-oss-20b:free`.
-Along the way, two real bugs surfaced and were fixed (see git history): the
-SSE parser assumed a literal `event:` line that Powabase's actual stream
-never sends (the event type lives inside the JSON body's `event` key
-instead — see `references/streaming-sse.md` in the Powabase skill), and the
-final-answer field is `content`, not `answer`. `ChatService` and the `/chat`
-route were updated to match the real wire format and to surface a clear
-error when an agent run fails downstream (e.g. a provider rejects the call)
-instead of a bare 500.
+Switching to a different profile clears the conversation and routes everything
+to that profile's isolated data. A document uploaded under `alice` is not
+visible to `bob`.
 
-```bash
-curl http://127.0.0.1:8000/health
+**Scope note:** this is a demonstration of *data isolation*, not access
+control. There are no passwords — anyone using the app can select any profile
+name.
 
-curl -X POST http://127.0.0.1:8000/ingest/file \
-  -F 'file=@/path/to/your.pdf'
+## 6. Verification
 
-curl -X POST http://127.0.0.1:8000/chat \
-  -H "Content-Type: application/json" \
-  -d '{"query": "What does this document say about X?"}'
-```
-
-## Running tests
+Automated suite (faked Powabase, no network):
 
 ```bash
 cd backend
 pytest -v
 ```
+
+Manual isolation proof, verified 2026-07-21 against a live Powabase project
+with `openrouter/nvidia/nemotron-3-super-120b-a12b:free`:
+
+- [x] `GET /health` returns `{"status": "ok", "model": ...}`.
+- [x] Under profile `alice`, `POST /ingest/file` (with `profile=alice`) indexes a
+      PDF, and `POST /chat` answers a question about it with a citation.
+- [x] Under profile `bob`, the same question returns "not able to find any
+      information … in the provided knowledge base" with zero citations — bob
+      cannot see alice's document.
+- [x] Switching back to `alice` still answers correctly — the document is
+      isolated to alice, not lost.
+
+```bash
+# provision a profile (auto-creates its KB + agent on first use)
+curl -X POST http://127.0.0.1:8000/profile \
+  -H "Content-Type: application/json" -d '{"profile": "alice"}'
+
+# upload a PDF into that profile's knowledge base
+curl -X POST http://127.0.0.1:8000/ingest/file \
+  -F 'profile=alice' -F 'file=@/path/to/your.pdf'
+
+# ask a question, scoped to that profile
+curl -X POST http://127.0.0.1:8000/chat \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What does this document say about X?", "profile": "alice"}'
+```
+
+## Notes on the Powabase wire format
+
+Two Powabase-specific details, discovered during earlier live verification and
+handled in the code: agent-run responses stream events whose type lives inside
+each JSON body's `event` key (there is no literal SSE `event:` line), and the
+final answer text is in the `content` field, not `answer`. `ChatService` and
+`app/clients/sse.py` match this real wire format and surface a clear error when
+an agent run fails downstream (e.g. a provider rejects or rate-limits the call)
+instead of a bare 500.
