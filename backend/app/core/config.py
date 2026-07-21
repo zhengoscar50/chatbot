@@ -1,6 +1,5 @@
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -14,8 +13,6 @@ class Settings(BaseSettings):
 
     powabase_base_url: str
     powabase_service_role_key: str
-    powabase_kb_id: Optional[str] = None
-    powabase_agent_id: Optional[str] = None
     powabase_agent_model: str = "gpt-4o-mini"
 
     poll_interval_seconds: float = 2.0
