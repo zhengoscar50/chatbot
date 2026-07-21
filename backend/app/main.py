@@ -8,6 +8,7 @@ from app.api.routes.health import router as health_router
 from app.api.routes.ingest import router as ingest_router
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient
 from app.core.config import FRONTEND_DIR, get_settings
+from app.services.profile_service import ProfileService
 
 
 @asynccontextmanager
@@ -16,18 +17,11 @@ async def lifespan(app: FastAPI):
     client = PowabaseClient(settings.powabase_base_url, settings.powabase_service_role_key)
     try:
         try:
-            client.get_knowledge_base(settings.powabase_kb_id)
+            client.list_agents()
         except PowabaseAPIError as e:
-            raise RuntimeError(
-                f"Powabase Knowledge Base {settings.powabase_kb_id} is not reachable: {e}"
-            ) from e
-        try:
-            client.get_agent(settings.powabase_agent_id)
-        except PowabaseAPIError as e:
-            raise RuntimeError(
-                f"Powabase Agent {settings.powabase_agent_id} is not reachable: {e}"
-            ) from e
+            raise RuntimeError(f"Powabase is not reachable: {e}") from e
         app.state.powabase_client = client
+        app.state.profile_service = ProfileService(client, settings.powabase_agent_model)
         yield
     finally:
         client.close()
