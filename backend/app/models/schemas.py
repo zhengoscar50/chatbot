@@ -17,3 +17,12 @@ class ChatResponse(BaseModel):
     answer: str
     session_id: Optional[str] = None
     citations: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class ProfileRequest(BaseModel):
+    profile: str = Field(..., min_length=1)
+
+
+class ProfileResponse(BaseModel):
+    profile: str
+    slug: str
