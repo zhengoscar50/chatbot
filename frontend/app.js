@@ -13,6 +13,7 @@ const messages = document.getElementById("messages");
 const PROFILE_KEY = "rag-chat-profile";
 let sessionId = null;
 let currentProfile = null;
+let isAsking = false;
 
 init();
 
@@ -116,6 +117,7 @@ fileInput.addEventListener("change", async () => {
 
 chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (isAsking) return;
   const query = chatInput.value.trim();
   if (!query) return;
   if (!currentProfile) {
@@ -125,6 +127,9 @@ chatForm.addEventListener("submit", async (event) => {
   appendMessage("user", null, query);
   chatInput.value = "";
 
+  isAsking = true;
+  sendButton.disabled = true;
+  const thinking = appendThinking();
   try {
     const response = await fetch("/chat", {
       method: "POST",
@@ -145,6 +150,10 @@ chatForm.addEventListener("submit", async (event) => {
     }
   } catch (err) {
     appendMessage("error", "!", err.message);
+  } finally {
+    thinking.remove();
+    isAsking = false;
+    sendButton.disabled = false;
   }
 });
 
@@ -180,6 +189,36 @@ function showAttachment(name, statusText, state) {
   } else {
     delete attachmentStatus.dataset.state;
   }
+}
+
+function appendThinking() {
+  const existingEmpty = messages.querySelector(".empty-state");
+  if (existingEmpty) {
+    existingEmpty.remove();
+  }
+
+  const row = document.createElement("div");
+  row.className = "row row--assistant";
+
+  const avatar = document.createElement("span");
+  avatar.className = "avatar";
+  avatar.textContent = "AI";
+  row.appendChild(avatar);
+
+  const content = document.createElement("div");
+  content.className = "content";
+  const thinking = document.createElement("div");
+  thinking.className = "thinking";
+  thinking.setAttribute("aria-label", "Thinking");
+  for (let i = 0; i < 3; i++) {
+    thinking.appendChild(document.createElement("span"));
+  }
+  content.appendChild(thinking);
+  row.appendChild(content);
+
+  messages.appendChild(row);
+  messages.scrollTop = messages.scrollHeight;
+  return row;
 }
 
 function appendMessage(role, avatarText, text, citations) {
