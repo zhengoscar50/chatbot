@@ -22,6 +22,7 @@ def test_app_starts_when_powabase_reachable(monkeypatch):
     with TestClient(app) as client:
         assert client.get("/health").status_code == 200
         assert isinstance(app.state.profile_service, main_module.ProfileService)
+        assert isinstance(app.state.session_service, main_module.SessionService)
         assert isinstance(app.state.powabase_client, main_module.PowabaseClient)
 
 

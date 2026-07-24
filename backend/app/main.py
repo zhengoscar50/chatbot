@@ -10,6 +10,7 @@ from app.api.routes.profile import router as profile_router
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient
 from app.core.config import FRONTEND_DIR, get_settings
 from app.services.profile_service import ProfileService
+from app.services.session_service import SessionService
 
 
 @asynccontextmanager
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):
             raise RuntimeError(f"Powabase is not reachable: {e}") from e
         app.state.powabase_client = client
         app.state.profile_service = ProfileService(client, settings.powabase_agent_model)
+        app.state.session_service = SessionService(client, settings.powabase_agent_model)
         yield
     finally:
         client.close()
