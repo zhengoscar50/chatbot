@@ -67,3 +67,25 @@ def test_messages_formats_roles_and_citations():
 def test_messages_404_for_missing_session():
     r = TestClient(build_app()).get("/sessions/missing/messages")
     assert r.status_code == 404
+
+
+def test_messages_empty_when_session_has_no_powabase_session():
+    # A brand-new session (no first message yet) has no powabase_session_id,
+    # so /messages returns an empty list without calling Powabase.
+    class NoThreadService(FakeSessionService):
+        def get(self, session_id):
+            return {"id": session_id}  # no powabase_session_id
+
+    class ExplodingClient:
+        def get_session_messages(self, ps):
+            raise AssertionError("should not be called when there is no thread")
+
+    app = FastAPI()
+    app.include_router(sessions_route.router)
+    app.dependency_overrides[get_session_service] = lambda: NoThreadService()
+    app.dependency_overrides[get_powabase_client] = lambda: ExplodingClient()
+
+    r = TestClient(app).get("/sessions/s1/messages")
+
+    assert r.status_code == 200
+    assert r.json() == {"messages": []}
