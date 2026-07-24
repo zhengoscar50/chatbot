@@ -8,7 +8,7 @@ BASE_URL = "https://demo.p.powabase.ai"
 
 @respx.mock
 def test_insert_session_returns_created_row():
-    respx.post(f"{BASE_URL}/rest/v1/sessions").mock(
+    route = respx.post(f"{BASE_URL}/rest/v1/sessions").mock(
         return_value=httpx.Response(201, json=[{"id": "s1", "name": "New session"}])
     )
     client = PowabaseClient(BASE_URL, "k")
@@ -16,6 +16,8 @@ def test_insert_session_returns_created_row():
     row = client.insert_session({"id": "s1", "user_slug": "alice", "name": "New session"})
 
     assert row == {"id": "s1", "name": "New session"}
+    # PostgREST needs Prefer: return=representation to return the created row.
+    assert route.calls.last.request.headers["prefer"] == "return=representation"
 
 
 @respx.mock
@@ -35,11 +37,13 @@ def test_list_sessions_filters_by_user_and_orders():
 
 @respx.mock
 def test_get_session_row_returns_first_or_none():
-    respx.get(f"{BASE_URL}/rest/v1/sessions").mock(
+    route = respx.get(f"{BASE_URL}/rest/v1/sessions").mock(
         return_value=httpx.Response(200, json=[{"id": "s1", "agent_id": "a1"}])
     )
     client = PowabaseClient(BASE_URL, "k")
     assert client.get_session_row("s1") == {"id": "s1", "agent_id": "a1"}
+    # Must filter by id — a missing filter would return the wrong session's row.
+    assert route.calls.last.request.url.params["id"] == "eq.s1"
 
 
 @respx.mock
