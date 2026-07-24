@@ -8,55 +8,62 @@
   </head>
   <body>
     <div class="app">
-      <header class="topbar">
-        <span class="topbar__mark" aria-hidden="true"></span>
-        <span class="topbar__title">RAG Chat</span>
-      </header>
-
-      <div class="profilebar">
-        <label class="profilebar__label" for="profile-input">Profile</label>
-        <input
-          type="text"
-          id="profile-input"
-          class="profilebar__input"
-          placeholder="Type a name and press Enter…"
-          autocomplete="off"
-          aria-label="Profile name"
-        />
-        <span class="profilebar__status" id="profile-status"></span>
-      </div>
-
-      <main class="thread" id="messages" aria-live="polite">
-        <div class="empty-state" id="empty-state">Upload a PDF, then ask anything about it.</div>
-      </main>
-
-      <footer class="composer-wrap">
-        <div class="attachment-chip" id="attachment-chip" hidden>
-          <span id="attachment-name"></span>
-          <span class="attachment-chip__status" id="attachment-status"></span>
-        </div>
-        <form id="chat-form" class="composer">
-          <button type="button" id="attach-button" class="icon-btn" aria-label="Attach a PDF" title="Attach a PDF">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21.44 11.05l-9.19 9.19a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a1.5 1.5 0 0 1-2.12-2.12l8.49-8.48" />
-            </svg>
-          </button>
-          <input type="file" id="file-input" accept="application/pdf" hidden />
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar__head">
+          <label class="sidebar__label" for="user-input">User</label>
           <input
             type="text"
-            id="chat-input"
-            class="composer__input"
-            placeholder="Ask a question about your document…"
-            aria-label="Message"
+            id="user-input"
+            class="sidebar__user"
+            placeholder="Type a name, Enter…"
             autocomplete="off"
+            aria-label="User name"
           />
-          <button type="submit" id="send-button" class="icon-btn icon-btn--accent" aria-label="Send message">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 19V5M5 12l7-7 7 7" />
-            </svg>
-          </button>
-        </form>
-      </footer>
+        </div>
+        <button id="new-session" class="new-session" disabled>+ New session</button>
+        <ul class="session-list" id="session-list" aria-label="Sessions"></ul>
+        <p class="sidebar__status" id="sidebar-status"></p>
+      </aside>
+
+      <div class="main">
+        <header class="topbar">
+          <button id="sidebar-toggle" class="icon-btn topbar__toggle" aria-label="Toggle sessions">☰</button>
+          <span class="topbar__mark" aria-hidden="true"></span>
+          <span class="topbar__title" id="active-title">RAG Chat</span>
+        </header>
+
+        <main class="thread" id="messages" aria-live="polite">
+          <div class="empty-state" id="empty-state">Pick or create a session to start.</div>
+        </main>
+
+        <footer class="composer-wrap">
+          <div class="attachment-chip" id="attachment-chip" hidden>
+            <span id="attachment-name"></span>
+            <span class="attachment-chip__status" id="attachment-status"></span>
+          </div>
+          <form id="chat-form" class="composer">
+            <button type="button" id="attach-button" class="icon-btn" aria-label="Attach a PDF" title="Attach a PDF">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a5.5 5.5 0 0 1-7.78-7.78l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a1.5 1.5 0 0 1-2.12-2.12l8.49-8.48" />
+              </svg>
+            </button>
+            <input type="file" id="file-input" accept="application/pdf" hidden />
+            <input
+              type="text"
+              id="chat-input"
+              class="composer__input"
+              placeholder="Ask a question about this session's documents…"
+              aria-label="Message"
+              autocomplete="off"
+            />
+            <button type="submit" id="send-button" class="icon-btn icon-btn--accent" aria-label="Send message">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 19V5M5 12l7-7 7 7" />
+              </svg>
+            </button>
+          </form>
+        </footer>
+      </div>
     </div>
     <script src="/app.js"></script>
   </body>

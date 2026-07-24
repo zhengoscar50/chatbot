@@ -35,8 +35,15 @@ body {
 
 .app {
   display: flex;
-  flex-direction: column;
   height: 100vh;
+  overflow: hidden;
+}
+
+.main {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
 }
 
 .topbar {
@@ -408,4 +415,132 @@ body {
 
 .profilebar__status[data-state="error"] {
   color: var(--error);
+}
+
+.sidebar {
+  flex: none;
+  width: 16rem;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--border);
+  background: var(--bg-subtle);
+  padding: 0.75rem;
+  gap: 0.6rem;
+}
+
+.sidebar__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.sidebar__label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.sidebar__user {
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.9rem;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.sidebar__user:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.new-session {
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  padding: 0.45rem 0.6rem;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: left;
+}
+
+.new-session:hover:not(:disabled) {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
+.new-session:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.session-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.session-list li {
+  padding: 0.5rem 0.6rem;
+  border-radius: 0.5rem;
+  font-size: 0.88rem;
+  color: var(--text);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.session-list li:hover {
+  background: #ece9ff;
+}
+
+.session-list li.active {
+  background: var(--gradient);
+  color: var(--accent-contrast);
+}
+
+.sidebar__status {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0;
+  min-height: 1em;
+}
+
+.sidebar__status[data-state="error"] {
+  color: var(--error);
+}
+
+.topbar__toggle {
+  display: none;
+  margin-right: 0.25rem;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+@media (max-width: 640px) {
+  .sidebar {
+    position: fixed;
+    z-index: 20;
+    inset: 0 auto 0 0;
+    transform: translateX(-100%);
+    transition: transform 0.2s ease;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .topbar__toggle {
+    display: inline-flex;
+  }
 }

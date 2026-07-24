@@ -1,5 +1,10 @@
-const profileInput = document.getElementById("profile-input");
-const profileStatus = document.getElementById("profile-status");
+const userInput = document.getElementById("user-input");
+const sidebarStatus = document.getElementById("sidebar-status");
+const sessionList = document.getElementById("session-list");
+const newSessionButton = document.getElementById("new-session");
+const sidebar = document.getElementById("sidebar");
+const sidebarToggle = document.getElementById("sidebar-toggle");
+const activeTitle = document.getElementById("active-title");
 const attachButton = document.getElementById("attach-button");
 const fileInput = document.getElementById("file-input");
 const attachmentChip = document.getElementById("attachment-chip");
@@ -10,88 +15,141 @@ const chatInput = document.getElementById("chat-input");
 const sendButton = document.getElementById("send-button");
 const messages = document.getElementById("messages");
 
-const PROFILE_KEY = "rag-chat-profile";
-let sessionId = null;
-let currentProfile = null;
+const USER_KEY = "rag-chat-user";
+let currentUser = null;
+let currentSessionId = null;
 let isAsking = false;
 
 init();
 
 function init() {
   setComposerEnabled(false);
-  const saved = localStorage.getItem(PROFILE_KEY);
+  const saved = localStorage.getItem(USER_KEY);
   if (saved) {
-    profileInput.value = saved;
-    switchProfile(saved);
-  } else {
-    setProfileStatus("Enter a profile name to start", null);
+    userInput.value = saved;
+    switchUser(saved);
   }
-  profileInput.addEventListener("change", () => switchProfile(profileInput.value));
-  profileInput.addEventListener("keydown", (e) => {
+  userInput.addEventListener("change", () => switchUser(userInput.value));
+  userInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      switchProfile(profileInput.value);
+      switchUser(userInput.value);
     }
+  });
+  newSessionButton.addEventListener("click", createSession);
+  sidebarToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
+}
+
+async function switchUser(rawName) {
+  const name = rawName.trim();
+  currentSessionId = null;
+  clearThread("Pick or create a session to start.");
+  setComposerEnabled(false);
+  activeTitle.textContent = "RAG Chat";
+  if (!name) {
+    currentUser = null;
+    newSessionButton.disabled = true;
+    sessionList.innerHTML = "";
+    setSidebarStatus("Enter a user name to start", null);
+    return;
+  }
+  currentUser = name;
+  localStorage.setItem(USER_KEY, name);
+  newSessionButton.disabled = false;
+  await loadSessions();
+}
+
+async function loadSessions() {
+  setSidebarStatus("Loading sessions…", null);
+  try {
+    const response = await fetch(`/sessions?user=${encodeURIComponent(currentUser)}`);
+    const body = await response.json();
+    if (!response.ok) {
+      setSidebarStatus(body.detail || response.statusText, "error");
+      return;
+    }
+    renderSessionList(body);
+    setSidebarStatus(body.length ? "" : "No sessions yet — create one.", null);
+  } catch (err) {
+    setSidebarStatus(err.message, "error");
+  }
+}
+
+function renderSessionList(sessions) {
+  sessionList.innerHTML = "";
+  sessions.forEach((s) => {
+    const li = document.createElement("li");
+    li.textContent = s.name;
+    li.dataset.id = s.id;
+    if (s.id === currentSessionId) li.classList.add("active");
+    li.addEventListener("click", () => openSession(s.id, s.name));
+    sessionList.appendChild(li);
   });
 }
 
-async function switchProfile(rawName) {
-  const name = rawName.trim();
-  if (!name) {
-    setProfileStatus("Enter a profile name to start", null);
-    return;
-  }
-  // Leaving the old profile: clear its conversation and any attachment.
-  clearThread();
-  sessionId = null;
-  attachmentChip.hidden = true;
-  setComposerEnabled(false);
-  setProfileStatus(`Setting up ${name}…`, null);
-
+async function createSession() {
+  if (!currentUser) return;
   try {
-    const response = await fetch("/profile", {
+    const response = await fetch("/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ profile: name }),
+      body: JSON.stringify({ user: currentUser }),
     });
-    let body;
-    try {
-      body = await response.json();
-    } catch (parseErr) {
-      body = { detail: `${response.status} ${response.statusText}` };
+    const body = await response.json();
+    if (!response.ok) {
+      setSidebarStatus(body.detail || response.statusText, "error");
+      return;
     }
-    if (response.ok) {
-      currentProfile = name;
-      localStorage.setItem(PROFILE_KEY, name);
-      setProfileStatus(`Profile: ${name}`, "ok");
-      setComposerEnabled(true);
-    } else {
-      currentProfile = null;
-      setProfileStatus(body.detail || response.statusText, "error");
-    }
+    await loadSessions();
+    openSession(body.id, body.name);
   } catch (err) {
-    currentProfile = null;
-    setProfileStatus(err.message, "error");
+    setSidebarStatus(err.message, "error");
   }
 }
 
-attachButton.addEventListener("click", () => {
-  fileInput.click();
-});
+async function openSession(id, name) {
+  currentSessionId = id;
+  activeTitle.textContent = name;
+  attachmentChip.hidden = true;
+  sidebar.classList.remove("open");
+  markActive();
+  setComposerEnabled(true);
+  clearThread("Upload a PDF, then ask about it — or just ask.");
+
+  try {
+    const response = await fetch(`/sessions/${id}/messages`);
+    const body = await response.json();
+    if (response.ok && body.messages && body.messages.length) {
+      messages.innerHTML = "";
+      body.messages.forEach((m) => {
+        if (m.role === "user") appendMessage("user", null, m.text);
+        else appendMessage("assistant", "AI", m.text, m.citations);
+      });
+    }
+  } catch (err) {
+    appendMessage("error", "!", err.message);
+  }
+}
+
+function markActive() {
+  Array.from(sessionList.children).forEach((li) => {
+    li.classList.toggle("active", li.dataset.id === currentSessionId);
+  });
+}
+
+attachButton.addEventListener("click", () => fileInput.click());
 
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files[0];
   if (!file) return;
-  if (!currentProfile) {
-    setProfileStatus("Enter a profile name first", "error");
+  if (!currentSessionId) {
     fileInput.value = "";
     return;
   }
-
   showAttachment(file.name, "Uploading and indexing…", null);
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("profile", currentProfile);
+  formData.append("session_id", currentSessionId);
   try {
     const response = await fetch("/ingest/file", { method: "POST", body: formData });
     let body;
@@ -102,10 +160,6 @@ fileInput.addEventListener("change", async () => {
     }
     if (response.ok || response.status === 202) {
       showAttachment(file.name, body.status, body.status === "indexed" ? "ok" : null);
-      if (sessionId !== null) {
-        sessionId = null;
-        appendMessage("system", null, "New document uploaded — starting a fresh conversation.");
-      }
     } else {
       showAttachment(file.name, body.detail || response.statusText, "error");
     }
@@ -120,8 +174,8 @@ chatForm.addEventListener("submit", async (event) => {
   if (isAsking) return;
   const query = chatInput.value.trim();
   if (!query) return;
-  if (!currentProfile) {
-    appendMessage("error", "!", "Enter a profile name first.");
+  if (!currentSessionId) {
+    appendMessage("error", "!", "Pick or create a session first.");
     return;
   }
   appendMessage("user", null, query);
@@ -134,7 +188,7 @@ chatForm.addEventListener("submit", async (event) => {
     const response = await fetch("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, profile: currentProfile, session_id: sessionId }),
+      body: JSON.stringify({ session_id: currentSessionId, query }),
     });
     let body;
     try {
@@ -143,8 +197,8 @@ chatForm.addEventListener("submit", async (event) => {
       body = { detail: `${response.status} ${response.statusText}` };
     }
     if (response.ok) {
-      sessionId = body.session_id;
       appendMessage("assistant", "AI", body.answer, body.citations);
+      loadSessions(); // refresh titles/order (first message names the session)
     } else {
       appendMessage("error", "!", body.detail || response.statusText);
     }
@@ -163,59 +217,45 @@ function setComposerEnabled(enabled) {
   attachButton.disabled = !enabled;
 }
 
-function setProfileStatus(text, state) {
-  profileStatus.textContent = text;
-  if (state) {
-    profileStatus.dataset.state = state;
-  } else {
-    delete profileStatus.dataset.state;
-  }
+function setSidebarStatus(text, state) {
+  sidebarStatus.textContent = text;
+  if (state) sidebarStatus.dataset.state = state;
+  else delete sidebarStatus.dataset.state;
 }
 
-function clearThread() {
+function clearThread(note) {
   messages.innerHTML = "";
-  const note = document.createElement("div");
-  note.className = "empty-state";
-  note.textContent = "Upload a PDF, then ask anything about it.";
-  messages.appendChild(note);
+  const el = document.createElement("div");
+  el.className = "empty-state";
+  el.textContent = note;
+  messages.appendChild(el);
 }
 
 function showAttachment(name, statusText, state) {
   attachmentChip.hidden = false;
   attachmentName.textContent = name;
   attachmentStatus.textContent = statusText;
-  if (state) {
-    attachmentStatus.dataset.state = state;
-  } else {
-    delete attachmentStatus.dataset.state;
-  }
+  if (state) attachmentStatus.dataset.state = state;
+  else delete attachmentStatus.dataset.state;
 }
 
 function appendThinking() {
   const existingEmpty = messages.querySelector(".empty-state");
-  if (existingEmpty) {
-    existingEmpty.remove();
-  }
-
+  if (existingEmpty) existingEmpty.remove();
   const row = document.createElement("div");
   row.className = "row row--assistant";
-
   const avatar = document.createElement("span");
   avatar.className = "avatar";
   avatar.textContent = "AI";
   row.appendChild(avatar);
-
   const content = document.createElement("div");
   content.className = "content";
   const thinking = document.createElement("div");
   thinking.className = "thinking";
   thinking.setAttribute("aria-label", "Thinking");
-  for (let i = 0; i < 3; i++) {
-    thinking.appendChild(document.createElement("span"));
-  }
+  for (let i = 0; i < 3; i++) thinking.appendChild(document.createElement("span"));
   content.appendChild(thinking);
   row.appendChild(content);
-
   messages.appendChild(row);
   messages.scrollTop = messages.scrollHeight;
   return row;
@@ -223,9 +263,7 @@ function appendThinking() {
 
 function appendMessage(role, avatarText, text, citations) {
   const existingEmpty = messages.querySelector(".empty-state");
-  if (existingEmpty) {
-    existingEmpty.remove();
-  }
+  if (existingEmpty) existingEmpty.remove();
 
   const row = document.createElement("div");
   row.className = `row row--${role}`;
@@ -249,7 +287,6 @@ function appendMessage(role, avatarText, text, citations) {
     avatar.className = "avatar";
     avatar.textContent = avatarText;
     row.appendChild(avatar);
-
     const content = document.createElement("div");
     content.className = "content";
     const p = document.createElement("p");
@@ -270,18 +307,13 @@ function buildReferenceList(citations) {
   list.className = "refs";
   citations.forEach((citation, index) => {
     const item = document.createElement("li");
-    if (citation.text_excerpt) {
-      item.title = citation.text_excerpt;
-    }
-
+    if (citation.text_excerpt) item.title = citation.text_excerpt;
     const tag = document.createElement("span");
     tag.className = "ref__tag";
     tag.textContent = `[${citation.key || index + 1}]`;
     item.appendChild(tag);
-
     const name = citation.source_name || citation.source_id || "source";
     item.appendChild(document.createTextNode(` ${name}`));
-
     list.appendChild(item);
   });
   return list;
