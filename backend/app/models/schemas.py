@@ -18,15 +18,6 @@ class ChatResponse(BaseModel):
     citations: list[dict[str, Any]] = Field(default_factory=list)
 
 
-class ProfileRequest(BaseModel):
-    profile: str = Field(..., min_length=1)
-
-
-class ProfileResponse(BaseModel):
-    profile: str
-    slug: str
-
-
 class SessionCreateRequest(BaseModel):
     user: str = Field(..., min_length=1)
     name: Optional[str] = None
