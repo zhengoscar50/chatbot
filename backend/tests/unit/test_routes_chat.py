@@ -103,3 +103,31 @@ def test_chat_returns_503_when_model_busy(monkeypatch):
 
     assert response.status_code == 503
     assert "try again" in response.json()["detail"].lower()
+
+
+def test_chat_returns_424_on_provider_key_error(monkeypatch):
+    class ProviderError(FakeChatService):
+        def ask(self, query, session_id=None):
+            raise chat_route.ProviderKeyError("bad key")
+
+    monkeypatch.setattr(chat_route, "ChatService", ProviderError)
+
+    response = post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "hi"})
+
+    assert response.status_code == 424
+    detail = response.json()["detail"]
+    assert "bad key" in detail
+    assert "Powabase Studio" in detail
+
+
+def test_chat_returns_502_when_agent_run_fails(monkeypatch):
+    class FailedRun(FakeChatService):
+        def ask(self, query, session_id=None):
+            raise RuntimeError("litellm.APIError: insufficient OpenRouter credits")
+
+    monkeypatch.setattr(chat_route, "ChatService", FailedRun)
+
+    response = post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "hi"})
+
+    assert response.status_code == 502
+    assert "insufficient OpenRouter credits" in response.json()["detail"]
