@@ -134,6 +134,45 @@ class PowabaseClient:
         self._raise_for_status(response)
         return parse_sse(response.text)
 
+    # Sessions table (PostgREST) -------------------------------------------
+
+    def insert_session(self, row: dict) -> dict:
+        response = self._client.post(
+            "/rest/v1/sessions",
+            json=row,
+            headers={"Prefer": "return=representation"},
+        )
+        self._raise_for_status(response)
+        created = response.json()
+        return created[0] if isinstance(created, list) else created
+
+    def list_sessions(self, user_slug: str) -> list:
+        response = self._client.get(
+            "/rest/v1/sessions",
+            params={"user_slug": f"eq.{user_slug}", "order": "updated_at.desc"},
+        )
+        self._raise_for_status(response)
+        return response.json()
+
+    def get_session_row(self, session_id: str):
+        response = self._client.get(
+            "/rest/v1/sessions", params={"id": f"eq.{session_id}"}
+        )
+        self._raise_for_status(response)
+        rows = response.json()
+        return rows[0] if rows else None
+
+    def update_session(self, session_id: str, fields: dict) -> None:
+        response = self._client.patch(
+            "/rest/v1/sessions", params={"id": f"eq.{session_id}"}, json=fields
+        )
+        self._raise_for_status(response)
+
+    def get_session_messages(self, powabase_session_id: str) -> dict:
+        response = self._client.get(f"/api/sessions/{powabase_session_id}/messages")
+        self._raise_for_status(response)
+        return response.json()
+
     # Provider keys ---------------------------------------------------------
 
     def create_provider_key(self, provider: str, api_key: str) -> dict:
