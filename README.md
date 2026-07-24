@@ -84,15 +84,17 @@ cd backend
 pytest -v
 ```
 
-Manual isolation + resume proof (run the migration in step 5 first):
+Manual isolation + resume proof (run the migration in step 5 first). Verified
+2026-07-24 against a live Powabase project with
+`openrouter/nvidia/nemotron-3-super-120b-a12b:free`:
 
-- [ ] User `alice`, **New session**, upload a PDF, ask about it → cited answer;
+- [x] User `alice`, **New session**, upload a PDF, ask about it → cited answer;
       the session is named from your first message.
-- [ ] **New session** again, ask about the *first* session's document → not
-      found (the second session can't see it).
-- [ ] Reopen the first session from the sidebar → its messages are still there.
-- [ ] Change the user to `bob` → alice's sessions are not listed.
-- [ ] Refresh as `alice` → sessions still listed (persisted in the table).
+- [x] **New session** again, ask about the *first* session's document → not
+      found (the second session can't see it; zero citations).
+- [x] Reopen the first session → its messages (question + answer) are still there.
+- [x] User `bob` has zero of alice's sessions.
+- [x] Sessions persist in the `public.sessions` table (listed via `GET /sessions`).
 
 ```bash
 # create a session for a user (provisions its own KB + agent)
