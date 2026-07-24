@@ -51,6 +51,14 @@ def chat(
         updates["powabase_session_id"] = result["session_id"]
         if row.get("name") == DEFAULT_NAME:
             updates["name"] = _title_from(req.query)
-    sessions.touch(req.session_id, **updates)
+
+    # Persist the thread id / name / recency best-effort: the answer is already
+    # computed (and paid for), so a session-row write failure must not fail the
+    # request. (Downside on a first-turn failure: the thread isn't saved and the
+    # session won't resume — acceptable vs. losing the answer with a 500.)
+    try:
+        sessions.touch(req.session_id, **updates)
+    except (PowabaseAPIError, RuntimeError):
+        pass
 
     return ChatResponse(answer=result["answer"], citations=result["citations"])

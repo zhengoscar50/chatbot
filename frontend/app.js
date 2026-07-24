@@ -45,6 +45,7 @@ async function switchUser(rawName) {
   currentSessionId = null;
   clearThread("Pick or create a session to start.");
   setComposerEnabled(false);
+  attachmentChip.hidden = true;
   activeTitle.textContent = "RAG Chat";
   if (!name) {
     currentUser = null;

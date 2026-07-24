@@ -131,3 +131,18 @@ def test_chat_returns_502_when_agent_run_fails(monkeypatch):
 
     assert response.status_code == 502
     assert "insufficient OpenRouter credits" in response.json()["detail"]
+
+
+def test_chat_returns_answer_even_if_session_persist_fails(monkeypatch):
+    # The answer is already computed; a session-row write failure must not
+    # fail the request (best-effort persistence).
+    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+
+    class TouchFailsService(FakeSessionService):
+        def touch(self, session_id, **fields):
+            raise chat_route.PowabaseAPIError(500, "db down")
+
+    response = post(TestClient(build_app(TouchFailsService())), {"session_id": "s1", "query": "hi"})
+
+    assert response.status_code == 200
+    assert response.json() == {"answer": "42", "citations": []}
