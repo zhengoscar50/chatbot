@@ -53,33 +53,29 @@ uvicorn app.main:app --reload
 Open http://127.0.0.1:8000/ for the chat UI, or http://127.0.0.1:8000/docs
 for the Swagger UI.
 
-## 5. Profiles & data isolation
+## 5. Create the sessions table (one-time)
 
-Each **profile** has its own isolated Knowledge Base and agent. Type a name
-in the Profile bar at the top and press Enter — the first time a name is used,
-its Knowledge Base and agent are created automatically. Documents you upload
-are added only to the current profile's Knowledge Base, and chats only search
-that profile's documents.
+Sessions are stored in a `public.sessions` table. Create it once by pasting
+`backend/migrations/001_create_sessions.sql` into the Powabase Studio **SQL
+Editor** (or running it via the Database URL). The app can't save sessions
+until this table exists.
 
-Switching to a different profile clears the conversation and routes everything
-to that profile's isolated data. A document uploaded under `alice` is not
-visible to `bob`.
+## 6. Sessions & per-session isolation
 
-**Scope note:** this is a demonstration of *data isolation*, not access
-control. There are no passwords — anyone using the app can select any profile
-name.
+Type a **user** name in the sidebar, then create **sessions** — saved,
+resumable conversations. Each session has its own isolated documents: a PDF
+uploaded in one session is never visible to another session or user. Sessions
+are listed by name in the left sidebar; click one to resume it. The first
+message you send names the session.
 
-**Limitations (by design, for the local demo):**
+**Scope note:** still a demonstration of *data isolation*, not access control
+— users are passwordless names. (Admin-curated shared "general knowledge" is
+a planned Phase 2.)
 
-- **Run single-worker** (the default `uvicorn app.main:app --reload` is). The
-  profile→resources map is cached per process; under `--workers N` two workers
-  could concurrently provision the same new profile and create duplicate
-  Knowledge Bases, breaking that profile's retrieval. Single-worker avoids this.
-- **Profile names are matched by a normalized slug** (lowercased, trimmed,
-  non-alphanumeric runs collapsed to `-`). So `Alice`, `alice`, and
-  `alice!` all map to the same profile and share its data.
+**Run single-worker** (the default `uvicorn app.main:app --reload` is). Session
+resources are provisioned per request; running multiple workers is untested.
 
-## 6. Verification
+## 7. Verification
 
 Automated suite (faked Powabase, no network):
 
@@ -88,31 +84,29 @@ cd backend
 pytest -v
 ```
 
-Manual isolation proof, verified 2026-07-21 against a live Powabase project
-with `openrouter/nvidia/nemotron-3-super-120b-a12b:free`:
+Manual isolation + resume proof (run the migration in step 5 first):
 
-- [x] `GET /health` returns `{"status": "ok", "model": ...}`.
-- [x] Under profile `alice`, `POST /ingest/file` (with `profile=alice`) indexes a
-      PDF, and `POST /chat` answers a question about it with a citation.
-- [x] Under profile `bob`, the same question returns "not able to find any
-      information … in the provided knowledge base" with zero citations — bob
-      cannot see alice's document.
-- [x] Switching back to `alice` still answers correctly — the document is
-      isolated to alice, not lost.
+- [ ] User `alice`, **New session**, upload a PDF, ask about it → cited answer;
+      the session is named from your first message.
+- [ ] **New session** again, ask about the *first* session's document → not
+      found (the second session can't see it).
+- [ ] Reopen the first session from the sidebar → its messages are still there.
+- [ ] Change the user to `bob` → alice's sessions are not listed.
+- [ ] Refresh as `alice` → sessions still listed (persisted in the table).
 
 ```bash
-# provision a profile (auto-creates its KB + agent on first use)
-curl -X POST http://127.0.0.1:8000/profile \
-  -H "Content-Type: application/json" -d '{"profile": "alice"}'
+# create a session for a user (provisions its own KB + agent)
+curl -X POST http://127.0.0.1:8000/sessions \
+  -H "Content-Type: application/json" -d '{"user": "alice"}'
 
-# upload a PDF into that profile's knowledge base
+# upload a PDF into that session's knowledge base
 curl -X POST http://127.0.0.1:8000/ingest/file \
-  -F 'profile=alice' -F 'file=@/path/to/your.pdf'
+  -F 'session_id=<id from above>' -F 'file=@/path/to/your.pdf'
 
-# ask a question, scoped to that profile
+# ask a question, scoped to that session
 curl -X POST http://127.0.0.1:8000/chat \
   -H "Content-Type: application/json" \
-  -d '{"query": "What does this document say about X?", "profile": "alice"}'
+  -d '{"session_id": "<id>", "query": "What does this document say about X?"}'
 ```
 
 ## Notes on the Powabase wire format
