@@ -12,27 +12,27 @@ from app.services.ingest_service import (
     IngestService,
     IngestTimeoutError,
 )
-from app.services.profile_service import ProfileService, get_profile_service
+from app.services.session_service import SessionService, get_session_service
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 
 @router.post("/file", response_model=IngestResponse)
 async def ingest_file(
-    profile: str = Form(...),
+    session_id: str = Form(...),
     file: UploadFile = File(...),
     client: PowabaseClient = Depends(get_powabase_client),
-    profiles: ProfileService = Depends(get_profile_service),
+    sessions: SessionService = Depends(get_session_service),
 ):
     content = await file.read()
     settings = get_settings()
-    try:
-        resolved = await run_in_threadpool(profiles.resolve, profile)
-    except ValueError as e:
-        raise HTTPException(status_code=422, detail=str(e))
+    row = await run_in_threadpool(sessions.get, session_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+
     service = IngestService(
         client,
-        resolved["kb_id"],
+        row["kb_id"],
         poll_interval=settings.poll_interval_seconds,
         max_wait=settings.ingest_max_wait_seconds,
     )
