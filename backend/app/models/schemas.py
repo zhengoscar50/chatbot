@@ -27,3 +27,29 @@ class ProfileRequest(BaseModel):
 class ProfileResponse(BaseModel):
     profile: str
     slug: str
+
+
+class SessionCreateRequest(BaseModel):
+    user: str = Field(..., min_length=1)
+    name: Optional[str] = None
+
+
+class SessionResponse(BaseModel):
+    id: str
+    name: str
+
+
+class SessionSummary(BaseModel):
+    id: str
+    name: str
+    updated_at: Optional[str] = None
+
+
+class ChatMessage(BaseModel):
+    role: str
+    text: str
+    citations: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class MessagesResponse(BaseModel):
+    messages: list[ChatMessage]
