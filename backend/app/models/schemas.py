@@ -46,3 +46,7 @@ class ChatMessage(BaseModel):
 
 class MessagesResponse(BaseModel):
     messages: list[ChatMessage]
+
+
+class AdminVerifyRequest(BaseModel):
+    password: str = Field(..., min_length=1)
