@@ -1,5 +1,40 @@
 <!doctype html>
 <html lang="en">
-  <head><meta charset="utf-8" /><title>Admin</title></head>
-  <body><p>Admin — coming soon.</p></body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Admin · General Knowledge</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="admin-page">
+      <header class="admin-head">
+        <span class="topbar__mark" aria-hidden="true"></span>
+        <h1 class="admin-title">General Knowledge — Admin</h1>
+        <a class="admin-back" href="/">← Back to chat</a>
+      </header>
+
+      <section class="admin-card" id="gate">
+        <p class="admin-hint">Enter the admin password to manage shared general knowledge.</p>
+        <form id="gate-form" class="admin-row">
+          <input type="password" id="password-input" class="admin-input" placeholder="Admin password" autocomplete="current-password" />
+          <button type="submit" class="btn-solid">Unlock</button>
+        </form>
+        <p class="admin-status" id="gate-status"></p>
+      </section>
+
+      <section class="admin-card" id="uploader" hidden>
+        <p class="admin-hint">
+          Upload PDFs to the shared general knowledge base. Every <strong>new</strong>
+          session can then draw on these, alongside its own uploads.
+        </p>
+        <div class="admin-row">
+          <input type="file" id="file-input" accept="application/pdf" />
+          <button type="button" id="upload-button" class="btn-solid">Upload</button>
+        </div>
+        <p class="admin-status" id="upload-status"></p>
+      </section>
+    </div>
+    <script src="/admin.js"></script>
+  </body>
 </html>
