@@ -23,9 +23,10 @@ def _now_iso() -> str:
 
 
 class SessionService:
-    def __init__(self, client, model: str):
+    def __init__(self, client, model: str, general_kb_id: str | None = None):
         self.client = client
         self.model = model
+        self.general_kb_id = general_kb_id
 
     def create_session(self, user: str, name: str | None = None) -> dict:
         user_slug = slugify(user)
@@ -40,6 +41,8 @@ class SessionService:
             f"session-{session_id}-agent", model=self.model, system_prompt=SYSTEM_PROMPT
         )
         self.client.link_kb_to_agent(agent["id"], kb["id"])
+        if self.general_kb_id:
+            self.client.link_kb_to_agent(agent["id"], self.general_kb_id)
 
         row = {
             "id": session_id,

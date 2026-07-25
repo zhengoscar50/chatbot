@@ -94,3 +94,24 @@ def test_touch_sets_updated_at_and_patches():
     assert session_id == "s1"
     assert fields["name"] == "Renamed"
     assert "updated_at" in fields
+
+
+def test_create_session_links_general_kb_when_set():
+    client = FakeClient()
+    service = SessionService(client, model="m", general_kb_id="gkb-1")
+
+    row = service.create_session("alice")
+
+    # Agent linked to BOTH its own session KB and the general KB.
+    assert (row["agent_id"], row["kb_id"]) in client.links
+    assert (row["agent_id"], "gkb-1") in client.links
+    assert len(client.links) == 2
+
+
+def test_create_session_links_only_session_kb_when_general_none():
+    client = FakeClient()
+    service = SessionService(client, model="m")  # general_kb_id defaults to None
+
+    row = service.create_session("alice")
+
+    assert client.links == [(row["agent_id"], row["kb_id"])]
