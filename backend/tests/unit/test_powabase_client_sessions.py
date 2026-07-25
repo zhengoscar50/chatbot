@@ -74,3 +74,13 @@ def test_get_session_messages_calls_api():
     )
     client = PowabaseClient(BASE_URL, "k")
     assert client.get_session_messages("ps1") == {"messages": []}
+
+
+@respx.mock
+def test_get_session_row_returns_none_on_malformed_id_400():
+    # PostgREST rejects a non-uuid id with 400; it matches no session → None.
+    respx.get(f"{BASE_URL}/rest/v1/sessions").mock(
+        return_value=httpx.Response(400, json={"message": "invalid input syntax for type uuid"})
+    )
+    client = PowabaseClient(BASE_URL, "k")
+    assert client.get_session_row("not-a-uuid") is None

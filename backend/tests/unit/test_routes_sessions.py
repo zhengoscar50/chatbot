@@ -89,3 +89,41 @@ def test_messages_empty_when_session_has_no_powabase_session():
 
     assert r.status_code == 200
     assert r.json() == {"messages": []}
+
+
+def test_rename_session_updates_name():
+    renamed = {}
+
+    class RenamingService(FakeSessionService):
+        def rename(self, session_id, name):
+            renamed["args"] = (session_id, name)
+
+    app = FastAPI()
+    app.include_router(sessions_route.router)
+    app.dependency_overrides[get_session_service] = lambda: RenamingService()
+
+    r = TestClient(app).patch("/sessions/s1", json={"name": "My taxes"})
+
+    assert r.status_code == 200
+    assert r.json() == {"id": "s1", "name": "My taxes"}
+    assert renamed["args"] == ("s1", "My taxes")
+
+
+def test_rename_requires_nonempty_name():
+    app = FastAPI()
+    app.include_router(sessions_route.router)
+    app.dependency_overrides[get_session_service] = lambda: FakeSessionService()
+
+    r = TestClient(app).patch("/sessions/s1", json={"name": ""})
+
+    assert r.status_code == 422
+
+
+def test_rename_404_for_missing_session():
+    app = FastAPI()
+    app.include_router(sessions_route.router)
+    app.dependency_overrides[get_session_service] = lambda: FakeSessionService()
+
+    r = TestClient(app).patch("/sessions/missing", json={"name": "x"})
+
+    assert r.status_code == 404

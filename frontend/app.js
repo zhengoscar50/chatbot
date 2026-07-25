@@ -43,21 +43,41 @@ function init() {
 async function switchUser(rawName) {
   const name = rawName.trim();
   currentSessionId = null;
-  clearThread("Pick or create a session to start.");
-  setComposerEnabled(false);
   attachmentChip.hidden = true;
   activeTitle.textContent = "RAG Chat";
   if (!name) {
     currentUser = null;
     newSessionButton.disabled = true;
     sessionList.innerHTML = "";
+    setComposerEnabled(false);
+    clearThread("Enter a user name to start.");
     setSidebarStatus("Enter a user name to start", null);
     return;
   }
   currentUser = name;
   localStorage.setItem(USER_KEY, name);
   newSessionButton.disabled = false;
+  // Composer is usable right away — sending a message auto-creates a session.
+  setComposerEnabled(true);
+  clearThread("Type a message to start a new session — or pick one on the left.");
   await loadSessions();
+}
+
+// Return the active session id, creating a new session on the fly if none is
+// selected (so you can just start typing without clicking "New session").
+async function ensureSession() {
+  if (currentSessionId) return currentSessionId;
+  const response = await fetch("/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user: currentUser }),
+  });
+  const body = await response.json();
+  if (!response.ok) throw new Error(body.detail || response.statusText);
+  currentSessionId = body.id;
+  activeTitle.textContent = body.name;
+  await loadSessions();
+  return currentSessionId;
 }
 
 async function loadSessions() {
@@ -80,11 +100,77 @@ function renderSessionList(sessions) {
   sessionList.innerHTML = "";
   sessions.forEach((s) => {
     const li = document.createElement("li");
-    li.textContent = s.name;
     li.dataset.id = s.id;
     if (s.id === currentSessionId) li.classList.add("active");
+
+    const nameSpan = document.createElement("span");
+    nameSpan.className = "session-name";
+    nameSpan.textContent = s.name;
+    li.appendChild(nameSpan);
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.className = "session-edit";
+    editBtn.title = "Rename";
+    editBtn.setAttribute("aria-label", `Rename ${s.name}`);
+    editBtn.textContent = "✎";
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      startRename(li, s);
+    });
+    li.appendChild(editBtn);
+
     li.addEventListener("click", () => openSession(s.id, s.name));
     sessionList.appendChild(li);
+  });
+}
+
+function startRename(li, session) {
+  const input = document.createElement("input");
+  input.className = "session-rename";
+  input.value = session.name;
+  li.innerHTML = "";
+  li.appendChild(input);
+  input.focus();
+  input.select();
+
+  let done = false;
+  const commit = async () => {
+    if (done) return;
+    done = true;
+    const newName = input.value.trim();
+    if (!newName || newName === session.name) {
+      loadSessions();
+      return;
+    }
+    try {
+      const response = await fetch(`/sessions/${session.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        setSidebarStatus(body.detail || response.statusText, "error");
+      } else if (session.id === currentSessionId) {
+        activeTitle.textContent = newName;
+      }
+    } catch (err) {
+      setSidebarStatus(err.message, "error");
+    }
+    loadSessions();
+  };
+
+  input.addEventListener("click", (e) => e.stopPropagation());
+  input.addEventListener("blur", commit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commit();
+    } else if (e.key === "Escape") {
+      done = true;
+      loadSessions();
+    }
   });
 }
 
@@ -143,14 +229,22 @@ attachButton.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files[0];
   if (!file) return;
-  if (!currentSessionId) {
+  if (!currentUser) {
+    fileInput.value = "";
+    return;
+  }
+  let sessionId;
+  try {
+    sessionId = await ensureSession();
+  } catch (err) {
+    showAttachment(file.name, err.message, "error");
     fileInput.value = "";
     return;
   }
   showAttachment(file.name, "Uploading and indexing…", null);
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("session_id", currentSessionId);
+  formData.append("session_id", sessionId);
   try {
     const response = await fetch("/ingest/file", { method: "POST", body: formData });
     let body;
@@ -175,8 +269,15 @@ chatForm.addEventListener("submit", async (event) => {
   if (isAsking) return;
   const query = chatInput.value.trim();
   if (!query) return;
-  if (!currentSessionId) {
-    appendMessage("error", "!", "Pick or create a session first.");
+  if (!currentUser) {
+    appendMessage("error", "!", "Enter a user name first.");
+    return;
+  }
+  let sessionId;
+  try {
+    sessionId = await ensureSession();
+  } catch (err) {
+    appendMessage("error", "!", err.message);
     return;
   }
   appendMessage("user", null, query);
@@ -189,7 +290,7 @@ chatForm.addEventListener("submit", async (event) => {
     const response = await fetch("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: currentSessionId, query }),
+      body: JSON.stringify({ session_id: sessionId, query }),
     });
     let body;
     try {

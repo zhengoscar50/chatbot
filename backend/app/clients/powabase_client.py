@@ -158,6 +158,10 @@ class PowabaseClient:
         response = self._client.get(
             "/rest/v1/sessions", params={"id": f"eq.{session_id}"}
         )
+        # A malformed id (not a valid uuid) → PostgREST 400; it can't match any
+        # session, so treat it as "not found" rather than a server error.
+        if response.status_code == 400:
+            return None
         self._raise_for_status(response)
         rows = response.json()
         return rows[0] if rows else None

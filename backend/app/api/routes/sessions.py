@@ -6,6 +6,7 @@ from app.models.schemas import (
     ChatMessage,
     MessagesResponse,
     SessionCreateRequest,
+    SessionRenameRequest,
     SessionResponse,
     SessionSummary,
 )
@@ -26,6 +27,22 @@ async def create_session(
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return SessionResponse(id=row["id"], name=row["name"])
+
+
+@router.patch("/sessions/{session_id}", response_model=SessionResponse)
+async def rename_session(
+    session_id: str,
+    req: SessionRenameRequest,
+    sessions: SessionService = Depends(get_session_service),
+):
+    row = await run_in_threadpool(sessions.get, session_id)
+    if row is None:
+        raise HTTPException(status_code=404, detail="Session not found")
+    try:
+        await run_in_threadpool(sessions.rename, session_id, req.name)
+    except PowabaseAPIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return SessionResponse(id=session_id, name=req.name)
 
 
 @router.get("/sessions", response_model=list[SessionSummary])

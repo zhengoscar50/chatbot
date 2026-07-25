@@ -67,6 +67,10 @@ class SessionService:
         fields["updated_at"] = _now_iso()
         self.client.update_session(session_id, fields)
 
+    def rename(self, session_id: str, name: str) -> None:
+        # Rename only — no updated_at bump, so renaming doesn't reorder the list.
+        self.client.update_session(session_id, {"name": name})
+
 
 def get_session_service(request: Request) -> "SessionService":
     """FastAPI dependency returning the shared SessionService created at startup."""

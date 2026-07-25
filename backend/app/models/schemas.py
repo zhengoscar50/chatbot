@@ -28,6 +28,10 @@ class SessionResponse(BaseModel):
     name: str
 
 
+class SessionRenameRequest(BaseModel):
+    name: str = Field(..., min_length=1)
+
+
 class SessionSummary(BaseModel):
     id: str
     name: str
