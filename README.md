@@ -2,8 +2,9 @@
 
 A RAG chatbot backend (FastAPI) + simple frontend, backed by
 [Powabase](https://powabase.ai)'s native Sources/Knowledge-Base/Agent
-pipeline for ingestion, retrieval, and generation. Supports multiple
-**profiles**, each with its own isolated documents.
+pipeline for ingestion, retrieval, and generation. Supports per-user **saved
+sessions** (each with its own isolated documents) plus an admin-curated shared
+general-knowledge base.
 
 ## 1. Create a Powabase project (one-time, human step)
 
@@ -95,7 +96,7 @@ answered (with a citation) by a **new** session that had uploaded nothing of its
 own; and that same session also answered from its own later upload — i.e. the
 session drew on general knowledge **plus** its own documents.
 
-## 7. Verification
+## 8. Verification
 
 Automated suite (faked Powabase, no network):
 
