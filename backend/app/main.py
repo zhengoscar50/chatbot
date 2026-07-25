@@ -9,6 +9,7 @@ from app.api.routes.ingest import router as ingest_router
 from app.api.routes.sessions import router as sessions_router
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient
 from app.core.config import FRONTEND_DIR, get_settings
+from app.services.general_kb import ensure_general_kb
 from app.services.session_service import SessionService
 
 
@@ -22,7 +23,11 @@ async def lifespan(app: FastAPI):
         except PowabaseAPIError as e:
             raise RuntimeError(f"Powabase is not reachable: {e}") from e
         app.state.powabase_client = client
-        app.state.session_service = SessionService(client, settings.powabase_agent_model)
+        general_kb_id = ensure_general_kb(client)
+        app.state.general_kb_id = general_kb_id
+        app.state.session_service = SessionService(
+            client, settings.powabase_agent_model, general_kb_id
+        )
         yield
     finally:
         client.close()
