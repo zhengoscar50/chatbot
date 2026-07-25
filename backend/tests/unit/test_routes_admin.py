@@ -13,7 +13,10 @@ def set_admin(monkeypatch, password="s3cret"):
     monkeypatch.setenv("POWABASE_BASE_URL", "https://demo.p.powabase.ai")
     monkeypatch.setenv("POWABASE_SERVICE_ROLE_KEY", "test-key")
     if password is None:
-        monkeypatch.delenv("ADMIN_PASSWORD", raising=False)
+        # Force it empty (treated as "not configured") rather than deleting the
+        # env var — an env var overrides a real backend/.env, so this stays
+        # robust even when ADMIN_PASSWORD is set there for live use.
+        monkeypatch.setenv("ADMIN_PASSWORD", "")
     else:
         monkeypatch.setenv("ADMIN_PASSWORD", password)
     get_settings.cache_clear()
