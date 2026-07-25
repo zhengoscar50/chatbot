@@ -461,7 +461,8 @@ body {
   text-overflow: ellipsis;
 }
 
-.session-edit {
+.session-edit,
+.session-delete {
   flex: none;
   border: none;
   background: transparent;
@@ -475,12 +476,19 @@ body {
 }
 
 .session-list li:hover .session-edit,
-.session-list li.active .session-edit {
+.session-list li:hover .session-delete,
+.session-list li.active .session-edit,
+.session-list li.active .session-delete {
   opacity: 0.7;
 }
 
 .session-edit:hover {
   opacity: 1 !important;
+}
+
+.session-delete:hover {
+  opacity: 1 !important;
+  color: var(--error);
 }
 
 .session-rename {

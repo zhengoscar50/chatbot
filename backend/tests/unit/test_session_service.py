@@ -115,3 +115,44 @@ def test_create_session_links_only_session_kb_when_general_none():
     row = service.create_session("alice")
 
     assert client.links == [(row["agent_id"], row["kb_id"])]
+
+
+def test_delete_removes_resources_and_row():
+    client = FakeClient(rows=[{"id": "s1", "user_slug": "alice", "kb_id": "kb1", "agent_id": "a1"}])
+    client.deleted_kbs = []
+    client.deleted_agents = []
+    client.deleted_rows = []
+    client.delete_knowledge_base = lambda kb_id: client.deleted_kbs.append(kb_id)
+    client.delete_agent = lambda agent_id: client.deleted_agents.append(agent_id)
+    client.delete_session_row = lambda sid: client.deleted_rows.append(sid)
+    service = SessionService(client, model="m")
+
+    result = service.delete("s1")
+
+    assert result is True
+    assert client.deleted_kbs == ["kb1"]
+    assert client.deleted_agents == ["a1"]
+    assert client.deleted_rows == ["s1"]
+
+
+def test_delete_returns_false_for_missing_session():
+    client = FakeClient(rows=[])
+    client.delete_session_row = lambda sid: (_ for _ in ()).throw(AssertionError("should not delete"))
+    service = SessionService(client, model="m")
+
+    assert service.delete("missing") is False
+
+
+def test_delete_is_best_effort_on_resource_cleanup():
+    from app.clients.powabase_client import PowabaseAPIError
+
+    client = FakeClient(rows=[{"id": "s1", "user_slug": "alice", "kb_id": "kb1", "agent_id": "a1"}])
+    client.deleted_rows = []
+    client.delete_knowledge_base = lambda kb_id: (_ for _ in ()).throw(PowabaseAPIError(404, "gone"))
+    client.delete_agent = lambda agent_id: (_ for _ in ()).throw(PowabaseAPIError(404, "gone"))
+    client.delete_session_row = lambda sid: client.deleted_rows.append(sid)
+    service = SessionService(client, model="m")
+
+    # KB/agent already gone must not block deleting the row.
+    assert service.delete("s1") is True
+    assert client.deleted_rows == ["s1"]

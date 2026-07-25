@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 
 from fastapi import Request
 
+from app.clients.powabase_client import PowabaseAPIError
+
 SYSTEM_PROMPT = (
     "You are a helpful assistant. Answer questions using the linked knowledge "
     "base. If the knowledge base doesn't contain the answer, say so plainly "
@@ -73,6 +75,28 @@ class SessionService:
     def rename(self, session_id: str, name: str) -> None:
         # Rename only — no updated_at bump, so renaming doesn't reorder the list.
         self.client.update_session(session_id, {"name": name})
+
+    def delete(self, session_id: str) -> bool:
+        """Delete a session: its Powabase KB + agent (best-effort) and its row.
+
+        Returns False if the session doesn't exist. The row deletion is
+        authoritative and may raise PowabaseAPIError; the KB/agent cleanup is
+        best-effort so a stale/missing resource never blocks the delete.
+        """
+        row = self.client.get_session_row(session_id)
+        if row is None:
+            return False
+        for resource_id, delete_fn in (
+            (row.get("kb_id"), self.client.delete_knowledge_base),
+            (row.get("agent_id"), self.client.delete_agent),
+        ):
+            if resource_id:
+                try:
+                    delete_fn(resource_id)
+                except PowabaseAPIError:
+                    pass
+        self.client.delete_session_row(session_id)
+        return True
 
 
 def get_session_service(request: Request) -> "SessionService":

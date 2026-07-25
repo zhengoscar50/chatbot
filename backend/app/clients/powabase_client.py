@@ -177,6 +177,22 @@ class PowabaseClient:
         self._raise_for_status(response)
         return response.json()
 
+    def delete_session_row(self, session_id: str) -> None:
+        response = self._client.delete(
+            "/rest/v1/sessions", params={"id": f"eq.{session_id}"}
+        )
+        self._raise_for_status(response)
+
+    # Knowledge base / agent deletion --------------------------------------
+
+    def delete_knowledge_base(self, kb_id: str) -> None:
+        response = self._client.delete(f"/api/knowledge-bases/{kb_id}")
+        self._raise_for_status(response)
+
+    def delete_agent(self, agent_id: str) -> None:
+        response = self._client.delete(f"/api/agents/{agent_id}")
+        self._raise_for_status(response)
+
     # Provider keys ---------------------------------------------------------
 
     def create_provider_key(self, provider: str, api_key: str) -> dict:

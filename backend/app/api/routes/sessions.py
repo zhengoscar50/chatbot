@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from starlette.concurrency import run_in_threadpool
 
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient, get_powabase_client
@@ -43,6 +43,20 @@ async def rename_session(
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return SessionResponse(id=session_id, name=req.name)
+
+
+@router.delete("/sessions/{session_id}", status_code=204)
+async def delete_session(
+    session_id: str,
+    sessions: SessionService = Depends(get_session_service),
+):
+    try:
+        existed = await run_in_threadpool(sessions.delete, session_id)
+    except PowabaseAPIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    if not existed:
+        raise HTTPException(status_code=404, detail="Session not found")
+    return Response(status_code=204)
 
 
 @router.get("/sessions", response_model=list[SessionSummary])

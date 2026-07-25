@@ -120,9 +120,44 @@ function renderSessionList(sessions) {
     });
     li.appendChild(editBtn);
 
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "session-delete";
+    deleteBtn.title = "Delete";
+    deleteBtn.setAttribute("aria-label", `Delete ${s.name}`);
+    deleteBtn.textContent = "🗑";
+    deleteBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteSession(s.id, s.name);
+    });
+    li.appendChild(deleteBtn);
+
     li.addEventListener("click", () => openSession(s.id, s.name));
     sessionList.appendChild(li);
   });
+}
+
+async function deleteSession(id, name) {
+  if (!window.confirm(`Delete "${name}"? This permanently removes its documents and chat history.`)) {
+    return;
+  }
+  try {
+    const response = await fetch(`/sessions/${id}`, { method: "DELETE" });
+    if (!response.ok && response.status !== 204) {
+      const body = await response.json().catch(() => ({}));
+      setSidebarStatus(body.detail || response.statusText, "error");
+      return;
+    }
+    if (id === currentSessionId) {
+      currentSessionId = null;
+      activeTitle.textContent = "RAG Chat";
+      attachmentChip.hidden = true;
+      clearThread("Type a message to start a new session — or pick one on the left.");
+    }
+    await loadSessions();
+  } catch (err) {
+    setSidebarStatus(err.message, "error");
+  }
 }
 
 function startRename(li, session) {

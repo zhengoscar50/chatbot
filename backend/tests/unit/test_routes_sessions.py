@@ -127,3 +127,35 @@ def test_rename_404_for_missing_session():
     r = TestClient(app).patch("/sessions/missing", json={"name": "x"})
 
     assert r.status_code == 404
+
+
+def test_delete_session_returns_204():
+    deleted = {}
+
+    class DeletingService(FakeSessionService):
+        def delete(self, session_id):
+            deleted["id"] = session_id
+            return True
+
+    app = FastAPI()
+    app.include_router(sessions_route.router)
+    app.dependency_overrides[get_session_service] = lambda: DeletingService()
+
+    r = TestClient(app).delete("/sessions/s1")
+
+    assert r.status_code == 204
+    assert deleted["id"] == "s1"
+
+
+def test_delete_404_for_missing_session():
+    class MissingService(FakeSessionService):
+        def delete(self, session_id):
+            return False
+
+    app = FastAPI()
+    app.include_router(sessions_route.router)
+    app.dependency_overrides[get_session_service] = lambda: MissingService()
+
+    r = TestClient(app).delete("/sessions/missing")
+
+    assert r.status_code == 404
