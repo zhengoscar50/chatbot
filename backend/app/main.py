@@ -21,10 +21,10 @@ async def lifespan(app: FastAPI):
     try:
         try:
             client.list_agents()
+            general_kb_id = ensure_general_kb(client)
         except PowabaseAPIError as e:
             raise RuntimeError(f"Powabase is not reachable: {e}") from e
         app.state.powabase_client = client
-        general_kb_id = ensure_general_kb(client)
         app.state.general_kb_id = general_kb_id
         app.state.session_service = SessionService(
             client, settings.powabase_agent_model, general_kb_id
