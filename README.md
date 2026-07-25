@@ -69,11 +69,31 @@ are listed by name in the left sidebar; click one to resume it. The first
 message you send names the session.
 
 **Scope note:** still a demonstration of *data isolation*, not access control
-— users are passwordless names. (Admin-curated shared "general knowledge" is
-a planned Phase 2.)
+— users are passwordless names.
 
 **Run single-worker** (the default `uvicorn app.main:app --reload` is). Session
 resources are provisioned per request; running multiple workers is untested.
+
+## 7. Admin: shared general knowledge
+
+Set `ADMIN_PASSWORD` in `backend/.env` to enable the admin feature. Then open
+`/admin` (there's an "Admin" link at the bottom of the sidebar), enter the
+password, and upload PDFs into the shared **general knowledge** base.
+
+Every **new** session's chatbot answers from general knowledge **plus** that
+session's own uploaded documents. Sessions created before general knowledge was
+added keep only their own documents (new-sessions-only). If `ADMIN_PASSWORD` is
+not set, the admin endpoints are disabled and the rest of the app runs normally.
+
+**Scope note:** the admin password is checked server-side but sent with each
+admin request — a demo-grade gate, not hardened authentication.
+
+Verified live 2026-07-24 (`ADMIN_PASSWORD` set, model
+`openrouter/nvidia/nemotron-3-super-120b-a12b:free`): wrong admin password →
+401, correct → 200; a general-knowledge PDF trained via `/admin/train` was
+answered (with a citation) by a **new** session that had uploaded nothing of its
+own; and that same session also answered from its own later upload — i.e. the
+session drew on general knowledge **plus** its own documents.
 
 ## 7. Verification
 
