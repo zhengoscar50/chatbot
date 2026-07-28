@@ -9,9 +9,11 @@ from fastapi import Request
 from app.clients.powabase_client import PowabaseAPIError
 
 SYSTEM_PROMPT = (
-    "You are a helpful assistant. Answer questions using the linked knowledge "
-    "base. If the knowledge base doesn't contain the answer, say so plainly "
-    "instead of guessing."
+    "You are a helpful assistant. When relevant context from the knowledge "
+    "base is provided with a question, base your answer on that context and "
+    "cite your sources. If the provided context does not contain the answer, "
+    "say so plainly rather than guessing. When no context is provided, answer "
+    "normally and helpfully."
 )
 DEFAULT_NAME = "New session"
 
