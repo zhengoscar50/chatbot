@@ -9,9 +9,11 @@ from fastapi import Request
 from app.clients.powabase_client import PowabaseAPIError
 
 SYSTEM_PROMPT = (
-    "You are a helpful assistant. Answer questions using the linked knowledge "
-    "base. If the knowledge base doesn't contain the answer, say so plainly "
-    "instead of guessing."
+    "You are a helpful assistant. When relevant context from the knowledge "
+    "base is provided with a question, base your answer on that context and "
+    "cite your sources. If the provided context does not contain the answer, "
+    "say so plainly rather than guessing. When no context is provided, answer "
+    "normally and helpfully."
 )
 DEFAULT_NAME = "New session"
 
@@ -42,9 +44,6 @@ class SessionService:
         agent = self.client.create_agent(
             f"session-{session_id}-agent", model=self.model, system_prompt=SYSTEM_PROMPT
         )
-        self.client.link_kb_to_agent(agent["id"], kb["id"])
-        if self.general_kb_id:
-            self.client.link_kb_to_agent(agent["id"], self.general_kb_id)
 
         row = {
             "id": session_id,

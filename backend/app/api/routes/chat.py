@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient, get_powabase_client
+from app.core.config import get_settings
 from app.models.schemas import ChatRequest, ChatResponse
 from app.services.chat_service import (
     ChatService,
@@ -8,6 +9,9 @@ from app.services.chat_service import (
     ModelBusyError,
     ProviderKeyError,
 )
+from app.services.gate_service import GateService
+from app.services.general_kb import get_general_kb_id
+from app.services.router_agent import get_router_agent_id
 from app.services.session_service import DEFAULT_NAME, SessionService, get_session_service
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -18,20 +22,47 @@ def _title_from(query: str) -> str:
     return title if len(title) <= 60 else title[:60].rstrip() + "…"
 
 
+def _recent_turns(raw, turns: int) -> list:
+    items = raw.get("messages", []) if isinstance(raw, dict) else (raw or [])
+    history = [
+        {"role": m.get("role", "user"), "text": m.get("content") or m.get("text") or ""}
+        for m in items
+    ]
+    return history[-(turns * 2):] if turns > 0 else []
+
+
 @router.post("", response_model=ChatResponse)
 def chat(
     req: ChatRequest,
     client: PowabaseClient = Depends(get_powabase_client),
     sessions: SessionService = Depends(get_session_service),
+    general_kb_id: str = Depends(get_general_kb_id),
+    router_agent_id: str = Depends(get_router_agent_id),
+    settings=Depends(get_settings),
 ):
     row = sessions.get(req.session_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    service = ChatService(client, row["agent_id"])
     powabase_session_id = row.get("powabase_session_id")
+
+    history: list = []
+    if powabase_session_id:
+        try:
+            history = _recent_turns(
+                client.get_session_messages(powabase_session_id), settings.gate_history_turns
+            )
+        except PowabaseAPIError:
+            history = []
+
+    gate = GateService(client, router_agent_id)
+    service = ChatService(
+        client, row["agent_id"], gate,
+        [row["kb_id"], general_kb_id],
+        settings.retrieval_top_k, settings.retrieval_max_context_tokens,
+    )
     try:
-        result = service.ask(req.query, session_id=powabase_session_id)
+        result = service.ask(req.query, session_id=powabase_session_id, history=history)
     except ModelBusyError as e:
         raise HTTPException(status_code=503, detail=e.message)
     except InsufficientCreditsError as e:

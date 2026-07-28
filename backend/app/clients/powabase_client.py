@@ -91,10 +91,13 @@ class PowabaseClient:
         self._raise_for_status(response)
         return response.json()
 
-    def create_agent(self, name: str, model: str, system_prompt: str) -> dict:
+    def create_agent(self, name: str, model: str, system_prompt: str, settings: dict | None = None) -> dict:
+        body = {"name": name, "model": model, "system_prompt": system_prompt}
+        if settings is not None:
+            body["settings"] = settings
         response = self._client.post(
             "/api/agents",
-            json={"name": name, "model": model, "system_prompt": system_prompt},
+            json=body,
         )
         self._raise_for_status(response)
         return response.json()
@@ -118,10 +121,13 @@ class PowabaseClient:
         message: str,
         session_id: str | None = None,
         citations_enabled: bool = True,
+        context_handler_id: str | None = None,
     ) -> list[dict]:
         payload: dict = {"message": message, "citations_enabled": citations_enabled}
         if session_id:
             payload["session_id"] = session_id
+        if context_handler_id:
+            payload["context_handler_id"] = context_handler_id
 
         response = self._client.post(
             f"/api/agents/{agent_id}/run/stream", json=payload, timeout=120.0
@@ -133,6 +139,26 @@ class PowabaseClient:
             )
         self._raise_for_status(response)
         return parse_sse(response.text)
+
+    def run_agent_sync(self, agent_id: str, message: str, response_format: dict | None = None) -> dict:
+        payload: dict = {"message": message}
+        if response_format is not None:
+            payload["response_format"] = response_format
+        response = self._client.post(f"/api/agents/{agent_id}/run", json=payload, timeout=60.0)
+        self._raise_for_status(response)
+        return response.json()
+
+    # Context handlers -------------------------------------------------------
+
+    def create_context_handler(
+        self, query: str, knowledge_bases: list, max_context_tokens: int | None = None
+    ) -> dict:
+        body: dict = {"query": query, "knowledge_bases": knowledge_bases}
+        if max_context_tokens is not None:
+            body["max_context_tokens"] = max_context_tokens
+        response = self._client.post("/api/context-handlers", json=body, timeout=60.0)
+        self._raise_for_status(response)
+        return response.json()
 
     # Sessions table (PostgREST) -------------------------------------------
 
