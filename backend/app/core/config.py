@@ -19,6 +19,10 @@ class Settings(BaseSettings):
 
     poll_interval_seconds: float = 2.0
     ingest_max_wait_seconds: float = 60.0
+    router_agent_model: str = "gpt-4o-mini"
+    retrieval_top_k: int = 4
+    retrieval_max_context_tokens: int = 2000
+    gate_history_turns: int = 2
 
 
 @lru_cache

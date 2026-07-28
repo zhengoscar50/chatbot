@@ -22,3 +22,14 @@ def test_settings_loads_from_environment_with_defaults(monkeypatch):
     assert settings.powabase_agent_model == "gpt-4o-mini"
     assert settings.poll_interval_seconds == 2.0
     assert not hasattr(settings, "powabase_kb_id")
+
+
+def test_gating_defaults(monkeypatch):
+    monkeypatch.setenv("POWABASE_BASE_URL", "https://demo.p.powabase.ai")
+    monkeypatch.setenv("POWABASE_SERVICE_ROLE_KEY", "k")
+    from app.core.config import Settings
+    s = Settings()
+    assert s.router_agent_model == "gpt-4o-mini"
+    assert s.retrieval_top_k == 4
+    assert s.retrieval_max_context_tokens == 2000
+    assert s.gate_history_turns == 2
