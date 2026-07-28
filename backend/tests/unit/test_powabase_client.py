@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import pytest
 import respx
@@ -90,3 +92,50 @@ def test_run_agent_retries_once_on_503():
 
     assert events[0]["data"]["answer"] == "ok"
     assert route.call_count == 2
+
+
+@respx.mock
+def test_run_agent_sync_returns_json_body():
+    respx.post(f"{BASE_URL}/api/agents/agent-1/run").mock(
+        return_value=httpx.Response(200, json={"content": '{"needs_kb": true}', "status": "completed"})
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    body = client.run_agent_sync("agent-1", "hi", response_format={"type": "json_schema"})
+    assert body["content"] == '{"needs_kb": true}'
+
+
+@respx.mock
+def test_create_context_handler_posts_query_and_kbs():
+    route = respx.post(f"{BASE_URL}/api/context-handlers").mock(
+        return_value=httpx.Response(201, json={"id": "handler-1"})
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    result = client.create_context_handler(
+        "what is x", [{"id": "kb-1", "top_k": 4}], max_context_tokens=2000
+    )
+    assert result["id"] == "handler-1"
+    sent = json.loads(route.calls[0].request.content)
+    assert sent == {"query": "what is x", "knowledge_bases": [{"id": "kb-1", "top_k": 4}], "max_context_tokens": 2000}
+
+
+@respx.mock
+def test_run_agent_includes_context_handler_id_when_set():
+    route = respx.post(f"{BASE_URL}/api/agents/agent-1/run/stream").mock(
+        return_value=httpx.Response(200, text='data: {"event": "complete", "content": "ok"}\n\n',
+                                    headers={"content-type": "text/event-stream"})
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    client.run_agent("agent-1", "hi", context_handler_id="handler-1")
+    sent = json.loads(route.calls[0].request.content)
+    assert sent["context_handler_id"] == "handler-1"
+
+
+@respx.mock
+def test_create_agent_includes_settings_when_set():
+    route = respx.post(f"{BASE_URL}/api/agents").mock(
+        return_value=httpx.Response(201, json={"id": "a-1"})
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    client.create_agent("r", model="gpt-4o-mini", system_prompt="p", settings={"temperature": 0})
+    sent = json.loads(route.calls[0].request.content)
+    assert sent["settings"] == {"temperature": 0}
