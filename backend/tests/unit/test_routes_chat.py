@@ -1,9 +1,14 @@
 # backend/tests/unit/test_routes_chat.py
+from types import SimpleNamespace
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.routes import chat as chat_route
 from app.clients.powabase_client import get_powabase_client
+from app.core.config import get_settings
+from app.services.general_kb import get_general_kb_id
+from app.services.router_agent import get_router_agent_id
 from app.services.session_service import get_session_service
 
 
@@ -11,7 +16,7 @@ class FakeSessionService:
     def __init__(self):
         self.touched = []
         self.row = {"id": "s1", "agent_id": "agent-1", "name": "New session",
-                    "powabase_session_id": None}
+                    "powabase_session_id": None, "kb_id": "kb-s"}
 
     def get(self, session_id):
         return None if session_id == "missing" else self.row
@@ -21,10 +26,10 @@ class FakeSessionService:
 
 
 class FakeChatService:
-    def __init__(self, client, agent_id):
+    def __init__(self, client, agent_id, gate, retrieval_kb_ids, top_k, max_context_tokens):
         assert agent_id == "agent-1"
 
-    def ask(self, query, session_id=None):
+    def ask(self, query, session_id=None, history=None):
         return {"answer": "42", "session_id": "ps-new", "citations": []}
 
 
@@ -33,6 +38,11 @@ def build_app(session_service):
     app.include_router(chat_route.router)
     app.dependency_overrides[get_powabase_client] = lambda: object()
     app.dependency_overrides[get_session_service] = lambda: session_service
+    app.dependency_overrides[get_general_kb_id] = lambda: "gkb-1"
+    app.dependency_overrides[get_router_agent_id] = lambda: "router-1"
+    app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
+        retrieval_top_k=4, retrieval_max_context_tokens=2000, gate_history_turns=2
+    )
     return app
 
 
@@ -81,7 +91,7 @@ def test_chat_requires_session_id(monkeypatch):
 
 def test_chat_returns_402_on_insufficient_credits(monkeypatch):
     class Insufficient(FakeChatService):
-        def ask(self, query, session_id=None):
+        def ask(self, query, session_id=None, history=None):
             raise chat_route.InsufficientCreditsError("no credits left")
 
     monkeypatch.setattr(chat_route, "ChatService", Insufficient)
@@ -94,7 +104,7 @@ def test_chat_returns_402_on_insufficient_credits(monkeypatch):
 
 def test_chat_returns_503_when_model_busy(monkeypatch):
     class Busy(FakeChatService):
-        def ask(self, query, session_id=None):
+        def ask(self, query, session_id=None, history=None):
             raise chat_route.ModelBusyError("The model is busy right now. Please wait a few seconds and try again.")
 
     monkeypatch.setattr(chat_route, "ChatService", Busy)
@@ -107,7 +117,7 @@ def test_chat_returns_503_when_model_busy(monkeypatch):
 
 def test_chat_returns_424_on_provider_key_error(monkeypatch):
     class ProviderError(FakeChatService):
-        def ask(self, query, session_id=None):
+        def ask(self, query, session_id=None, history=None):
             raise chat_route.ProviderKeyError("bad key")
 
     monkeypatch.setattr(chat_route, "ChatService", ProviderError)
@@ -122,7 +132,7 @@ def test_chat_returns_424_on_provider_key_error(monkeypatch):
 
 def test_chat_returns_502_when_agent_run_fails(monkeypatch):
     class FailedRun(FakeChatService):
-        def ask(self, query, session_id=None):
+        def ask(self, query, session_id=None, history=None):
             raise RuntimeError("litellm.APIError: insufficient OpenRouter credits")
 
     monkeypatch.setattr(chat_route, "ChatService", FailedRun)

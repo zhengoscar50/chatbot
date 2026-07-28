@@ -50,13 +50,29 @@ class ModelBusyError(Exception):
 
 
 class ChatService:
-    def __init__(self, client, agent_id: str):
+    def __init__(self, client, agent_id, gate, retrieval_kb_ids, top_k, max_context_tokens):
         self.client = client
         self.agent_id = agent_id
+        self.gate = gate
+        self.retrieval_kb_ids = retrieval_kb_ids
+        self.top_k = top_k
+        self.max_context_tokens = max_context_tokens
 
-    def ask(self, query: str, session_id: str | None = None) -> dict:
+    def ask(self, query: str, session_id: str | None = None, history: list | None = None) -> dict:
+        context_handler_id = None
+        if self.gate.needs_kb(query, history or []):
+            knowledge_bases = [
+                {"id": kb_id, "top_k": self.top_k}
+                for kb_id in self.retrieval_kb_ids if kb_id
+            ]
+            handler = self.client.create_context_handler(
+                query, knowledge_bases, self.max_context_tokens
+            )
+            context_handler_id = handler["id"]
+
         events = self.client.run_agent(
-            self.agent_id, query, session_id=session_id, citations_enabled=True
+            self.agent_id, query, session_id=session_id,
+            citations_enabled=True, context_handler_id=context_handler_id,
         )
         answer = None
         citations: list = []
