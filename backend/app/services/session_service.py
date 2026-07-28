@@ -42,9 +42,6 @@ class SessionService:
         agent = self.client.create_agent(
             f"session-{session_id}-agent", model=self.model, system_prompt=SYSTEM_PROMPT
         )
-        self.client.link_kb_to_agent(agent["id"], kb["id"])
-        if self.general_kb_id:
-            self.client.link_kb_to_agent(agent["id"], self.general_kb_id)
 
         row = {
             "id": session_id,

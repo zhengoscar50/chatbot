@@ -54,7 +54,7 @@ def test_create_session_provisions_and_inserts():
     # KB + agent named from the row id, agent linked to the session KB
     assert client.created_kbs[0]["name"] == f"session-{row['id']}-kb"
     assert client.created_agents[0]["name"] == f"session-{row['id']}-agent"
-    assert client.links == [(row["agent_id"], row["kb_id"])]
+    assert client.links == []  # detached model: KBs are no longer linked to the agent
     assert client.inserted and client.inserted[0]["id"] == row["id"]
 
 
@@ -96,25 +96,11 @@ def test_touch_sets_updated_at_and_patches():
     assert "updated_at" in fields
 
 
-def test_create_session_links_general_kb_when_set():
+def test_create_session_does_not_link_kbs_even_with_general_kb(self=None):
     client = FakeClient()
     service = SessionService(client, model="m", general_kb_id="gkb-1")
-
-    row = service.create_session("alice")
-
-    # Agent linked to BOTH its own session KB and the general KB.
-    assert (row["agent_id"], row["kb_id"]) in client.links
-    assert (row["agent_id"], "gkb-1") in client.links
-    assert len(client.links) == 2
-
-
-def test_create_session_links_only_session_kb_when_general_none():
-    client = FakeClient()
-    service = SessionService(client, model="m")  # general_kb_id defaults to None
-
-    row = service.create_session("alice")
-
-    assert client.links == [(row["agent_id"], row["kb_id"])]
+    service.create_session("alice")
+    assert client.links == []  # detached model: no knowledge_search linking
 
 
 def test_delete_removes_resources_and_row():
