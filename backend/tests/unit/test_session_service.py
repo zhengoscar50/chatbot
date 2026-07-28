@@ -96,7 +96,7 @@ def test_touch_sets_updated_at_and_patches():
     assert "updated_at" in fields
 
 
-def test_create_session_does_not_link_kbs_even_with_general_kb(self=None):
+def test_create_session_does_not_link_kbs_even_with_general_kb():
     client = FakeClient()
     service = SessionService(client, model="m", general_kb_id="gkb-1")
     service.create_session("alice")
