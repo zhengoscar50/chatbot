@@ -19,7 +19,6 @@ class ChatResponse(BaseModel):
 
 
 class SessionCreateRequest(BaseModel):
-    user: str = Field(..., min_length=1)
     name: Optional[str] = None
 
 

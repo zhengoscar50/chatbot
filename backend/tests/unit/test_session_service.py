@@ -29,8 +29,8 @@ class FakeClient:
         self.inserted.append(row)
         return row
 
-    def list_sessions(self, user_slug):
-        return [r for r in self.rows if r["user_slug"] == user_slug]
+    def list_sessions(self, owner_id):
+        return [r for r in self.rows if r.get("owner_id") == owner_id]
 
     def get_session_row(self, session_id):
         return next((r for r in self.rows if r["id"] == session_id), None)
@@ -43,45 +43,42 @@ def test_slugify_normalizes():
     assert slugify("Alice Smith!") == "alice-smith"
 
 
-def test_create_session_provisions_and_inserts():
+def test_create_session_sets_owner_and_slug():
     client = FakeClient()
-    service = SessionService(client, model="m")
-
-    row = service.create_session("Alice", name="Taxes")
-
+    row = SessionService(client, model="m").create_session("owner-1", "Alice", name="Taxes")
+    assert row["owner_id"] == "owner-1"
     assert row["user_slug"] == "alice"
-    assert row["name"] == "Taxes"
-    # KB + agent named from the row id, agent linked to the session KB
-    assert client.created_kbs[0]["name"] == f"session-{row['id']}-kb"
-    assert client.created_agents[0]["name"] == f"session-{row['id']}-agent"
-    assert client.links == []  # detached model: KBs are no longer linked to the agent
-    assert client.inserted and client.inserted[0]["id"] == row["id"]
+    assert client.links == []
+    assert client.inserted and client.inserted[0]["owner_id"] == "owner-1"
 
 
 def test_create_session_defaults_name():
     service = SessionService(FakeClient(), model="m")
-    row = service.create_session("alice")
+    row = service.create_session("owner-1", "alice")
     assert row["name"] == "New session"
 
 
 def test_create_session_rejects_empty_user():
     service = SessionService(FakeClient(), model="m")
     with pytest.raises(ValueError):
-        service.create_session("!!!")
+        service.create_session("owner-1", "!!!")
 
 
-def test_list_returns_summaries_for_user():
-    client = FakeClient(
-        rows=[
-            {"id": "s1", "user_slug": "alice", "name": "A", "updated_at": "t1"},
-            {"id": "s2", "user_slug": "bob", "name": "B", "updated_at": "t2"},
-        ]
-    )
-    service = SessionService(client, model="m")
-
-    result = service.list("alice")
-
+def test_list_filters_by_owner():
+    client = FakeClient(rows=[
+        {"id": "s1", "owner_id": "o1", "name": "A", "updated_at": "t1"},
+        {"id": "s2", "owner_id": "o2", "name": "B", "updated_at": "t2"},
+    ])
+    result = SessionService(client, model="m").list("o1")
     assert result == [{"id": "s1", "name": "A", "updated_at": "t1"}]
+
+
+def test_get_owned_session_returns_only_for_owner():
+    client = FakeClient(rows=[{"id": "s1", "owner_id": "o1", "kb_id": "k", "agent_id": "a"}])
+    svc = SessionService(client, model="m")
+    assert svc.get_owned_session("s1", "o1")["id"] == "s1"
+    assert svc.get_owned_session("s1", "o2") is None
+    assert svc.get_owned_session("missing", "o1") is None
 
 
 def test_touch_sets_updated_at_and_patches():
@@ -99,7 +96,7 @@ def test_touch_sets_updated_at_and_patches():
 def test_create_session_does_not_link_kbs_even_with_general_kb():
     client = FakeClient()
     service = SessionService(client, model="m", general_kb_id="gkb-1")
-    service.create_session("alice")
+    service.create_session("owner-1", "alice")
     assert client.links == []  # detached model: no knowledge_search linking
 
 

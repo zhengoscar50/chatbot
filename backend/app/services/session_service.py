@@ -32,8 +32,8 @@ class SessionService:
         self.model = model
         self.general_kb_id = general_kb_id
 
-    def create_session(self, user: str, name: str | None = None) -> dict:
-        user_slug = slugify(user)
+    def create_session(self, owner_id: str, username: str, name: str | None = None) -> dict:
+        user_slug = slugify(username)
         if not user_slug:
             raise ValueError("User name must contain at least one letter or number")
 
@@ -47,6 +47,7 @@ class SessionService:
 
         row = {
             "id": session_id,
+            "owner_id": owner_id,
             "user_slug": user_slug,
             "name": name or DEFAULT_NAME,
             "kb_id": kb["id"],
@@ -54,11 +55,8 @@ class SessionService:
         }
         return self.client.insert_session(row)
 
-    def list(self, user: str) -> list:
-        user_slug = slugify(user)
-        if not user_slug:
-            raise ValueError("User name must contain at least one letter or number")
-        rows = self.client.list_sessions(user_slug)
+    def list(self, owner_id: str) -> list:
+        rows = self.client.list_sessions(owner_id)
         return [
             {"id": r["id"], "name": r["name"], "updated_at": r.get("updated_at")}
             for r in rows
@@ -66,6 +64,12 @@ class SessionService:
 
     def get(self, session_id: str):
         return self.client.get_session_row(session_id)
+
+    def get_owned_session(self, session_id: str, owner_id: str):
+        row = self.client.get_session_row(session_id)
+        if row is None or row.get("owner_id") != owner_id:
+            return None
+        return row
 
     def touch(self, session_id: str, **fields) -> None:
         fields["updated_at"] = _now_iso()
