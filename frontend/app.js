@@ -96,7 +96,7 @@ function wireAuthForm() {
         body = { detail: `${response.status} ${response.statusText}` };
       }
       if (!response.ok) {
-        setAuthError(body.detail || response.statusText);
+        setAuthError(errorText(body, response));
         return;
       }
       authToken = body.token;
@@ -111,6 +111,19 @@ function wireAuthForm() {
       authSubmit.disabled = false;
     }
   });
+}
+
+// Turn an error response body into a readable string. FastAPI returns `detail`
+// as a plain string for most 4xx, but as a LIST of {loc,msg,...} objects for
+// pydantic 422 validation errors — joining those `msg`s avoids "[object Object]".
+function errorText(body, response) {
+  const detail = body && body.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail.map((e) => (e && e.msg ? e.msg : String(e))).join("; ");
+  }
+  if (detail && typeof detail === "object" && detail.msg) return detail.msg;
+  return (response && response.statusText) || "Request failed";
 }
 
 function setAuthError(text) {
@@ -156,7 +169,7 @@ async function ensureSession() {
     body: JSON.stringify({}),
   });
   const body = await response.json();
-  if (!response.ok) throw new Error(body.detail || response.statusText);
+  if (!response.ok) throw new Error(errorText(body, response));
   currentSessionId = body.id;
   activeTitle.textContent = body.name;
   await loadSessions();
@@ -169,7 +182,7 @@ async function loadSessions() {
     const response = await authFetch("/sessions");
     const body = await response.json();
     if (!response.ok) {
-      setSidebarStatus(body.detail || response.statusText, "error");
+      setSidebarStatus(errorText(body, response), "error");
       return;
     }
     renderSessionList(body);
@@ -228,7 +241,7 @@ async function deleteSession(id, name) {
     const response = await authFetch(`/sessions/${id}`, { method: "DELETE" });
     if (!response.ok && response.status !== 204) {
       const body = await response.json().catch(() => ({}));
-      setSidebarStatus(body.detail || response.statusText, "error");
+      setSidebarStatus(errorText(body, response), "error");
       return;
     }
     if (id === currentSessionId) {
@@ -269,7 +282,7 @@ function startRename(li, session) {
       });
       if (!response.ok) {
         const body = await response.json().catch(() => ({}));
-        setSidebarStatus(body.detail || response.statusText, "error");
+        setSidebarStatus(errorText(body, response), "error");
       } else if (session.id === currentSessionId) {
         activeTitle.textContent = newName;
       }
@@ -302,7 +315,7 @@ async function createSession() {
     });
     const body = await response.json();
     if (!response.ok) {
-      setSidebarStatus(body.detail || response.statusText, "error");
+      setSidebarStatus(errorText(body, response), "error");
       return;
     }
     await loadSessions();
@@ -374,7 +387,7 @@ fileInput.addEventListener("change", async () => {
     if (response.ok || response.status === 202) {
       showAttachment(file.name, body.status, body.status === "indexed" ? "ok" : null);
     } else {
-      showAttachment(file.name, body.detail || response.statusText, "error");
+      showAttachment(file.name, errorText(body, response), "error");
     }
   } catch (err) {
     showAttachment(file.name, err.message, "error");
@@ -420,7 +433,7 @@ chatForm.addEventListener("submit", async (event) => {
       appendMessage("assistant", "AI", body.answer, body.citations);
       loadSessions(); // refresh titles/order (first message names the session)
     } else {
-      appendMessage("error", "!", body.detail || response.statusText);
+      appendMessage("error", "!", errorText(body, response));
     }
   } catch (err) {
     appendMessage("error", "!", err.message);
