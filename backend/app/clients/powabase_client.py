@@ -172,10 +172,10 @@ class PowabaseClient:
         created = response.json()
         return created[0] if isinstance(created, list) else created
 
-    def list_sessions(self, user_slug: str) -> list:
+    def list_sessions(self, owner_id: str) -> list:
         response = self._client.get(
             "/rest/v1/sessions",
-            params={"user_slug": f"eq.{user_slug}", "order": "updated_at.desc"},
+            params={"owner_id": f"eq.{owner_id}", "order": "updated_at.desc"},
         )
         self._raise_for_status(response)
         return response.json()
@@ -208,6 +208,32 @@ class PowabaseClient:
             "/rest/v1/sessions", params={"id": f"eq.{session_id}"}
         )
         self._raise_for_status(response)
+
+    # Users (PostgREST) -------------------------------------------------------
+
+    def insert_user(self, row: dict) -> dict:
+        response = self._client.post(
+            "/rest/v1/users", json=row, headers={"Prefer": "return=representation"}
+        )
+        self._raise_for_status(response)
+        created = response.json()
+        return created[0] if isinstance(created, list) else created
+
+    def get_user_by_username(self, username: str) -> dict | None:
+        response = self._client.get(
+            "/rest/v1/users", params={"username": f"eq.{username}"}
+        )
+        self._raise_for_status(response)
+        rows = response.json()
+        return rows[0] if rows else None
+
+    def get_user(self, user_id: str) -> dict | None:
+        response = self._client.get("/rest/v1/users", params={"id": f"eq.{user_id}"})
+        if response.status_code == 400:  # malformed uuid -> treat as not found
+            return None
+        self._raise_for_status(response)
+        rows = response.json()
+        return rows[0] if rows else None
 
     # Knowledge base / agent deletion --------------------------------------
 

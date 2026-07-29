@@ -21,17 +21,17 @@ def test_insert_session_returns_created_row():
 
 
 @respx.mock
-def test_list_sessions_filters_by_user_and_orders():
+def test_list_sessions_filters_by_owner_id():
     route = respx.get(f"{BASE_URL}/rest/v1/sessions").mock(
         return_value=httpx.Response(200, json=[{"id": "s1", "name": "A", "updated_at": "t"}])
     )
     client = PowabaseClient(BASE_URL, "k")
 
-    rows = client.list_sessions("alice")
+    rows = client.list_sessions("owner-1")
 
     assert rows == [{"id": "s1", "name": "A", "updated_at": "t"}]
     request = route.calls.last.request
-    assert request.url.params["user_slug"] == "eq.alice"
+    assert request.url.params["owner_id"] == "eq.owner-1"
     assert request.url.params["order"] == "updated_at.desc"
 
 
@@ -114,3 +114,34 @@ def test_delete_agent_calls_api():
     client = PowabaseClient(BASE_URL, "k")
     client.delete_agent("a1")
     assert route.called
+
+
+@respx.mock
+def test_insert_user_returns_created_row():
+    respx.post(f"{BASE_URL}/rest/v1/users").mock(
+        return_value=httpx.Response(201, json=[{"id": "u-1", "username": "alice"}])
+    )
+    client = PowabaseClient(BASE_URL, "k")
+    row = client.insert_user({"username": "alice", "password_hash": "h"})
+    assert row["id"] == "u-1"
+
+
+@respx.mock
+def test_get_user_by_username_found_and_missing():
+    route = respx.get(f"{BASE_URL}/rest/v1/users")
+    route.mock(return_value=httpx.Response(200, json=[{"id": "u-1", "username": "alice"}]))
+    client = PowabaseClient(BASE_URL, "k")
+    assert client.get_user_by_username("alice")["id"] == "u-1"
+    route.mock(return_value=httpx.Response(200, json=[]))
+    assert client.get_user_by_username("nobody") is None
+
+
+@respx.mock
+def test_get_user_returns_row_or_none():
+    route = respx.get(f"{BASE_URL}/rest/v1/users").mock(
+        return_value=httpx.Response(200, json=[{"id": "u-1", "username": "alice"}])
+    )
+    client = PowabaseClient(BASE_URL, "k")
+    assert client.get_user("u-1")["id"] == "u-1"
+    # Must filter by id
+    assert route.calls.last.request.url.params["id"] == "eq.u-1"

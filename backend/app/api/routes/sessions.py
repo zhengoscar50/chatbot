@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Response
 from starlette.concurrency import run_in_threadpool
 
+from app.api.deps import get_current_user
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient, get_powabase_client
 from app.models.schemas import (
     ChatMessage,
@@ -18,10 +19,13 @@ router = APIRouter(tags=["sessions"])
 @router.post("/sessions", response_model=SessionResponse)
 async def create_session(
     req: SessionCreateRequest,
+    user: dict = Depends(get_current_user),
     sessions: SessionService = Depends(get_session_service),
 ):
     try:
-        row = await run_in_threadpool(sessions.create_session, req.user, req.name)
+        row = await run_in_threadpool(
+            sessions.create_session, user["id"], user["username"], req.name
+        )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except PowabaseAPIError as e:
@@ -33,9 +37,10 @@ async def create_session(
 async def rename_session(
     session_id: str,
     req: SessionRenameRequest,
+    user: dict = Depends(get_current_user),
     sessions: SessionService = Depends(get_session_service),
 ):
-    row = await run_in_threadpool(sessions.get, session_id)
+    row = await run_in_threadpool(sessions.get_owned_session, session_id, user["id"])
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
     try:
@@ -48,24 +53,26 @@ async def rename_session(
 @router.delete("/sessions/{session_id}", status_code=204)
 async def delete_session(
     session_id: str,
+    user: dict = Depends(get_current_user),
     sessions: SessionService = Depends(get_session_service),
 ):
+    row = await run_in_threadpool(sessions.get_owned_session, session_id, user["id"])
+    if row is None:
+        raise HTTPException(status_code=404, detail="Session not found")
     try:
-        existed = await run_in_threadpool(sessions.delete, session_id)
+        await run_in_threadpool(sessions.delete, session_id)
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
-    if not existed:
-        raise HTTPException(status_code=404, detail="Session not found")
     return Response(status_code=204)
 
 
 @router.get("/sessions", response_model=list[SessionSummary])
 async def list_sessions(
-    user: str,
+    user: dict = Depends(get_current_user),
     sessions: SessionService = Depends(get_session_service),
 ):
     try:
-        return await run_in_threadpool(sessions.list, user)
+        return await run_in_threadpool(sessions.list, user["id"])
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except PowabaseAPIError as e:
@@ -75,10 +82,11 @@ async def list_sessions(
 @router.get("/sessions/{session_id}/messages", response_model=MessagesResponse)
 async def session_messages(
     session_id: str,
+    user: dict = Depends(get_current_user),
     sessions: SessionService = Depends(get_session_service),
     client: PowabaseClient = Depends(get_powabase_client),
 ):
-    row = await run_in_threadpool(sessions.get, session_id)
+    row = await run_in_threadpool(sessions.get_owned_session, session_id, user["id"])
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
     powabase_session_id = row.get("powabase_session_id")

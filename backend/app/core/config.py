@@ -16,6 +16,8 @@ class Settings(BaseSettings):
     powabase_service_role_key: str
     powabase_agent_model: str = "gpt-4o-mini"
     admin_password: Optional[str] = None
+    auth_jwt_secret: str
+    auth_token_ttl_hours: int = 168
 
     poll_interval_seconds: float = 2.0
     ingest_max_wait_seconds: float = 60.0

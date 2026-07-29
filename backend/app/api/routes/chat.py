@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.api.deps import get_current_user
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient, get_powabase_client
 from app.core.config import get_settings
 from app.models.schemas import ChatRequest, ChatResponse
@@ -34,13 +35,14 @@ def _recent_turns(raw, turns: int) -> list:
 @router.post("", response_model=ChatResponse)
 def chat(
     req: ChatRequest,
+    user: dict = Depends(get_current_user),
     client: PowabaseClient = Depends(get_powabase_client),
     sessions: SessionService = Depends(get_session_service),
     general_kb_id: str = Depends(get_general_kb_id),
     router_agent_id: str = Depends(get_router_agent_id),
     settings=Depends(get_settings),
 ):
-    row = sessions.get(req.session_id)
+    row = sessions.get_owned_session(req.session_id, user["id"])
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
 

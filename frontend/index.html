@@ -7,18 +7,22 @@
     <link rel="stylesheet" href="/styles.css" />
   </head>
   <body>
+    <div class="auth-gate" id="auth-gate">
+      <form class="auth-card" id="auth-form">
+        <h1 class="auth-card__title">RAG Chat</h1>
+        <p class="auth-card__mode" id="auth-mode-label">Log in to continue</p>
+        <input id="auth-username" class="auth-input" placeholder="Username" autocomplete="username" />
+        <input id="auth-password" type="password" class="auth-input" placeholder="Password" autocomplete="current-password" />
+        <button type="submit" id="auth-submit" class="auth-submit">Log in</button>
+        <p class="auth-error" id="auth-error"></p>
+        <button type="button" id="auth-toggle" class="auth-toggle">Need an account? Register</button>
+      </form>
+    </div>
     <div class="app">
       <aside class="sidebar" id="sidebar">
         <div class="sidebar__head">
-          <label class="sidebar__label" for="user-input">User</label>
-          <input
-            type="text"
-            id="user-input"
-            class="sidebar__user"
-            placeholder="Type a name, Enter…"
-            autocomplete="off"
-            aria-label="User name"
-          />
+          <span class="sidebar__user" id="current-user"></span>
+          <button type="button" id="logout-btn" class="logout-btn">Log out</button>
         </div>
         <button id="new-session" class="new-session" disabled>+ New session</button>
         <ul class="session-list" id="session-list" aria-label="Sessions"></ul>

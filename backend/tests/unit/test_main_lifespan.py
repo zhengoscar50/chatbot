@@ -9,6 +9,7 @@ from app.core.config import get_settings
 def set_env(monkeypatch):
     monkeypatch.setenv("POWABASE_BASE_URL", "https://demo.p.powabase.ai")
     monkeypatch.setenv("POWABASE_SERVICE_ROLE_KEY", "test-key")
+    monkeypatch.setenv("AUTH_JWT_SECRET", "test-secret")
     get_settings.cache_clear()
 
 

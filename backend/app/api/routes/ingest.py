@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
+from app.api.deps import get_current_user
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient, get_powabase_client
 from app.core.config import get_settings
 from app.models.schemas import IngestResponse
@@ -21,12 +22,13 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 async def ingest_file(
     session_id: str = Form(...),
     file: UploadFile = File(...),
+    user: dict = Depends(get_current_user),
     client: PowabaseClient = Depends(get_powabase_client),
     sessions: SessionService = Depends(get_session_service),
 ):
     content = await file.read()
     settings = get_settings()
-    row = await run_in_threadpool(sessions.get, session_id)
+    row = await run_in_threadpool(sessions.get_owned_session, session_id, user["id"])
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
