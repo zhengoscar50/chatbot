@@ -79,3 +79,10 @@ def test_register_symbol_only_username_422():
     tc = TestClient(build_app(client))
     r = tc.post("/auth/register", json={"username": "___", "password": "password123"})
     assert r.status_code == 422
+
+
+def test_register_space_username_422():
+    r = TestClient(build_app(FakeClient())).post(
+        "/auth/register", json={"username": "Oscar Zheng", "password": "password123"}
+    )
+    assert r.status_code == 422

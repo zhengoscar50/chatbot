@@ -4,6 +4,19 @@ import re
 from pydantic import BaseModel, Field, field_validator
 
 
+_USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
+
+
+def validate_username(value: str) -> str:
+    v = value.strip()
+    if not _USERNAME_RE.match(v) or not re.search(r"[A-Za-z0-9]", v):
+        raise ValueError(
+            "Username can only contain letters, numbers, dots, dashes, and "
+            "underscores (3–32 characters)."
+        )
+    return v
+
+
 class IngestResponse(BaseModel):
     source_id: str
     status: str
@@ -52,17 +65,27 @@ class AdminVerifyRequest(BaseModel):
     password: str = Field(..., min_length=1)
 
 
+class AdminResetPasswordRequest(BaseModel):
+    password: str = Field(..., min_length=8)
+
+
+class AdminRenameRequest(BaseModel):
+    username: str
+
+    @field_validator("username")
+    @classmethod
+    def _check_username(cls, v: str) -> str:
+        return validate_username(v)
+
+
 class RegisterRequest(BaseModel):
-    username: str = Field(..., pattern=r"^[A-Za-z0-9_.-]{3,32}$")
+    username: str
     password: str = Field(..., min_length=8)
 
     @field_validator("username")
     @classmethod
-    def username_must_contain_alphanumeric(cls, v: str) -> str:
-        """Ensure username contains at least one alphanumeric character."""
-        if not re.search(r"[A-Za-z0-9]", v):
-            raise ValueError("username must contain at least one alphanumeric character")
-        return v
+    def _check_username(cls, v: str) -> str:
+        return validate_username(v)
 
 
 class LoginRequest(BaseModel):

@@ -235,6 +235,26 @@ class PowabaseClient:
         rows = response.json()
         return rows[0] if rows else None
 
+    def list_users(self) -> list:
+        response = self._client.get("/rest/v1/users", params={"order": "created_at.desc"})
+        self._raise_for_status(response)
+        return response.json()
+
+    def list_all_sessions(self) -> list:
+        response = self._client.get("/rest/v1/sessions", params={"order": "updated_at.desc"})
+        self._raise_for_status(response)
+        return response.json()
+
+    def update_user(self, user_id: str, fields: dict) -> None:
+        response = self._client.patch(
+            "/rest/v1/users", params={"id": f"eq.{user_id}"}, json=fields
+        )
+        self._raise_for_status(response)
+
+    def delete_user(self, user_id: str) -> None:
+        response = self._client.delete("/rest/v1/users", params={"id": f"eq.{user_id}"})
+        self._raise_for_status(response)
+
     # Knowledge base / agent deletion --------------------------------------
 
     def delete_knowledge_base(self, kb_id: str) -> None:

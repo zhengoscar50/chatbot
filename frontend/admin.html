@@ -34,6 +34,15 @@
         </div>
         <p class="admin-status" id="upload-status"></p>
       </section>
+
+      <section class="admin-card" id="users-panel" hidden>
+        <div class="admin-row admin-row--between">
+          <p class="admin-hint">Manage user accounts. Passwords can be reset, never viewed.</p>
+          <button type="button" id="users-refresh" class="btn-solid">Refresh</button>
+        </div>
+        <div id="users-table"></div>
+        <p class="admin-status" id="users-status"></p>
+      </section>
     </div>
     <script src="/admin.js"></script>
   </body>

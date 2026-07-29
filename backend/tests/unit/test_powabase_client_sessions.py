@@ -1,3 +1,5 @@
+import json
+
 import httpx
 import respx
 
@@ -145,3 +147,36 @@ def test_get_user_returns_row_or_none():
     assert client.get_user("u-1")["id"] == "u-1"
     # Must filter by id
     assert route.calls.last.request.url.params["id"] == "eq.u-1"
+
+
+@respx.mock
+def test_list_users_orders_by_created():
+    route = respx.get(f"{BASE_URL}/rest/v1/users").mock(
+        return_value=httpx.Response(200, json=[{"id": "u1", "username": "a"}])
+    )
+    client = PowabaseClient(BASE_URL, "k")
+    assert client.list_users()[0]["id"] == "u1"
+    assert route.calls[0].request.url.params["order"] == "created_at.desc"
+
+
+@respx.mock
+def test_list_all_sessions_returns_rows():
+    respx.get(f"{BASE_URL}/rest/v1/sessions").mock(
+        return_value=httpx.Response(200, json=[{"id": "s1", "owner_id": "u1"}])
+    )
+    assert PowabaseClient(BASE_URL, "k").list_all_sessions()[0]["owner_id"] == "u1"
+
+
+@respx.mock
+def test_update_user_patches_by_id():
+    route = respx.patch(f"{BASE_URL}/rest/v1/users").mock(return_value=httpx.Response(204))
+    PowabaseClient(BASE_URL, "k").update_user("u1", {"username": "b"})
+    assert route.calls[0].request.url.params["id"] == "eq.u1"
+    assert json.loads(route.calls[0].request.content) == {"username": "b"}
+
+
+@respx.mock
+def test_delete_user_deletes_by_id():
+    route = respx.delete(f"{BASE_URL}/rest/v1/users").mock(return_value=httpx.Response(204))
+    PowabaseClient(BASE_URL, "k").delete_user("u1")
+    assert route.calls[0].request.url.params["id"] == "eq.u1"
