@@ -1,4 +1,3 @@
-const userInput = document.getElementById("user-input");
 const sidebarStatus = document.getElementById("sidebar-status");
 const sessionList = document.getElementById("session-list");
 const newSessionButton = document.getElementById("new-session");
@@ -15,8 +14,21 @@ const chatInput = document.getElementById("chat-input");
 const sendButton = document.getElementById("send-button");
 const messages = document.getElementById("messages");
 
-const USER_KEY = "rag-chat-user";
-let currentUser = null;
+const authGate = document.getElementById("auth-gate");
+const authForm = document.getElementById("auth-form");
+const authUsernameInput = document.getElementById("auth-username");
+const authPasswordInput = document.getElementById("auth-password");
+const authSubmit = document.getElementById("auth-submit");
+const authError = document.getElementById("auth-error");
+const authToggle = document.getElementById("auth-toggle");
+const authModeLabel = document.getElementById("auth-mode-label");
+const currentUserLabel = document.getElementById("current-user");
+
+const TOKEN_KEY = "rag-chat-token";
+const NAME_KEY = "rag-chat-username";
+let authToken = null;
+let currentUsername = null;
+let authMode = "login"; // or "register"
 let currentSessionId = null;
 let isAsking = false;
 
@@ -24,53 +36,124 @@ init();
 
 function init() {
   setComposerEnabled(false);
-  const saved = localStorage.getItem(USER_KEY);
-  if (saved) {
-    userInput.value = saved;
-    switchUser(saved);
-  }
-  userInput.addEventListener("change", () => switchUser(userInput.value));
-  userInput.addEventListener("keydown", (e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      switchUser(userInput.value);
-    }
-  });
+  authToken = localStorage.getItem(TOKEN_KEY);
+  currentUsername = localStorage.getItem(NAME_KEY);
+  wireAuthForm();
   newSessionButton.addEventListener("click", createSession);
   sidebarToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
+  document.getElementById("logout-btn").addEventListener("click", doLogout);
+  if (authToken) enterApp();
+  else showAuthGate();
 }
 
-async function switchUser(rawName) {
-  const name = rawName.trim();
-  currentSessionId = null;
-  attachmentChip.hidden = true;
-  activeTitle.textContent = "RAG Chat";
-  if (!name) {
-    currentUser = null;
-    newSessionButton.disabled = true;
-    sessionList.innerHTML = "";
-    setComposerEnabled(false);
-    clearThread("Enter a user name to start.");
-    setSidebarStatus("Enter a user name to start", null);
-    return;
+async function authFetch(url, options = {}) {
+  const headers = { ...(options.headers || {}) };
+  if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+  const response = await fetch(url, { ...options, headers });
+  if (response.status === 401) {
+    doLogout();
+    throw new Error("Session expired — please log in again.");
   }
-  currentUser = name;
-  localStorage.setItem(USER_KEY, name);
+  return response;
+}
+
+function wireAuthForm() {
+  authToggle.addEventListener("click", () => {
+    authMode = authMode === "login" ? "register" : "login";
+    setAuthError("");
+    if (authMode === "register") {
+      authModeLabel.textContent = "Create an account";
+      authSubmit.textContent = "Register";
+      authToggle.textContent = "Already have an account? Log in";
+    } else {
+      authModeLabel.textContent = "Log in to continue";
+      authSubmit.textContent = "Log in";
+      authToggle.textContent = "Need an account? Register";
+    }
+  });
+
+  authForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const username = authUsernameInput.value.trim();
+    const password = authPasswordInput.value;
+    if (!username || !password) {
+      setAuthError("Enter a username and password.");
+      return;
+    }
+    setAuthError("");
+    authSubmit.disabled = true;
+    try {
+      const endpoint = authMode === "register" ? "/auth/register" : "/auth/login";
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      let body;
+      try {
+        body = await response.json();
+      } catch (parseErr) {
+        body = { detail: `${response.status} ${response.statusText}` };
+      }
+      if (!response.ok) {
+        setAuthError(body.detail || response.statusText);
+        return;
+      }
+      authToken = body.token;
+      currentUsername = body.username || username;
+      localStorage.setItem(TOKEN_KEY, authToken);
+      localStorage.setItem(NAME_KEY, currentUsername);
+      authPasswordInput.value = "";
+      enterApp();
+    } catch (err) {
+      setAuthError(err.message);
+    } finally {
+      authSubmit.disabled = false;
+    }
+  });
+}
+
+function setAuthError(text) {
+  authError.textContent = text;
+}
+
+function showAuthGate() {
+  authGate.hidden = false;
+  setComposerEnabled(false);
+}
+
+function enterApp() {
+  authGate.hidden = true;
+  currentUserLabel.textContent = currentUsername || "";
   newSessionButton.disabled = false;
-  // Composer is usable right away — sending a message auto-creates a session.
   setComposerEnabled(true);
   clearThread("Type a message to start a new session — or pick one on the left.");
-  await loadSessions();
+  loadSessions();
+}
+
+function doLogout() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(NAME_KEY);
+  authToken = null;
+  currentUsername = null;
+  currentSessionId = null;
+  sessionList.innerHTML = "";
+  attachmentChip.hidden = true;
+  activeTitle.textContent = "RAG Chat";
+  authUsernameInput.value = "";
+  authPasswordInput.value = "";
+  setAuthError("");
+  showAuthGate();
 }
 
 // Return the active session id, creating a new session on the fly if none is
 // selected (so you can just start typing without clicking "New session").
 async function ensureSession() {
   if (currentSessionId) return currentSessionId;
-  const response = await fetch("/sessions", {
+  const response = await authFetch("/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ user: currentUser }),
+    body: JSON.stringify({}),
   });
   const body = await response.json();
   if (!response.ok) throw new Error(body.detail || response.statusText);
@@ -83,7 +166,7 @@ async function ensureSession() {
 async function loadSessions() {
   setSidebarStatus("Loading sessions…", null);
   try {
-    const response = await fetch(`/sessions?user=${encodeURIComponent(currentUser)}`);
+    const response = await authFetch("/sessions");
     const body = await response.json();
     if (!response.ok) {
       setSidebarStatus(body.detail || response.statusText, "error");
@@ -142,7 +225,7 @@ async function deleteSession(id, name) {
     return;
   }
   try {
-    const response = await fetch(`/sessions/${id}`, { method: "DELETE" });
+    const response = await authFetch(`/sessions/${id}`, { method: "DELETE" });
     if (!response.ok && response.status !== 204) {
       const body = await response.json().catch(() => ({}));
       setSidebarStatus(body.detail || response.statusText, "error");
@@ -179,7 +262,7 @@ function startRename(li, session) {
       return;
     }
     try {
-      const response = await fetch(`/sessions/${session.id}`, {
+      const response = await authFetch(`/sessions/${session.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: newName }),
@@ -210,12 +293,12 @@ function startRename(li, session) {
 }
 
 async function createSession() {
-  if (!currentUser) return;
+  if (!authToken) return;
   try {
-    const response = await fetch("/sessions", {
+    const response = await authFetch("/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ user: currentUser }),
+      body: JSON.stringify({}),
     });
     const body = await response.json();
     if (!response.ok) {
@@ -239,7 +322,7 @@ async function openSession(id, name) {
   clearThread("Upload a PDF, then ask about it — or just ask.");
 
   try {
-    const response = await fetch(`/sessions/${id}/messages`);
+    const response = await authFetch(`/sessions/${id}/messages`);
     const body = await response.json();
     if (response.ok && body.messages && body.messages.length) {
       messages.innerHTML = "";
@@ -264,7 +347,7 @@ attachButton.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files[0];
   if (!file) return;
-  if (!currentUser) {
+  if (!authToken) {
     fileInput.value = "";
     return;
   }
@@ -281,7 +364,7 @@ fileInput.addEventListener("change", async () => {
   formData.append("file", file);
   formData.append("session_id", sessionId);
   try {
-    const response = await fetch("/ingest/file", { method: "POST", body: formData });
+    const response = await authFetch("/ingest/file", { method: "POST", body: formData });
     let body;
     try {
       body = await response.json();
@@ -304,8 +387,8 @@ chatForm.addEventListener("submit", async (event) => {
   if (isAsking) return;
   const query = chatInput.value.trim();
   if (!query) return;
-  if (!currentUser) {
-    appendMessage("error", "!", "Enter a user name first.");
+  if (!authToken) {
+    appendMessage("error", "!", "Log in first.");
     return;
   }
   let sessionId;
@@ -322,7 +405,7 @@ chatForm.addEventListener("submit", async (event) => {
   sendButton.disabled = true;
   const thinking = appendThinking();
   try {
-    const response = await fetch("/chat", {
+    const response = await authFetch("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: sessionId, query }),
