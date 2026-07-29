@@ -3,6 +3,10 @@ from __future__ import annotations
 from app.clients.powabase_client import PowabaseAPIError
 from app.core.security import hash_password, verify_password
 
+# Precomputed so an unknown-user login still pays the argon2 cost (defeats a
+# timing side-channel that would otherwise reveal whether a username exists).
+_DUMMY_HASH = hash_password("dummy-password-for-constant-time-auth")
+
 
 class DuplicateUsernameError(Exception):
     pass
@@ -33,6 +37,7 @@ class AuthService:
     def authenticate(self, username: str, password: str) -> dict:
         uname = username.strip().lower()
         user = self.client.get_user_by_username(uname)
-        if user is None or not verify_password(password, user["password_hash"]):
+        password_hash = user["password_hash"] if user else _DUMMY_HASH
+        if not verify_password(password, password_hash) or user is None:
             raise InvalidCredentialsError()
         return user
