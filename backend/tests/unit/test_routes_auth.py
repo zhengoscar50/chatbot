@@ -71,3 +71,11 @@ def test_me_requires_token():
 def test_me_rejects_bad_token():
     r = TestClient(build_app(FakeClient())).get("/auth/me", headers={"Authorization": "Bearer garbage"})
     assert r.status_code == 401
+
+
+def test_register_symbol_only_username_422():
+    """Symbol-only username should be rejected by validation (422)."""
+    client = FakeClient()
+    tc = TestClient(build_app(client))
+    r = tc.post("/auth/register", json={"username": "___", "password": "password123"})
+    assert r.status_code == 422
