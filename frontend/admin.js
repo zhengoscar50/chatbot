@@ -265,7 +265,7 @@ function renderSessions(sessions, container) {
 
     const meta = document.createElement("span");
     meta.className = "user-session__meta";
-    meta.textContent = `${formatDate(session.created_at)} → ${formatDate(session.updated_at)}`;
+    meta.textContent = `Updated ${formatDate(session.updated_at)}`;
     head.appendChild(meta);
 
     const messagesContainer = document.createElement("div");
