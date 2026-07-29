@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from app.api.deps import get_current_user
 from app.api.routes import chat as chat_route
 from app.clients.powabase_client import get_powabase_client
 from app.core.config import get_settings
@@ -18,7 +19,7 @@ class FakeSessionService:
         self.row = {"id": "s1", "agent_id": "agent-1", "name": "New session",
                     "powabase_session_id": None, "kb_id": "kb-s"}
 
-    def get(self, session_id):
+    def get_owned_session(self, session_id, owner_id):
         return None if session_id == "missing" else self.row
 
     def touch(self, session_id, **fields):
@@ -43,6 +44,7 @@ def build_app(session_service):
     app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
         retrieval_top_k=4, retrieval_max_context_tokens=2000, gate_history_turns=2
     )
+    app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
     return app
 
 
@@ -79,6 +81,15 @@ def test_chat_404_for_missing_session(monkeypatch):
     response = post(TestClient(build_app(FakeSessionService())), {"session_id": "missing", "query": "hi"})
 
     assert response.status_code == 404
+
+
+def test_chat_404_for_non_owned_session(monkeypatch):
+    # get_owned_session returns None -> 404
+    svc = FakeSessionService()
+    svc.get_owned_session = lambda sid, oid: None
+    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    r = post(TestClient(build_app(svc)), {"session_id": "s1", "query": "hi"})
+    assert r.status_code == 404
 
 
 def test_chat_requires_session_id(monkeypatch):
