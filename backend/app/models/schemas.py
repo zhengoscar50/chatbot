@@ -50,3 +50,22 @@ class MessagesResponse(BaseModel):
 
 class AdminVerifyRequest(BaseModel):
     password: str = Field(..., min_length=1)
+
+
+class RegisterRequest(BaseModel):
+    username: str = Field(..., pattern=r"^[A-Za-z0-9_.-]{3,32}$")
+    password: str = Field(..., min_length=8)
+
+
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=1)
+    password: str = Field(..., min_length=1)
+
+
+class AuthResponse(BaseModel):
+    token: str
+    username: str
+
+
+class MeResponse(BaseModel):
+    username: str
