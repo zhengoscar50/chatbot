@@ -4,3 +4,5 @@ httpx
 pydantic-settings
 python-multipart
 python-dotenv
+pyjwt
+argon2-cffi
