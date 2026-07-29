@@ -780,3 +780,141 @@ body {
 .admin-status[data-state="error"] {
   color: var(--error);
 }
+
+.admin-row--between {
+  justify-content: space-between;
+  flex-wrap: nowrap;
+}
+
+.btn-small {
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  padding: 0.3rem 0.6rem;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg-subtle);
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.btn-small:hover {
+  border-color: var(--accent-2);
+  color: var(--accent-2);
+}
+
+.btn-small--danger:hover {
+  border-color: var(--error);
+  color: var(--error);
+}
+
+#users-table {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.user-row {
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.user-row__main {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.75rem;
+}
+
+.user-row__name {
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.user-row__meta {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  flex: 1 1 auto;
+}
+
+.user-row__actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+}
+
+.user-sessions {
+  margin-top: 0.7rem;
+  padding-top: 0.7rem;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.user-sessions[hidden] {
+  display: none;
+}
+
+.user-session {
+  background: var(--bg-subtle);
+  border-radius: 0.6rem;
+  padding: 0.5rem 0.7rem;
+}
+
+.user-session__head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.4rem 0.6rem;
+}
+
+.user-session__name {
+  font-weight: 600;
+  font-size: 0.85rem;
+}
+
+.user-session__meta {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  flex: 1 1 auto;
+}
+
+.user-messages {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.user-messages[hidden] {
+  display: none;
+}
+
+.user-message {
+  margin: 0;
+  font-size: 0.82rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.user-message strong {
+  text-transform: capitalize;
+  color: var(--accent);
+}
+
+.user-sessions__status,
+.user-messages__status {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.user-sessions__status--error,
+.user-messages__status--error {
+  color: var(--error);
+}
