@@ -32,9 +32,11 @@ async def ingest_file(
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    # The session's KB is created lazily — this first upload provisions it.
+    kb_id = await run_in_threadpool(sessions.ensure_kb, row)
     service = IngestService(
         client,
-        row["kb_id"],
+        kb_id,
         poll_interval=settings.poll_interval_seconds,
         max_wait=settings.ingest_max_wait_seconds,
     )
