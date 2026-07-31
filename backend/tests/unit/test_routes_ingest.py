@@ -29,8 +29,11 @@ class FakeIngestService:
     def __init__(self, client, kb_id, poll_interval, max_wait):
         assert kb_id == "kb-1"
 
-    def ingest_pdf(self, filename, content):
-        return {"source_id": "src-1", "status": "indexed"}
+    def start(self, filename, content):
+        return "src-1"
+
+    def finish(self, source_id):  # runs in the background task (TestClient executes it)
+        return "indexed"
 
 
 def build_app():
@@ -56,8 +59,8 @@ def test_ingest_routes_to_session_kb(monkeypatch):
 
     response = upload(TestClient(build_app()))
 
-    assert response.status_code == 200
-    assert response.json() == {"source_id": "src-1", "status": "indexed"}
+    assert response.status_code == 202
+    assert response.json() == {"source_id": "src-1", "status": "processing"}
 
 
 def test_ingest_requires_session_id(monkeypatch):
@@ -118,8 +121,11 @@ def test_ingest_lazily_creates_kb_when_session_has_none(monkeypatch):
         def __init__(self, client, kb_id, poll_interval, max_wait):
             assert kb_id == "kb-created-now"  # route used the lazily-created KB
 
-        def ingest_pdf(self, filename, content):
-            return {"source_id": "src-lazy", "status": "indexed"}
+        def start(self, filename, content):
+            return "src-lazy"
+
+        def finish(self, source_id):
+            return "indexed"
 
     monkeypatch.setattr(ingest_route, "IngestService", LazyIngestService)
     app = FastAPI()
@@ -130,38 +136,8 @@ def test_ingest_lazily_creates_kb_when_session_has_none(monkeypatch):
 
     response = upload(TestClient(app))
 
-    assert response.status_code == 200
-    assert response.json()["source_id"] == "src-lazy"
-
-
-def test_ingest_returns_422_when_attention_required(monkeypatch):
-    set_env(monkeypatch)
-
-    class AttentionService(FakeIngestService):
-        def ingest_pdf(self, filename, content):
-            raise ingest_route.AttentionRequiredError("src-2")
-
-    monkeypatch.setattr(ingest_route, "IngestService", AttentionService)
-
-    response = upload(TestClient(build_app()))
-
-    assert response.status_code == 422
-    assert "src-2" in response.json()["detail"]
-
-
-def test_ingest_returns_202_on_timeout(monkeypatch):
-    set_env(monkeypatch)
-
-    class TimeoutService(FakeIngestService):
-        def ingest_pdf(self, filename, content):
-            raise ingest_route.IngestTimeoutError("src-3", "pending")
-
-    monkeypatch.setattr(ingest_route, "IngestService", TimeoutService)
-
-    response = upload(TestClient(build_app()))
-
     assert response.status_code == 202
-    assert response.json() == {"source_id": "src-3", "status": "pending"}
+    assert response.json()["source_id"] == "src-lazy"
 
 
 class RoutingSessionService:
@@ -180,8 +156,11 @@ class RoutedIngestService:
     def __init__(self, client, kb_id, poll_interval, max_wait):
         assert kb_id == "kb-routed"
 
-    def ingest_pdf(self, filename, content):
-        return {"source_id": "src-routed", "status": "indexed"}
+    def start(self, filename, content):
+        return "src-routed"
+
+    def finish(self, source_id):
+        return "indexed"
 
 
 def build_routing_app(svc):
@@ -204,7 +183,7 @@ def test_ingest_small_upload_routes_full_document_true(monkeypatch):
         files={"file": ("doc.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     assert svc.calls == [True]
 
 
@@ -220,5 +199,43 @@ def test_ingest_large_upload_routes_full_document_false(monkeypatch):
         files={"file": ("doc.pdf", io.BytesIO(large_content), "application/pdf")},
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 202
     assert svc.calls == [False]
+
+
+def test_status_reports_indexed(monkeypatch):
+    set_env(monkeypatch)
+    monkeypatch.setattr(ingest_route, "source_status", lambda client, sid, kb_ids: ("indexed", None))
+
+    class SS:
+        def get_owned_session(self, session_id, owner_id):
+            return {"id": session_id, "kb_id": "kb-1", "kb_full_id": ""}
+
+    app = FastAPI()
+    app.include_router(ingest_route.router)
+    app.dependency_overrides[get_powabase_client] = lambda: object()
+    app.dependency_overrides[get_session_service] = lambda: SS()
+    app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
+
+    r = TestClient(app).get("/ingest/status/src-1?session_id=s1")
+
+    assert r.status_code == 200
+    assert r.json()["status"] == "indexed"
+
+
+def test_status_404_for_non_owner(monkeypatch):
+    set_env(monkeypatch)
+
+    class SS:
+        def get_owned_session(self, session_id, owner_id):
+            return None
+
+    app = FastAPI()
+    app.include_router(ingest_route.router)
+    app.dependency_overrides[get_powabase_client] = lambda: object()
+    app.dependency_overrides[get_session_service] = lambda: SS()
+    app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
+
+    response = TestClient(app).get("/ingest/status/src-1?session_id=s1")
+
+    assert response.status_code == 404
