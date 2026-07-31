@@ -32,8 +32,11 @@ async def ingest_file(
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # The session's KB is created lazily — this first upload provisions it.
-    kb_id = await run_in_threadpool(sessions.ensure_kb, row)
+    # Route by size: small docs get a full_document KB (returned whole on a
+    # match); larger docs get the chunk_embed KB. The session's KB for that
+    # class is created lazily — this first matching upload provisions it.
+    full_document = len(content) <= settings.full_document_max_bytes
+    kb_id = await run_in_threadpool(sessions.ensure_kb, row, full_document)
     service = IngestService(
         client,
         kb_id,

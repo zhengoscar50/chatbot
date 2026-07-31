@@ -21,7 +21,7 @@ class FakeSessionService:
     def get_owned_session(self, session_id, owner_id):
         return None if session_id == "missing" else {"id": session_id, "kb_id": "kb-1"}
 
-    def ensure_kb(self, row):
+    def ensure_kb(self, row, full_document=False):
         return row["kb_id"]
 
 
@@ -111,7 +111,7 @@ def test_ingest_lazily_creates_kb_when_session_has_none(monkeypatch):
         def get_owned_session(self, session_id, owner_id):
             return {"id": session_id, "kb_id": ""}  # no KB yet
 
-        def ensure_kb(self, row):
+        def ensure_kb(self, row, full_document=False):
             return "kb-created-now"
 
     class LazyIngestService:
@@ -162,3 +162,63 @@ def test_ingest_returns_202_on_timeout(monkeypatch):
 
     assert response.status_code == 202
     assert response.json() == {"source_id": "src-3", "status": "pending"}
+
+
+class RoutingSessionService:
+    def __init__(self):
+        self.calls = []
+
+    def get_owned_session(self, session_id, owner_id):
+        return {"id": session_id, "kb_id": "kb-1"}
+
+    def ensure_kb(self, row, full_document=False):
+        self.calls.append(full_document)
+        return "kb-routed"
+
+
+class RoutedIngestService:
+    def __init__(self, client, kb_id, poll_interval, max_wait):
+        assert kb_id == "kb-routed"
+
+    def ingest_pdf(self, filename, content):
+        return {"source_id": "src-routed", "status": "indexed"}
+
+
+def build_routing_app(svc):
+    app = FastAPI()
+    app.include_router(ingest_route.router)
+    app.dependency_overrides[get_powabase_client] = lambda: object()
+    app.dependency_overrides[get_session_service] = lambda: svc
+    app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
+    return app
+
+
+def test_ingest_small_upload_routes_full_document_true(monkeypatch):
+    set_env(monkeypatch)
+    monkeypatch.setattr(ingest_route, "IngestService", RoutedIngestService)
+    svc = RoutingSessionService()
+
+    response = TestClient(build_routing_app(svc)).post(
+        "/ingest/file",
+        data={"session_id": "s1"},
+        files={"file": ("doc.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    assert svc.calls == [True]
+
+
+def test_ingest_large_upload_routes_full_document_false(monkeypatch):
+    set_env(monkeypatch)
+    monkeypatch.setattr(ingest_route, "IngestService", RoutedIngestService)
+    svc = RoutingSessionService()
+    large_content = b"%PDF-1.4" + b"0" * 131073
+
+    response = TestClient(build_routing_app(svc)).post(
+        "/ingest/file",
+        data={"session_id": "s1"},
+        files={"file": ("doc.pdf", io.BytesIO(large_content), "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    assert svc.calls == [False]
