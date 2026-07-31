@@ -60,7 +60,7 @@ def chat(
     gate = GateService(client, router_agent_id)
     service = ChatService(
         client, row["agent_id"], gate,
-        [row["kb_id"], general_kb_id],
+        [row["kb_id"], row.get("kb_full_id"), general_kb_id],
         settings.retrieval_top_k, settings.retrieval_max_context_tokens,
     )
     try:

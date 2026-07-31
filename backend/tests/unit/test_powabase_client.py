@@ -139,3 +139,25 @@ def test_create_agent_includes_settings_when_set():
     client.create_agent("r", model="gpt-4o-mini", system_prompt="p", settings={"temperature": 0})
     sent = json.loads(route.calls[0].request.content)
     assert sent["settings"] == {"temperature": 0}
+
+
+@respx.mock
+def test_create_kb_includes_indexing_config_when_set():
+    route = respx.post(f"{BASE_URL}/api/knowledge-bases").mock(
+        return_value=httpx.Response(201, json={"id": "kb-1"})
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    client.create_knowledge_base("n", description="d", indexing_config={"strategy": "full_document"})
+    sent = json.loads(route.calls[0].request.content)
+    assert sent == {"name": "n", "description": "d", "indexing_config": {"strategy": "full_document"}}
+
+
+@respx.mock
+def test_create_kb_omits_indexing_config_when_none():
+    route = respx.post(f"{BASE_URL}/api/knowledge-bases").mock(
+        return_value=httpx.Response(201, json={"id": "kb-1"})
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    client.create_knowledge_base("n")
+    sent = json.loads(route.calls[0].request.content)
+    assert "indexing_config" not in sent

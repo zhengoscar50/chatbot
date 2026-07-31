@@ -32,9 +32,10 @@ def test_gating_defaults(monkeypatch):
     from app.core.config import Settings
     s = Settings()
     assert s.router_agent_model == "gpt-4o-mini"
-    assert s.retrieval_top_k == 4
-    assert s.retrieval_max_context_tokens == 2000
+    assert s.retrieval_top_k == 8
+    assert s.retrieval_max_context_tokens == 16000
     assert s.gate_history_turns == 2
+    assert s.full_document_max_bytes == 131072
 
 
 def test_auth_settings(monkeypatch):
