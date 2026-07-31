@@ -50,6 +50,26 @@ def test_create_session_sets_owner_and_slug():
     assert row["user_slug"] == "alice"
     assert client.links == []
     assert client.inserted and client.inserted[0]["owner_id"] == "owner-1"
+    # KB is NOT created up front — it's lazy (see ensure_kb). Agent still is.
+    assert client.created_kbs == []
+    assert row["kb_id"] == ""
+    assert client.created_agents
+
+
+def test_ensure_kb_creates_and_persists_when_absent():
+    client = FakeClient()
+    kb_id = SessionService(client, model="m").ensure_kb({"id": "s1", "kb_id": ""})
+    assert kb_id == "kb-session-s1-kb"
+    assert client.created_kbs[0]["name"] == "session-s1-kb"
+    assert client.updated == [("s1", {"kb_id": "kb-session-s1-kb"})]
+
+
+def test_ensure_kb_returns_existing_without_creating():
+    client = FakeClient()
+    kb_id = SessionService(client, model="m").ensure_kb({"id": "s1", "kb_id": "kb-existing"})
+    assert kb_id == "kb-existing"
+    assert client.created_kbs == []
+    assert client.updated == []
 
 
 def test_create_session_defaults_name():

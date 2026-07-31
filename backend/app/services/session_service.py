@@ -38,9 +38,6 @@ class SessionService:
             raise ValueError("User name must contain at least one letter or number")
 
         session_id = str(uuid.uuid4())
-        kb = self.client.create_knowledge_base(
-            f"session-{session_id}-kb", description=f"Documents for session {session_id}"
-        )
         agent = self.client.create_agent(
             f"session-{session_id}-agent", model=self.model, system_prompt=SYSTEM_PROMPT
         )
@@ -50,10 +47,27 @@ class SessionService:
             "owner_id": owner_id,
             "user_slug": user_slug,
             "name": name or DEFAULT_NAME,
-            "kb_id": kb["id"],
+            "kb_id": "",  # created lazily on first upload — see ensure_kb()
             "agent_id": agent["id"],
         }
         return self.client.insert_session(row)
+
+    def ensure_kb(self, row: dict) -> str:
+        """Return the session's knowledge-base id, creating it on first use.
+
+        The KB is provisioned lazily: a session with no uploaded documents has
+        no KB (its row's ``kb_id`` is empty). The first upload calls this to
+        create ``session-<id>-kb`` and persist its id on the session row.
+        """
+        kb_id = row.get("kb_id")
+        if kb_id:
+            return kb_id
+        session_id = row["id"]
+        kb = self.client.create_knowledge_base(
+            f"session-{session_id}-kb", description=f"Documents for session {session_id}"
+        )
+        self.client.update_session(session_id, {"kb_id": kb["id"]})
+        return kb["id"]
 
     def list(self, owner_id: str) -> list:
         rows = self.client.list_sessions(owner_id)
