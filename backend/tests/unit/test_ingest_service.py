@@ -6,6 +6,7 @@ from app.services.ingest_service import (
     IndexingFailedError,
     IngestService,
     IngestTimeoutError,
+    source_status,
 )
 
 
@@ -95,3 +96,65 @@ def test_ingest_pdf_raises_timeout_when_extraction_never_terminates():
         service.ingest_pdf("doc.pdf", b"bytes")
 
     assert exc_info.value.status == "extracting"
+
+
+def test_start_uploads_and_returns_source_id():
+    client = FakeClient(source_statuses=["extracted"], index_statuses=["indexed"])
+    service = IngestService(client, kb_id="kb-1", poll_interval=0, max_wait=1)
+    source_id = service.start("doc.pdf", b"bytes")
+    assert source_id == "src-1"
+
+
+def test_finish_runs_extract_add_index():
+    client = FakeClient(source_statuses=["extracted"], index_statuses=["indexed"])
+    service = IngestService(client, kb_id="kb-1", poll_interval=0, max_wait=1)
+    sid = service.start("doc.pdf", b"bytes")
+    result = service.finish(sid)
+    assert result == "indexed"
+    assert client.added_to_kb == [("kb-1", "src-1")]
+
+
+def test_source_status_processing_indexed_failed():
+    # extraction still going
+    class C1:
+        def get_source(self, s):
+            return {"extraction_status": "extracting"}
+
+    assert source_status(C1(), "s", ["kb-1"]) == ("processing", None)
+
+    # needs OCR
+    class C2:
+        def get_source(self, s):
+            return {"extraction_status": "attention_required"}
+
+    assert source_status(C2(), "s", ["kb-1"])[0] == "failed"
+
+    # extracted + indexed in the KB
+    class C3:
+        def get_source(self, s):
+            return {"extraction_status": "extracted"}
+
+        def list_kb_sources(self, kb):
+            return {"items": [{"source_id": "s", "index_status": "indexed"}]}
+
+    assert source_status(C3(), "s", ["kb-1"]) == ("indexed", None)
+
+    # extracted but not yet added to any KB
+    class C4:
+        def get_source(self, s):
+            return {"extraction_status": "extracted"}
+
+        def list_kb_sources(self, kb):
+            return {"items": []}
+
+    assert source_status(C4(), "s", ["kb-1", ""]) == ("processing", None)
+
+    # indexing failed
+    class C5:
+        def get_source(self, s):
+            return {"extraction_status": "extracted"}
+
+        def list_kb_sources(self, kb):
+            return {"items": [{"source_id": "s", "index_status": "failed"}]}
+
+    assert source_status(C5(), "s", ["kb-1"])[0] == "failed"

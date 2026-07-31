@@ -31,6 +31,7 @@ let currentUsername = null;
 let authMode = "login"; // or "register"
 let currentSessionId = null;
 let isAsking = false;
+let uploadPollToken = 0;
 
 init();
 
@@ -360,6 +361,7 @@ attachButton.addEventListener("click", () => fileInput.click());
 fileInput.addEventListener("change", async () => {
   const file = fileInput.files[0];
   if (!file) return;
+  uploadPollToken++;
   if (!authToken) {
     fileInput.value = "";
     return;
@@ -385,7 +387,8 @@ fileInput.addEventListener("change", async () => {
       body = { detail: `${response.status} ${response.statusText}` };
     }
     if (response.ok || response.status === 202) {
-      showAttachment(file.name, body.status, body.status === "indexed" ? "ok" : null);
+      showAttachment(file.name, "Indexing…", null);
+      pollIngestStatus(sessionId, body.source_id, file.name);
     } else {
       showAttachment(file.name, errorText(body, response), "error");
     }
@@ -394,6 +397,36 @@ fileInput.addEventListener("change", async () => {
   }
   fileInput.value = "";
 });
+
+async function pollIngestStatus(sessionId, sourceId, fileName) {
+  const myToken = ++uploadPollToken;
+  const started = Date.now();
+  while (myToken === uploadPollToken) {
+    if (Date.now() - started > 10 * 60 * 1000) {
+      showAttachment(fileName, "Still processing — check back shortly.", null);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 3000));
+    if (myToken !== uploadPollToken) return;
+    try {
+      const res = await authFetch(`/ingest/status/${encodeURIComponent(sourceId)}?session_id=${encodeURIComponent(sessionId)}`);
+      if (!res.ok) continue; // transient — keep polling
+      const body = await res.json();
+      if (myToken !== uploadPollToken) return;
+      if (body.status === "indexed") {
+        showAttachment(fileName, "indexed", "ok");
+        return;
+      }
+      if (body.status === "failed") {
+        showAttachment(fileName, body.detail || "Indexing failed.", "error");
+        return;
+      }
+      // processing -> keep polling
+    } catch (err) {
+      // transient network error -> keep polling
+    }
+  }
+}
 
 chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();

@@ -36,6 +36,7 @@ def test_gating_defaults(monkeypatch):
     assert s.retrieval_max_context_tokens == 16000
     assert s.gate_history_turns == 2
     assert s.full_document_max_bytes == 131072
+    assert s.ingest_background_max_wait_seconds == 600
 
 
 def test_auth_settings(monkeypatch):

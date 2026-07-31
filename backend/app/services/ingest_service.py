@@ -35,13 +35,17 @@ class IngestService:
         self.poll_interval = poll_interval
         self.max_wait = max_wait
 
-    def ingest_pdf(self, filename: str, content: bytes) -> dict:
-        source = self.client.upload_source(filename, content)
-        source_id = source["id"]
+    def start(self, filename: str, content: bytes) -> str:
+        return self.client.upload_source(filename, content)["id"]
+
+    def finish(self, source_id: str) -> str:
         self._wait_for_extraction(source_id)
         self.client.add_source_to_kb(self.kb_id, source_id)
-        status = self._wait_for_indexing(source_id)
-        return {"source_id": source_id, "status": status}
+        return self._wait_for_indexing(source_id)
+
+    def ingest_pdf(self, filename: str, content: bytes) -> dict:
+        source_id = self.start(filename, content)
+        return {"source_id": source_id, "status": self.finish(source_id)}
 
     def _wait_for_extraction(self, source_id: str) -> None:
         deadline = time.monotonic() + self.max_wait
@@ -79,3 +83,28 @@ class IngestService:
             if time.monotonic() >= deadline:
                 raise IngestTimeoutError(source_id, status)
             time.sleep(self.poll_interval)
+
+
+def source_status(client, source_id: str, kb_ids) -> tuple:
+    """Coarse ingest status for a source: processing | indexed | failed."""
+    ext = client.get_source(source_id).get("extraction_status")
+    if ext == "attention_required":
+        return "failed", "Needs OCR re-extraction (low-quality/scanned PDF)."
+    if ext in ("failed", "cancelled"):
+        return "failed", "Extraction failed."
+    if ext != "extracted":
+        return "processing", None  # pending / extracting / unknown
+    for kb_id in kb_ids:
+        if not kb_id:
+            continue
+        items = client.list_kb_sources(kb_id).get("items", [])
+        entry = next((i for i in items if i.get("source_id") == source_id), None)
+        if entry is None:
+            continue
+        idx = entry.get("index_status")
+        if idx == "indexed":
+            return "indexed", None
+        if idx in ("failed", "cancelled"):
+            return "failed", "Indexing failed."
+        return "processing", None  # pending / indexing
+    return "processing", None  # extracted but not added to a KB yet
