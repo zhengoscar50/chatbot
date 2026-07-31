@@ -409,9 +409,10 @@ async function pollIngestStatus(sessionId, sourceId, fileName) {
     await new Promise((r) => setTimeout(r, 3000));
     if (myToken !== uploadPollToken) return;
     try {
-      const res = await authFetch(`/ingest/status/${sourceId}?session_id=${encodeURIComponent(sessionId)}`);
+      const res = await authFetch(`/ingest/status/${encodeURIComponent(sourceId)}?session_id=${encodeURIComponent(sessionId)}`);
       if (!res.ok) continue; // transient — keep polling
       const body = await res.json();
+      if (myToken !== uploadPollToken) return;
       if (body.status === "indexed") {
         showAttachment(fileName, "indexed", "ok");
         return;
