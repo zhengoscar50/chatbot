@@ -12,8 +12,8 @@ class FakeClient:
         self.inserted = []
         self.updated = []
 
-    def create_knowledge_base(self, name, description=""):
-        kb = {"id": f"kb-{name}", "name": name}
+    def create_knowledge_base(self, name, description="", indexing_config=None):
+        kb = {"id": f"kb-{name}", "name": name, "indexing_config": indexing_config}
         self.created_kbs.append(kb)
         return kb
 
@@ -72,6 +72,29 @@ def test_ensure_kb_returns_existing_without_creating():
     assert client.updated == []
 
 
+def test_ensure_kb_full_document_branch_creates_full_kb():
+    client = FakeClient()
+    kb_id = SessionService(client, model="m").ensure_kb({"id": "s1", "kb_full_id": ""}, full_document=True)
+    assert kb_id == "kb-session-s1-full"
+    assert client.created_kbs[0]["name"] == "session-s1-full"
+    assert client.created_kbs[0]["indexing_config"] == {"strategy": "full_document"}
+    assert client.updated == [("s1", {"kb_full_id": "kb-session-s1-full"})]
+
+
+def test_ensure_kb_chunk_branch_passes_no_indexing_config():
+    client = FakeClient()
+    SessionService(client, model="m").ensure_kb({"id": "s1", "kb_id": ""})
+    assert client.created_kbs[0]["indexing_config"] is None
+
+
+def test_ensure_kb_full_returns_existing_without_creating():
+    client = FakeClient()
+    assert SessionService(client, model="m").ensure_kb(
+        {"id": "s1", "kb_full_id": "kb-existing"}, full_document=True
+    ) == "kb-existing"
+    assert client.created_kbs == []
+
+
 def test_create_session_defaults_name():
     service = SessionService(FakeClient(), model="m")
     row = service.create_session("owner-1", "alice")
@@ -121,7 +144,7 @@ def test_create_session_does_not_link_kbs_even_with_general_kb():
 
 
 def test_delete_removes_resources_and_row():
-    client = FakeClient(rows=[{"id": "s1", "user_slug": "alice", "kb_id": "kb1", "agent_id": "a1"}])
+    client = FakeClient(rows=[{"id": "s1", "user_slug": "alice", "kb_id": "kb1", "kb_full_id": "kbf", "agent_id": "a1"}])
     client.deleted_kbs = []
     client.deleted_agents = []
     client.deleted_rows = []
@@ -133,7 +156,7 @@ def test_delete_removes_resources_and_row():
     result = service.delete("s1")
 
     assert result is True
-    assert client.deleted_kbs == ["kb1"]
+    assert set(client.deleted_kbs) == {"kb1", "kbf"}
     assert client.deleted_agents == ["a1"]
     assert client.deleted_rows == ["s1"]
 

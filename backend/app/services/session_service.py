@@ -52,21 +52,30 @@ class SessionService:
         }
         return self.client.insert_session(row)
 
-    def ensure_kb(self, row: dict) -> str:
-        """Return the session's knowledge-base id, creating it on first use.
+    def ensure_kb(self, row: dict, full_document: bool = False) -> str:
+        """Return the session KB id for this document class, creating it lazily.
 
-        The KB is provisioned lazily: a session with no uploaded documents has
-        no KB (its row's ``kb_id`` is empty). The first upload calls this to
-        create ``session-<id>-kb`` and persist its id on the session row.
+        A session grows up to two KBs: a chunk_embed KB (``kb_id``) for large
+        documents and a full_document KB (``kb_full_id``) for small ones. The
+        first upload of each class creates that KB and persists its id.
         """
-        kb_id = row.get("kb_id")
-        if kb_id:
-            return kb_id
+        column = "kb_full_id" if full_document else "kb_id"
+        existing = row.get(column)
+        if existing:
+            return existing
         session_id = row["id"]
+        if full_document:
+            name = f"session-{session_id}-full"
+            indexing_config = {"strategy": "full_document"}
+        else:
+            name = f"session-{session_id}-kb"
+            indexing_config = None
         kb = self.client.create_knowledge_base(
-            f"session-{session_id}-kb", description=f"Documents for session {session_id}"
+            name,
+            description=f"Documents for session {session_id}",
+            indexing_config=indexing_config,
         )
-        self.client.update_session(session_id, {"kb_id": kb["id"]})
+        self.client.update_session(session_id, {column: kb["id"]})
         return kb["id"]
 
     def list(self, owner_id: str) -> list:
@@ -105,6 +114,7 @@ class SessionService:
             return False
         for resource_id, delete_fn in (
             (row.get("kb_id"), self.client.delete_knowledge_base),
+            (row.get("kb_full_id"), self.client.delete_knowledge_base),
             (row.get("agent_id"), self.client.delete_agent),
         ):
             if resource_id:
