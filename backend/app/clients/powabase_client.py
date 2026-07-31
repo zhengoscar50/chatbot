@@ -60,10 +60,13 @@ class PowabaseClient:
         self._raise_for_status(response)
         return response.json()
 
-    def create_knowledge_base(self, name: str, description: str = "") -> dict:
-        response = self._client.post(
-            "/api/knowledge-bases", json={"name": name, "description": description}
-        )
+    def create_knowledge_base(
+        self, name: str, description: str = "", indexing_config: dict | None = None
+    ) -> dict:
+        body: dict = {"name": name, "description": description}
+        if indexing_config is not None:
+            body["indexing_config"] = indexing_config
+        response = self._client.post("/api/knowledge-bases", json=body)
         self._raise_for_status(response)
         return response.json()
 
