@@ -22,6 +22,12 @@ class IngestResponse(BaseModel):
     status: str
 
 
+class IngestStatusResponse(BaseModel):
+    source_id: str
+    status: str
+    detail: Optional[str] = None
+
+
 class ChatRequest(BaseModel):
     session_id: str = Field(..., min_length=1)
     query: str = Field(..., min_length=1)
