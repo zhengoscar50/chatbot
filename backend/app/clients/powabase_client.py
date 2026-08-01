@@ -311,7 +311,6 @@ class PowabaseClient:
         return response.json()
 
     def run_orchestration_stream(self, orch_id: str, message: str, on_event) -> None:
-        import json as _json
         with self._client.stream(
             "POST", f"/api/orchestrations/{orch_id}/run/stream",
             json={"message": message}, timeout=300.0,
@@ -320,22 +319,31 @@ class PowabaseClient:
                 response.read()
                 self._raise_for_status(response)
             buf: list = []
+            event_name: list = [None]  # boxed so the closure can rebind it
             def _flush():
                 if not buf:
+                    event_name[0] = None
                     return
                 payload = "\n".join(buf)
                 buf.clear()
                 try:
-                    data = _json.loads(payload)
-                except ValueError:
+                    data = json.loads(payload)
+                except json.JSONDecodeError:
                     data = {"raw": payload}
-                name = data.get("event") if isinstance(data, dict) else None
+                # Mirror parse_sse: a literal "event:" line wins if present,
+                # else the discriminator is the JSON body's own "event" key.
+                name = event_name[0]
+                if name is None and isinstance(data, dict):
+                    name = data.get("event")
+                event_name[0] = None
                 on_event(name or "message", data)
             for line in response.iter_lines():
                 if line == "":
                     _flush()
                 elif line.startswith(":"):
                     continue
+                elif line.startswith("event:"):
+                    event_name[0] = line[len("event:"):].strip()
                 elif line.startswith("data:"):
                     buf.append(line[len("data:"):].strip())
             _flush()
