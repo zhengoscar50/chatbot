@@ -29,7 +29,7 @@ class IngestTimeoutError(Exception):
 
 
 class IngestService:
-    def __init__(self, client, kb_id: str, poll_interval: float = 2.0, max_wait: float = 60.0):
+    def __init__(self, client, kb_id: str = None, poll_interval: float = 2.0, max_wait: float = 60.0):
         self.client = client
         self.kb_id = kb_id
         self.poll_interval = poll_interval
@@ -38,10 +38,19 @@ class IngestService:
     def start(self, filename: str, content: bytes) -> str:
         return self.client.upload_source(filename, content)["id"]
 
-    def finish(self, source_id: str) -> str:
+    def await_extraction(self, source_id: str) -> None:
         self._wait_for_extraction(source_id)
-        self.client.add_source_to_kb(self.kb_id, source_id)
-        return self._wait_for_indexing(source_id)
+
+    def char_count(self, source_id: str) -> int:
+        return self.client.get_source(source_id).get("auto_metadata", {}).get("char_count") or 0
+
+    def index_into(self, kb_id: str, source_id: str) -> str:
+        self.client.add_source_to_kb(kb_id, source_id)
+        return self._wait_for_indexing(kb_id, source_id)
+
+    def finish(self, source_id: str) -> str:
+        self.await_extraction(source_id)
+        return self.index_into(self.kb_id, source_id)
 
     def ingest_pdf(self, filename: str, content: bytes) -> dict:
         source_id = self.start(filename, content)
@@ -62,10 +71,10 @@ class IngestService:
                 raise IngestTimeoutError(source_id, status)
             time.sleep(self.poll_interval)
 
-    def _wait_for_indexing(self, source_id: str) -> str:
+    def _wait_for_indexing(self, kb_id: str, source_id: str) -> str:
         deadline = time.monotonic() + self.max_wait
         while True:
-            sources = self.client.list_kb_sources(self.kb_id)
+            sources = self.client.list_kb_sources(kb_id)
             entry = next(
                 (item for item in sources["items"] if item.get("source_id") == source_id),
                 None,

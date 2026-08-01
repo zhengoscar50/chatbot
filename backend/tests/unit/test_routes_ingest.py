@@ -26,13 +26,21 @@ class FakeSessionService:
 
 
 class FakeIngestService:
-    def __init__(self, client, kb_id, poll_interval, max_wait):
-        assert kb_id == "kb-1"
+    def __init__(self, client, poll_interval=0, max_wait=0):
+        pass
 
     def start(self, filename, content):
         return "src-1"
 
-    def finish(self, source_id):  # runs in the background task (TestClient executes it)
+    def await_extraction(self, source_id):
+        pass
+
+    char_count_value = 100  # class attr the test tweaks for small/large
+
+    def char_count(self, source_id):
+        return type(self).char_count_value
+
+    def index_into(self, kb_id, source_id):
         return "indexed"
 
 
@@ -53,7 +61,7 @@ def upload(client, session_id="s1"):
     )
 
 
-def test_ingest_routes_to_session_kb(monkeypatch):
+def test_ingest_returns_202_processing(monkeypatch):
     set_env(monkeypatch)
     monkeypatch.setattr(ingest_route, "IngestService", FakeIngestService)
 
@@ -105,62 +113,16 @@ def test_ingest_404_for_non_owned_session(monkeypatch):
     assert response.status_code == 404
 
 
-def test_ingest_lazily_creates_kb_when_session_has_none(monkeypatch):
-    # A session with no documents has an empty kb_id; the upload provisions the
-    # KB via ensure_kb, and the route ingests into that freshly-created KB.
-    set_env(monkeypatch)
-
-    class LazySessionService:
-        def get_owned_session(self, session_id, owner_id):
-            return {"id": session_id, "kb_id": ""}  # no KB yet
-
-        def ensure_kb(self, row, full_document=False):
-            return "kb-created-now"
-
-    class LazyIngestService:
-        def __init__(self, client, kb_id, poll_interval, max_wait):
-            assert kb_id == "kb-created-now"  # route used the lazily-created KB
-
-        def start(self, filename, content):
-            return "src-lazy"
-
-        def finish(self, source_id):
-            return "indexed"
-
-    monkeypatch.setattr(ingest_route, "IngestService", LazyIngestService)
-    app = FastAPI()
-    app.include_router(ingest_route.router)
-    app.dependency_overrides[get_powabase_client] = lambda: object()
-    app.dependency_overrides[get_session_service] = lambda: LazySessionService()
-    app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
-
-    response = upload(TestClient(app))
-
-    assert response.status_code == 202
-    assert response.json()["source_id"] == "src-lazy"
-
-
 class RoutingSessionService:
     def __init__(self):
         self.calls = []
 
     def get_owned_session(self, session_id, owner_id):
-        return {"id": session_id, "kb_id": "kb-1"}
+        return {"id": session_id, "kb_id": "", "kb_full_id": ""}
 
     def ensure_kb(self, row, full_document=False):
         self.calls.append(full_document)
         return "kb-routed"
-
-
-class RoutedIngestService:
-    def __init__(self, client, kb_id, poll_interval, max_wait):
-        assert kb_id == "kb-routed"
-
-    def start(self, filename, content):
-        return "src-routed"
-
-    def finish(self, source_id):
-        return "indexed"
 
 
 def build_routing_app(svc):
@@ -172,9 +134,12 @@ def build_routing_app(svc):
     return app
 
 
-def test_ingest_small_upload_routes_full_document_true(monkeypatch):
+def test_ingest_small_char_count_routes_full_document_true(monkeypatch):
+    # Routing now happens in the background task (TestClient runs it after
+    # the response), driven by the extracted char_count, not upload size.
     set_env(monkeypatch)
-    monkeypatch.setattr(ingest_route, "IngestService", RoutedIngestService)
+    monkeypatch.setattr(ingest_route, "IngestService", FakeIngestService)
+    FakeIngestService.char_count_value = 100
     svc = RoutingSessionService()
 
     response = TestClient(build_routing_app(svc)).post(
@@ -187,16 +152,16 @@ def test_ingest_small_upload_routes_full_document_true(monkeypatch):
     assert svc.calls == [True]
 
 
-def test_ingest_large_upload_routes_full_document_false(monkeypatch):
+def test_ingest_large_char_count_routes_full_document_false(monkeypatch):
     set_env(monkeypatch)
-    monkeypatch.setattr(ingest_route, "IngestService", RoutedIngestService)
+    monkeypatch.setattr(ingest_route, "IngestService", FakeIngestService)
+    FakeIngestService.char_count_value = 200000
     svc = RoutingSessionService()
-    large_content = b"%PDF-1.4" + b"0" * 131073
 
     response = TestClient(build_routing_app(svc)).post(
         "/ingest/file",
         data={"session_id": "s1"},
-        files={"file": ("doc.pdf", io.BytesIO(large_content), "application/pdf")},
+        files={"file": ("doc.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
     )
 
     assert response.status_code == 202

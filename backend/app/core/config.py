@@ -24,11 +24,11 @@ class Settings(BaseSettings):
     ingest_background_max_wait_seconds: int = 600
     router_agent_model: str = "gpt-4o-mini"
     retrieval_top_k: int = 8
-    retrieval_max_context_tokens: int = 16000
+    retrieval_max_context_tokens: int = 32000
     gate_history_turns: int = 2
     reranker_model: str = "cohere/rerank-english-v3.0"
     reranker_candidate_count: int = 20
-    full_document_max_bytes: int = 131072
+    full_document_max_chars: int = 120000
 
 
 @lru_cache

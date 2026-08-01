@@ -15,6 +15,7 @@ class FakeClient:
         self.source_statuses = list(source_statuses)
         self.index_statuses = list(index_statuses)
         self.added_to_kb = []
+        self.listed_kbs = []
 
     def upload_source(self, filename, content):
         return {"id": "src-1"}
@@ -32,6 +33,7 @@ class FakeClient:
         return {"id": "indexed-1"}
 
     def list_kb_sources(self, kb_id):
+        self.listed_kbs.append(kb_id)
         status = (
             self.index_statuses.pop(0)
             if len(self.index_statuses) > 1
@@ -158,3 +160,34 @@ def test_source_status_processing_indexed_failed():
             return {"items": [{"source_id": "s", "index_status": "failed"}]}
 
     assert source_status(C5(), "s", ["kb-1"])[0] == "failed"
+
+
+def test_char_count_reads_auto_metadata():
+    class C:
+        def get_source(self, s):
+            return {"auto_metadata": {"char_count": 4200}}
+
+    assert IngestService(C(), None, poll_interval=0, max_wait=1).char_count("s") == 4200
+
+
+def test_char_count_zero_when_missing():
+    class C:
+        def get_source(self, s):
+            return {}
+
+    assert IngestService(C(), None, poll_interval=0, max_wait=1).char_count("s") == 0
+
+
+def test_index_into_adds_then_waits():
+    client = FakeClient(["extracted"], ["indexed"])
+    svc = IngestService(client, None, poll_interval=0, max_wait=1)
+    assert svc.index_into("kb-9", "src-1") == "indexed"
+    assert client.added_to_kb == [("kb-9", "src-1")]
+    assert "kb-9" in client.listed_kbs
+
+
+def test_await_extraction_ok_and_finish_still_works():
+    client = FakeClient(["extracted"], ["indexed"])
+    svc = IngestService(client, "kb-1", poll_interval=0, max_wait=1)
+    svc.await_extraction("src-1")  # no raise
+    assert svc.finish("src-1") == "indexed"  # admin path intact
