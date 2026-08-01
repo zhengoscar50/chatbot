@@ -12,7 +12,30 @@
   --gradient: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 55%, var(--accent-3) 100%);
   --error: #d1453b;
   --ok: #1a7f4b;
+  --accent-surface: #f5f3ff;
+  --accent-border: #e3ddff;
+  --accent-hover: #ece9ff;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+/* Dark theme — data-theme is set pre-paint (see the inline <head> script) from
+   the saved preference, else the OS setting. Tokens flow to every component. */
+:root[data-theme="dark"] {
+  --bg: #131316;
+  --bg-subtle: #1c1c22;
+  --text: #ececf1;
+  --text-muted: #9a9aac;
+  --border: #2c2c34;
+  --bubble-user: #262a40;
+  --accent: #6d8ff0;
+  --accent-2: #9a7dff;
+  --accent-3: #ff8ac0;
+  --accent-contrast: #ffffff;
+  --error: #f0756b;
+  --ok: #46cd8c;
+  --accent-surface: #201c33;
+  --accent-border: #35306a;
+  --accent-hover: #272250;
 }
 
 * {
@@ -178,8 +201,8 @@ body {
 }
 
 .refs li {
-  background: #f5f3ff;
-  border: 1px solid #e3ddff;
+  background: var(--accent-surface);
+  border: 1px solid var(--accent-border);
   border-radius: 999px;
   padding: 0.2rem 0.65rem;
   font-size: 0.72rem;
@@ -274,7 +297,7 @@ body {
 }
 
 .icon-btn:hover {
-  background: #ece9ff;
+  background: var(--accent-hover);
   border-color: var(--accent-2);
   color: var(--accent-2);
 }
@@ -631,7 +654,7 @@ body {
 }
 
 .session-list li:hover {
-  background: #ece9ff;
+  background: var(--accent-hover);
 }
 
 .session-list li.active {
@@ -917,4 +940,26 @@ body {
 .user-sessions__status--error,
 .user-messages__status--error {
   color: var(--error);
+}
+
+/* ---------- theme toggle (sun / moon) ---------- */
+.topbar__theme {
+  position: absolute;
+  right: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+}
+.admin-head .theme-toggle {
+  margin-left: 0.5rem;
+  flex: none;
+}
+/* Light theme shows the moon (click → dark); dark shows the sun (click → light). */
+.theme-ico--sun {
+  display: none;
+}
+:root[data-theme="dark"] .theme-ico--moon {
+  display: none;
+}
+:root[data-theme="dark"] .theme-ico--sun {
+  display: block;
 }
