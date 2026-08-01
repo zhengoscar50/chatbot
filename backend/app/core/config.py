@@ -28,7 +28,6 @@ class Settings(BaseSettings):
     gate_history_turns: int = 2
     reranker_model: str = "cohere/rerank-english-v3.0"
     reranker_candidate_count: int = 20
-    full_document_max_bytes: int = 131072
     full_document_max_chars: int = 120000
 
 

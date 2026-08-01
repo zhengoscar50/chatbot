@@ -19,10 +19,14 @@ from app.services.session_service import SessionService, get_session_service
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 
-def _run_finish(service: IngestService, source_id: str) -> None:
-    # Background completion; failures are observable via GET /ingest/status.
+def _run_finish(service: IngestService, sessions: SessionService, row: dict, source_id: str, max_chars: int) -> None:
+    # Runs post-response: decide the KB by extracted size, then index.
+    # Failures are observable via GET /ingest/status.
     try:
-        service.finish(source_id)
+        service.await_extraction(source_id)
+        full_document = 0 < service.char_count(source_id) <= max_chars
+        kb_id = sessions.ensure_kb(row, full_document)
+        service.index_into(kb_id, source_id)
     except (
         AttentionRequiredError,
         ExtractionFailedError,
@@ -48,14 +52,8 @@ async def ingest_file(
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Route by size: small docs get a full_document KB (returned whole on a
-    # match); larger docs get the chunk_embed KB. The session's KB for that
-    # class is created lazily — this first matching upload provisions it.
-    full_document = len(content) <= settings.full_document_max_bytes
-    kb_id = await run_in_threadpool(sessions.ensure_kb, row, full_document)
     service = IngestService(
         client,
-        kb_id,
         poll_interval=settings.poll_interval_seconds,
         max_wait=settings.ingest_background_max_wait_seconds,
     )
@@ -64,7 +62,9 @@ async def ingest_file(
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    background_tasks.add_task(_run_finish, service, source_id)
+    background_tasks.add_task(
+        _run_finish, service, sessions, row, source_id, settings.full_document_max_chars
+    )
     return JSONResponse(
         status_code=202,
         content=IngestResponse(source_id=source_id, status="processing").model_dump(),
