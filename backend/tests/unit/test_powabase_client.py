@@ -161,3 +161,24 @@ def test_create_kb_omits_indexing_config_when_none():
     client.create_knowledge_base("n")
     sent = json.loads(route.calls[0].request.content)
     assert "indexing_config" not in sent
+
+
+@respx.mock
+def test_create_kb_includes_retrieval_config_when_set():
+    route = respx.post(f"{BASE_URL}/api/knowledge-bases").mock(
+        return_value=httpx.Response(201, json={"id": "kb-1"})
+    )
+    PowabaseClient(BASE_URL, "k").create_knowledge_base(
+        "n", retrieval_config={"reranker": {"model": "m", "candidate_count": 20}}
+    )
+    sent = json.loads(route.calls[0].request.content)
+    assert sent["retrieval_config"] == {"reranker": {"model": "m", "candidate_count": 20}}
+
+
+@respx.mock
+def test_update_knowledge_base_patches():
+    route = respx.patch(f"{BASE_URL}/api/knowledge-bases/kb-1").mock(
+        return_value=httpx.Response(200, json={"id": "kb-1"})
+    )
+    PowabaseClient(BASE_URL, "k").update_knowledge_base("kb-1", {"retrieval_config": {"x": 1}})
+    assert json.loads(route.calls[0].request.content) == {"retrieval_config": {"x": 1}}
