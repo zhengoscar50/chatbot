@@ -61,17 +61,25 @@ class PowabaseClient:
         return response.json()
 
     def create_knowledge_base(
-        self, name: str, description: str = "", indexing_config: dict | None = None
+        self, name: str, description: str = "",
+        indexing_config: dict | None = None, retrieval_config: dict | None = None,
     ) -> dict:
         body: dict = {"name": name, "description": description}
         if indexing_config is not None:
             body["indexing_config"] = indexing_config
+        if retrieval_config is not None:
+            body["retrieval_config"] = retrieval_config
         response = self._client.post("/api/knowledge-bases", json=body)
         self._raise_for_status(response)
         return response.json()
 
     def get_knowledge_base(self, kb_id: str) -> dict:
         response = self._client.get(f"/api/knowledge-bases/{kb_id}")
+        self._raise_for_status(response)
+        return response.json()
+
+    def update_knowledge_base(self, kb_id: str, fields: dict) -> dict:
+        response = self._client.patch(f"/api/knowledge-bases/{kb_id}", json=fields)
         self._raise_for_status(response)
         return response.json()
 

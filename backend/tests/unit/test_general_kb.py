@@ -9,8 +9,8 @@ class FakeClient:
     def list_knowledge_bases(self):
         return {"knowledge_bases": self.kbs}
 
-    def create_knowledge_base(self, name, description=""):
-        kb = {"id": f"kb-{name}", "name": name}
+    def create_knowledge_base(self, name, description="", retrieval_config=None):
+        kb = {"id": f"kb-{name}", "name": name, "retrieval_config": retrieval_config}
         self.kbs.append(kb)
         self.created.append(kb)
         return kb
@@ -28,3 +28,9 @@ def test_ensure_general_kb_reuses_when_present():
     kb_id = ensure_general_kb(client)
     assert kb_id == "kb-existing"
     assert client.created == []
+
+
+def test_ensure_general_kb_passes_reranker_config():
+    client = FakeClient()
+    ensure_general_kb(client, reranker_config={"reranker": {"model": "m", "candidate_count": 20}})
+    assert client.created and client.created[0].get("retrieval_config") == {"reranker": {"model": "m", "candidate_count": 20}}

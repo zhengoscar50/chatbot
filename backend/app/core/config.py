@@ -26,6 +26,8 @@ class Settings(BaseSettings):
     retrieval_top_k: int = 8
     retrieval_max_context_tokens: int = 16000
     gate_history_turns: int = 2
+    reranker_model: str = "cohere/rerank-english-v3.0"
+    reranker_candidate_count: int = 20
     full_document_max_bytes: int = 131072
 
 

@@ -27,10 +27,17 @@ def _now_iso() -> str:
 
 
 class SessionService:
-    def __init__(self, client, model: str, general_kb_id: str | None = None):
+    def __init__(
+        self,
+        client,
+        model: str,
+        general_kb_id: str | None = None,
+        reranker_config: dict | None = None,
+    ):
         self.client = client
         self.model = model
         self.general_kb_id = general_kb_id
+        self.reranker_config = reranker_config
 
     def create_session(self, owner_id: str, username: str, name: str | None = None) -> dict:
         user_slug = slugify(username)
@@ -74,6 +81,7 @@ class SessionService:
             name,
             description=f"Documents for session {session_id}",
             indexing_config=indexing_config,
+            retrieval_config=self.reranker_config,
         )
         self.client.update_session(session_id, {column: kb["id"]})
         return kb["id"]

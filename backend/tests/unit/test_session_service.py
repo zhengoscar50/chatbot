@@ -12,8 +12,8 @@ class FakeClient:
         self.inserted = []
         self.updated = []
 
-    def create_knowledge_base(self, name, description="", indexing_config=None):
-        kb = {"id": f"kb-{name}", "name": name, "indexing_config": indexing_config}
+    def create_knowledge_base(self, name, description="", indexing_config=None, retrieval_config=None):
+        kb = {"id": f"kb-{name}", "name": name, "indexing_config": indexing_config, "retrieval_config": retrieval_config}
         self.created_kbs.append(kb)
         return kb
 
@@ -167,6 +167,13 @@ def test_delete_returns_false_for_missing_session():
     service = SessionService(client, model="m")
 
     assert service.delete("missing") is False
+
+
+def test_ensure_kb_passes_reranker_config():
+    client = FakeClient()
+    svc = SessionService(client, model="m", reranker_config={"reranker": {"model": "m", "candidate_count": 20}})
+    svc.ensure_kb({"id": "s1", "kb_id": ""})
+    assert client.created_kbs[0]["retrieval_config"] == {"reranker": {"model": "m", "candidate_count": 20}}
 
 
 def test_delete_is_best_effort_on_resource_cleanup():

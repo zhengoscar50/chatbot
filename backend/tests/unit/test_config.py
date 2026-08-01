@@ -37,6 +37,8 @@ def test_gating_defaults(monkeypatch):
     assert s.gate_history_turns == 2
     assert s.full_document_max_bytes == 131072
     assert s.ingest_background_max_wait_seconds == 600
+    assert s.reranker_model == "cohere/rerank-english-v3.0"
+    assert s.reranker_candidate_count == 20
 
 
 def test_auth_settings(monkeypatch):
