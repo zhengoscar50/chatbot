@@ -18,7 +18,7 @@ def test_app_starts_when_powabase_reachable(monkeypatch):
     monkeypatch.setattr(
         main_module.PowabaseClient, "list_agents", lambda self: {"agents": []}
     )
-    monkeypatch.setattr(main_module, "ensure_general_kb", lambda client: "gkb-1")
+    monkeypatch.setattr(main_module, "ensure_general_kb", lambda client, reranker_config=None: "gkb-1")
     monkeypatch.setattr(main_module, "ensure_router_agent", lambda client, model: "router-1")
 
     app = main_module.create_app()
