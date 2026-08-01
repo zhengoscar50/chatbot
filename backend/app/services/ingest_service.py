@@ -46,7 +46,7 @@ class IngestService:
 
     def index_into(self, kb_id: str, source_id: str) -> str:
         self.client.add_source_to_kb(kb_id, source_id)
-        return self._wait_for_indexing(source_id)
+        return self._wait_for_indexing(kb_id, source_id)
 
     def finish(self, source_id: str) -> str:
         self.await_extraction(source_id)
@@ -71,10 +71,10 @@ class IngestService:
                 raise IngestTimeoutError(source_id, status)
             time.sleep(self.poll_interval)
 
-    def _wait_for_indexing(self, source_id: str) -> str:
+    def _wait_for_indexing(self, kb_id: str, source_id: str) -> str:
         deadline = time.monotonic() + self.max_wait
         while True:
-            sources = self.client.list_kb_sources(self.kb_id)
+            sources = self.client.list_kb_sources(kb_id)
             entry = next(
                 (item for item in sources["items"] if item.get("source_id") == source_id),
                 None,

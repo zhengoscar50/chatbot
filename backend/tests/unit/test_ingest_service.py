@@ -15,6 +15,7 @@ class FakeClient:
         self.source_statuses = list(source_statuses)
         self.index_statuses = list(index_statuses)
         self.added_to_kb = []
+        self.listed_kbs = []
 
     def upload_source(self, filename, content):
         return {"id": "src-1"}
@@ -32,6 +33,7 @@ class FakeClient:
         return {"id": "indexed-1"}
 
     def list_kb_sources(self, kb_id):
+        self.listed_kbs.append(kb_id)
         status = (
             self.index_statuses.pop(0)
             if len(self.index_statuses) > 1
@@ -181,6 +183,7 @@ def test_index_into_adds_then_waits():
     svc = IngestService(client, None, poll_interval=0, max_wait=1)
     assert svc.index_into("kb-9", "src-1") == "indexed"
     assert client.added_to_kb == [("kb-9", "src-1")]
+    assert "kb-9" in client.listed_kbs
 
 
 def test_await_extraction_ok_and_finish_still_works():
