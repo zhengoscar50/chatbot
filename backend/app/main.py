@@ -12,6 +12,7 @@ from app.api.routes.sessions import router as sessions_router
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient
 from app.core.config import FRONTEND_DIR, get_settings
 from app.services.general_kb import ensure_general_kb
+from app.services.research_pipeline import ensure_research_pipeline
 from app.services.retrieval import reranker_retrieval_config
 from app.services.router_agent import ensure_router_agent
 from app.services.session_service import SessionService
@@ -29,11 +30,17 @@ async def lifespan(app: FastAPI):
             )
             general_kb_id = ensure_general_kb(client, reranker_config)
             router_agent_id = ensure_router_agent(client, settings.router_agent_model)
+            research_orchestration_id = ensure_research_pipeline(
+                client, settings.research_researcher_model,
+                settings.research_analyst_model, settings.research_writer_model,
+            )
         except PowabaseAPIError as e:
             raise RuntimeError(f"Powabase is not reachable: {e}") from e
         app.state.powabase_client = client
         app.state.general_kb_id = general_kb_id
         app.state.router_agent_id = router_agent_id
+        app.state.research_orchestration_id = research_orchestration_id
+        app.state.research_jobs = {}
         app.state.session_service = SessionService(
             client, settings.powabase_agent_model, general_kb_id, reranker_config
         )

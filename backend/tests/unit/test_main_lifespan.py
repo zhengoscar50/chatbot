@@ -20,6 +20,7 @@ def test_app_starts_when_powabase_reachable(monkeypatch):
     )
     monkeypatch.setattr(main_module, "ensure_general_kb", lambda client, reranker_config=None: "gkb-1")
     monkeypatch.setattr(main_module, "ensure_router_agent", lambda client, model: "router-1")
+    monkeypatch.setattr(main_module, "ensure_research_pipeline", lambda *a, **k: "orch-1")
 
     app = main_module.create_app()
     with TestClient(app) as client:
@@ -29,6 +30,7 @@ def test_app_starts_when_powabase_reachable(monkeypatch):
         assert app.state.general_kb_id == "gkb-1"
         assert app.state.session_service.general_kb_id == "gkb-1"
         assert app.state.router_agent_id == "router-1"
+        assert app.state.research_orchestration_id == "orch-1"
 
 
 def test_app_fails_to_start_when_powabase_unreachable(monkeypatch):

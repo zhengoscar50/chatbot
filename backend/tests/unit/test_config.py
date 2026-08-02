@@ -39,6 +39,11 @@ def test_gating_defaults(monkeypatch):
     assert s.ingest_background_max_wait_seconds == 600
     assert s.reranker_model == "cohere/rerank-english-v3.0"
     assert s.reranker_candidate_count == 20
+    assert s.research_top_k == 12
+    assert s.research_max_context_tokens == 24000
+    assert s.research_researcher_model == "gpt-4o-mini"
+    assert s.research_analyst_model == "claude-sonnet-5"
+    assert s.research_writer_model == "gpt-4o-mini"
 
 
 def test_auth_settings(monkeypatch):

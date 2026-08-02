@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     reranker_model: str = "cohere/rerank-english-v3.0"
     reranker_candidate_count: int = 20
     full_document_max_chars: int = 120000
+    research_top_k: int = 12
+    research_max_context_tokens: int = 24000
+    research_researcher_model: str = "gpt-4o-mini"
+    research_analyst_model: str = "claude-sonnet-5"
+    research_writer_model: str = "gpt-4o-mini"
 
 
 @lru_cache
