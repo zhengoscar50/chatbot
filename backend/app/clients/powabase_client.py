@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 
 import httpx
@@ -284,6 +285,68 @@ class PowabaseClient:
         )
         self._raise_for_status(response)
         return response.json()
+
+    # Orchestrations ---------------------------------------------------------
+
+    def create_orchestration(self, name: str, strategy: str, orchestrator_config: dict | None = None) -> dict:
+        body: dict = {"name": name, "strategy": strategy}
+        if orchestrator_config is not None:
+            body["orchestrator_config"] = orchestrator_config
+        response = self._client.post("/api/orchestrations", json=body)
+        self._raise_for_status(response)
+        return response.json()
+
+    def add_orchestration_entity(self, orch_id: str, agent_id: str, role_description: str, position: int = 0) -> dict:
+        response = self._client.post(
+            f"/api/orchestrations/{orch_id}/entities",
+            json={"entity_type": "agent", "entity_ref_id": agent_id,
+                  "role_description": role_description, "position": position},
+        )
+        self._raise_for_status(response)
+        return response.json()
+
+    def list_orchestrations(self) -> dict:
+        response = self._client.get("/api/orchestrations")
+        self._raise_for_status(response)
+        return response.json()
+
+    def run_orchestration_stream(self, orch_id: str, message: str, on_event) -> None:
+        with self._client.stream(
+            "POST", f"/api/orchestrations/{orch_id}/run/stream",
+            json={"message": message}, timeout=300.0,
+        ) as response:
+            if response.status_code >= 400:
+                response.read()
+                self._raise_for_status(response)
+            buf: list = []
+            event_name: list = [None]  # boxed so the closure can rebind it
+            def _flush():
+                if not buf:
+                    event_name[0] = None
+                    return
+                payload = "\n".join(buf)
+                buf.clear()
+                try:
+                    data = json.loads(payload)
+                except json.JSONDecodeError:
+                    data = {"raw": payload}
+                # Mirror parse_sse: a literal "event:" line wins if present,
+                # else the discriminator is the JSON body's own "event" key.
+                name = event_name[0]
+                if name is None and isinstance(data, dict):
+                    name = data.get("event")
+                event_name[0] = None
+                on_event(name or "message", data)
+            for line in response.iter_lines():
+                if line == "":
+                    _flush()
+                elif line.startswith(":"):
+                    continue
+                elif line.startswith("event:"):
+                    event_name[0] = line[len("event:"):].strip()
+                elif line.startswith("data:"):
+                    buf.append(line[len("data:"):].strip())
+            _flush()
 
 
 def get_powabase_client(request: Request) -> PowabaseClient:

@@ -106,3 +106,21 @@ class AuthResponse(BaseModel):
 
 class MeResponse(BaseModel):
     username: str
+
+
+class ResearchRequest(BaseModel):
+    session_id: str = Field(..., min_length=1)
+    query: str = Field(..., min_length=1)
+
+
+class ResearchStartResponse(BaseModel):
+    job_id: str
+    status: str
+
+
+class ResearchStatusResponse(BaseModel):
+    status: str
+    stage: Optional[str] = None
+    report: Optional[str] = None
+    citations: list = Field(default_factory=list)
+    detail: Optional[str] = None
