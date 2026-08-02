@@ -6,6 +6,7 @@ const sidebarToggle = document.getElementById("sidebar-toggle");
 const activeTitle = document.getElementById("active-title");
 const attachButton = document.getElementById("attach-button");
 const fileInput = document.getElementById("file-input");
+const researchButton = document.getElementById("research-button");
 const attachmentChip = document.getElementById("attachment-chip");
 const attachmentName = document.getElementById("attachment-name");
 const attachmentStatus = document.getElementById("attachment-status");
@@ -32,6 +33,7 @@ let authMode = "login"; // or "register"
 let currentSessionId = null;
 let isAsking = false;
 let uploadPollToken = 0;
+let researchPollToken = 0;
 
 init();
 
@@ -477,10 +479,215 @@ chatForm.addEventListener("submit", async (event) => {
   }
 });
 
+// Deep Research: fires an async job and polls it, independent of the normal
+// chat submit flow above — the composer (chat-input/send) stays usable while
+// a research job is running.
+researchButton.addEventListener("click", async () => {
+  const query = chatInput.value.trim();
+  if (!query) return;
+  if (!authToken) {
+    appendMessage("error", "!", "Log in first.");
+    return;
+  }
+  let sessionId;
+  try {
+    sessionId = await ensureSession();
+  } catch (err) {
+    appendMessage("error", "!", err.message);
+    return;
+  }
+  appendMessage("user", null, query);
+  chatInput.value = "";
+
+  const card = appendResearchCard("Starting…");
+  try {
+    const response = await authFetch("/research", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, query }),
+    });
+    let body;
+    try {
+      body = await response.json();
+    } catch (parseErr) {
+      body = { detail: `${response.status} ${response.statusText}` };
+    }
+    if (response.ok || response.status === 202) {
+      pollResearch(body.job_id, card);
+    } else {
+      card.remove();
+      appendMessage("error", "!", errorText(body, response));
+    }
+  } catch (err) {
+    card.remove();
+    appendMessage("error", "!", err.message);
+  }
+});
+
+// Same token-guard shape as pollIngestStatus: bump the module-level token on
+// every new call, and bail out the moment a stale poll's token no longer
+// matches — so an abandoned run can never clobber a newer card.
+async function pollResearch(jobId, cardEl) {
+  const myToken = ++researchPollToken;
+  const started = Date.now();
+  const stageLabel = cardEl.querySelector(".research-stage");
+  while (myToken === researchPollToken) {
+    if (Date.now() - started > 5 * 60 * 1000) {
+      if (stageLabel) stageLabel.textContent = "Still working — check back";
+      const thinkingEl = cardEl.querySelector(".thinking");
+      if (thinkingEl) thinkingEl.remove();
+      return;
+    }
+    await new Promise((r) => setTimeout(r, 3000));
+    if (myToken !== researchPollToken) return;
+    try {
+      const res = await authFetch(`/research/status/${encodeURIComponent(jobId)}`);
+      if (!res.ok) continue; // transient (or a since-expired job) — keep polling
+      const body = await res.json();
+      if (myToken !== researchPollToken) return;
+      if (body.status === "done") {
+        renderResearchDone(cardEl, body);
+        return;
+      }
+      if (body.status === "failed") {
+        renderResearchFailed(cardEl, body.detail || "Research failed.");
+        return;
+      }
+      // running -> update the stage label and keep polling
+      if (stageLabel) stageLabel.textContent = `${body.stage || "Researching"}…`;
+    } catch (err) {
+      // transient network error -> keep polling
+    }
+  }
+}
+
+function appendResearchCard(initialStage) {
+  const existingEmpty = messages.querySelector(".empty-state");
+  if (existingEmpty) existingEmpty.remove();
+  const row = document.createElement("div");
+  row.className = "row row--assistant";
+  const avatar = document.createElement("span");
+  avatar.className = "avatar";
+  avatar.textContent = "AI";
+  row.appendChild(avatar);
+  const content = document.createElement("div");
+  content.className = "content";
+  const stage = document.createElement("p");
+  stage.className = "research-stage";
+  stage.textContent = initialStage;
+  content.appendChild(stage);
+  const thinking = document.createElement("div");
+  thinking.className = "thinking";
+  thinking.setAttribute("aria-label", "Researching");
+  for (let i = 0; i < 3; i++) thinking.appendChild(document.createElement("span"));
+  content.appendChild(thinking);
+  row.appendChild(content);
+  messages.appendChild(row);
+  messages.scrollTop = messages.scrollHeight;
+  return row;
+}
+
+function renderResearchDone(cardEl, body) {
+  const content = cardEl.querySelector(".content");
+  if (!content) return;
+  clearChildren(content);
+  content.appendChild(renderMarkdown(body.report || ""));
+  if (body.citations && body.citations.length > 0) {
+    content.appendChild(buildReferenceList(body.citations));
+  }
+  messages.scrollTop = messages.scrollHeight;
+}
+
+function renderResearchFailed(cardEl, message) {
+  cardEl.classList.remove("row--assistant");
+  cardEl.classList.add("row--error");
+  const avatar = cardEl.querySelector(".avatar");
+  if (avatar) avatar.textContent = "!";
+  const content = cardEl.querySelector(".content");
+  if (!content) return;
+  clearChildren(content);
+  const p = document.createElement("p");
+  p.textContent = message;
+  content.appendChild(p);
+}
+
+function clearChildren(el) {
+  while (el.firstChild) el.removeChild(el.firstChild);
+}
+
+// Small, safe markdown-ish renderer for research reports: headers (#..######),
+// "-"/"*" list items, **bold**, and paragraphs (blank-line separated, single
+// newlines become spaces within a paragraph). Every fragment of model text is
+// placed via textContent/createTextNode — the only elements created are the
+// structural tags this function itself chooses (p/h1-6/ul/li/strong), never
+// raw innerHTML built from the report string.
+function renderMarkdown(text) {
+  const container = document.createElement("div");
+  container.className = "research-report";
+  const lines = String(text || "").split(/\r?\n/);
+  let listEl = null;
+  let paraLines = [];
+
+  const flushParagraph = () => {
+    if (paraLines.length === 0) return;
+    const p = document.createElement("p");
+    appendInline(p, paraLines.join(" "));
+    container.appendChild(p);
+    paraLines = [];
+  };
+
+  lines.forEach((line) => {
+    const headerMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    const listMatch = line.match(/^[-*]\s+(.*)$/);
+    if (headerMatch) {
+      flushParagraph();
+      listEl = null;
+      const level = Math.min(headerMatch[1].length, 6);
+      const h = document.createElement(`h${level}`);
+      appendInline(h, headerMatch[2]);
+      container.appendChild(h);
+    } else if (listMatch) {
+      flushParagraph();
+      if (!listEl) {
+        listEl = document.createElement("ul");
+        container.appendChild(listEl);
+      }
+      const li = document.createElement("li");
+      appendInline(li, listMatch[1]);
+      listEl.appendChild(li);
+    } else if (line.trim() === "") {
+      flushParagraph();
+      listEl = null;
+    } else {
+      listEl = null;
+      paraLines.push(line.trim());
+    }
+  });
+  flushParagraph();
+  return container;
+}
+
+// Appends `text` to `el`, splitting on **bold** spans. Bold segments become a
+// <strong> whose content is set via textContent; everything else is a plain
+// text node — so no substring of the model's text is ever parsed as markup.
+function appendInline(el, text) {
+  const parts = String(text).split(/\*\*(.+?)\*\*/g);
+  parts.forEach((part, i) => {
+    if (i % 2 === 1) {
+      const strong = document.createElement("strong");
+      strong.textContent = part;
+      el.appendChild(strong);
+    } else if (part) {
+      el.appendChild(document.createTextNode(part));
+    }
+  });
+}
+
 function setComposerEnabled(enabled) {
   chatInput.disabled = !enabled;
   sendButton.disabled = !enabled;
   attachButton.disabled = !enabled;
+  researchButton.disabled = !enabled;
 }
 
 function setSidebarStatus(text, state) {
@@ -568,17 +775,25 @@ function appendMessage(role, avatarText, text, citations) {
   messages.scrollTop = messages.scrollHeight;
 }
 
+// Handles two citation shapes: chat's {key, source_name/source_id, text_excerpt}
+// objects, and research's plain source-name strings.
 function buildReferenceList(citations) {
   const list = document.createElement("ul");
   list.className = "refs";
   citations.forEach((citation, index) => {
     const item = document.createElement("li");
-    if (citation.text_excerpt) item.title = citation.text_excerpt;
     const tag = document.createElement("span");
     tag.className = "ref__tag";
-    tag.textContent = `[${citation.key || index + 1}]`;
+    let name;
+    if (typeof citation === "string") {
+      tag.textContent = `[${index + 1}]`;
+      name = citation;
+    } else {
+      if (citation.text_excerpt) item.title = citation.text_excerpt;
+      tag.textContent = `[${citation.key || index + 1}]`;
+      name = citation.source_name || citation.source_id || "source";
+    }
     item.appendChild(tag);
-    const name = citation.source_name || citation.source_id || "source";
     item.appendChild(document.createTextNode(` ${name}`));
     list.appendChild(item);
   });
