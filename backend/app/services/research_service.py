@@ -14,13 +14,19 @@ def build_message(query: str, evidence: str) -> str:
 
 def run_research(client, orchestration_id: str, job: dict, message: str) -> None:
     """Background worker: stream the orchestration into the job."""
-    steps = {"n": 0}
+    # Powabase's sequential_step fires at each step's START with a 0-based
+    # "step" field (0=researcher, 1=analyst, 2=writer), so index STAGES by it
+    # directly — the label tracks the agent actually working. Fall back to a
+    # counter only if a future event ever omits "step".
+    steps = {"n": -1}
 
     def on_event(name, data):
         if name == "sequential_step":
-            steps["n"] += 1
-            idx = min(steps["n"], len(STAGES) - 1)
-            job["stage"] = STAGES[idx]
+            step = data.get("step")
+            if step is None:
+                steps["n"] += 1
+                step = steps["n"]
+            job["stage"] = STAGES[min(step, len(STAGES) - 1)]
         elif name == "complete":
             if data.get("status") == "failed" or data.get("error"):
                 job["status"] = "failed"; job["detail"] = data.get("error") or "Research run failed"
