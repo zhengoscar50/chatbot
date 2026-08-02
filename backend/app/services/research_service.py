@@ -34,5 +34,7 @@ def run_research(client, orchestration_id: str, job: dict, message: str) -> None
         client.run_orchestration_stream(orchestration_id, message, on_event)
     except PowabaseAPIError as e:
         job["status"] = "failed"; job["detail"] = str(e)
+    except Exception as e:  # noqa: BLE001 — background worker must never leave a job stuck at "running"
+        job["status"] = "failed"; job["detail"] = str(e) or e.__class__.__name__
     if job["status"] == "running":  # stream ended without a terminal event
         job["status"] = "failed" if job["report"] is None else "done"

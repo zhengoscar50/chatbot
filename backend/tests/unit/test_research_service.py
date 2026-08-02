@@ -45,3 +45,21 @@ def test_run_research_marks_failed_on_error_event():
     }
     run_research(FakeStreamClient([("error", {"error": "boom"})]), "orch-1", job, "msg")
     assert job["status"] == "failed" and "boom" in (job["detail"] or "")
+
+
+class RaisingStreamClient:
+    def run_orchestration_stream(self, oid, message, on_event):
+        raise RuntimeError("connection reset")
+
+
+def test_run_research_marks_failed_on_unexpected_exception():
+    job = {
+        "status": "running",
+        "stage": STAGES[0],
+        "report": None,
+        "citations": [],
+        "detail": None,
+        "owner": "o1",
+    }
+    run_research(RaisingStreamClient(), "orch-1", job, "msg")
+    assert job["status"] == "failed" and "connection reset" in (job["detail"] or "")
