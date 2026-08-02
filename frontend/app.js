@@ -33,7 +33,6 @@ let authMode = "login"; // or "register"
 let currentSessionId = null;
 let isAsking = false;
 let uploadPollToken = 0;
-let researchPollToken = 0;
 
 init();
 
@@ -524,14 +523,14 @@ researchButton.addEventListener("click", async () => {
   }
 });
 
-// Same token-guard shape as pollIngestStatus: bump the module-level token on
-// every new call, and bail out the moment a stale poll's token no longer
-// matches — so an abandoned run can never clobber a newer card.
+// Each research run gets its own persistent card in the transcript, so unlike
+// pollIngestStatus (which shares one attachment chip) there is NO shared token:
+// every poll loop is independent and only ever mutates its own card, so
+// concurrent research runs each finish into their own card without clobbering.
 async function pollResearch(jobId, cardEl) {
-  const myToken = ++researchPollToken;
   const started = Date.now();
   const stageLabel = cardEl.querySelector(".research-stage");
-  while (myToken === researchPollToken) {
+  while (true) {
     if (Date.now() - started > 5 * 60 * 1000) {
       if (stageLabel) stageLabel.textContent = "Still working — check back";
       const thinkingEl = cardEl.querySelector(".thinking");
@@ -539,12 +538,10 @@ async function pollResearch(jobId, cardEl) {
       return;
     }
     await new Promise((r) => setTimeout(r, 3000));
-    if (myToken !== researchPollToken) return;
     try {
       const res = await authFetch(`/research/status/${encodeURIComponent(jobId)}`);
       if (!res.ok) continue; // transient (or a since-expired job) — keep polling
       const body = await res.json();
-      if (myToken !== researchPollToken) return;
       if (body.status === "done") {
         renderResearchDone(cardEl, body);
         return;
