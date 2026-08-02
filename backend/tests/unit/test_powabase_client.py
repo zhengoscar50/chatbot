@@ -208,3 +208,50 @@ def test_run_orchestration_stream_emits_events():
     PowabaseClient(BASE_URL, "k").run_orchestration_stream("o-1", "hi", lambda n, d: seen.append((n, d)))
     assert ("sequential_step", {"event": "sequential_step", "position": 0}) in seen
     assert seen[-1][0] == "complete" and seen[-1][1]["content"] == "Report."
+
+
+@respx.mock
+def test_run_orchestration_stream_honors_literal_event_lines():
+    # Powabase sends the discriminator inside the JSON body, but the SSE spec's
+    # literal "event:" line must still win where present — matching parse_sse.
+    body = (
+        "event: sequential_step\n"
+        'data: {"step": 1}\n\n'
+        ": keepalive comment\n\n"
+        "event: complete\n"
+        'data: {"content": "line one\\nline two"}\n\n'
+    )
+    respx.post(f"{BASE_URL}/api/orchestrations/o-1/run/stream").mock(
+        return_value=httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+    )
+    seen = []
+    PowabaseClient(BASE_URL, "k").run_orchestration_stream("o-1", "hi", lambda n, d: seen.append((n, d)))
+    assert seen == [
+        ("sequential_step", {"step": 1}),
+        ("complete", {"content": "line one\nline two"}),
+    ]
+
+
+@respx.mock
+def test_run_orchestration_stream_joins_multi_line_data():
+    body = 'data: {"event": "complete",\ndata: "content": "Report."}\n\n'
+    respx.post(f"{BASE_URL}/api/orchestrations/o-1/run/stream").mock(
+        return_value=httpx.Response(200, text=body, headers={"content-type": "text/event-stream"})
+    )
+    seen = []
+    PowabaseClient(BASE_URL, "k").run_orchestration_stream("o-1", "hi", lambda n, d: seen.append((n, d)))
+    assert seen == [("complete", {"event": "complete", "content": "Report."})]
+
+
+@respx.mock
+def test_run_orchestration_stream_raises_on_error_status():
+    # The stream is opened lazily, so an error status has to be read and raised
+    # explicitly — otherwise the caller sees zero events and no error at all.
+    respx.post(f"{BASE_URL}/api/orchestrations/o-1/run/stream").mock(
+        return_value=httpx.Response(429, json={"error": "rate limited"})
+    )
+    seen = []
+    with pytest.raises(PowabaseAPIError) as exc:
+        PowabaseClient(BASE_URL, "k").run_orchestration_stream("o-1", "hi", lambda n, d: seen.append((n, d)))
+    assert "429" in str(exc.value)
+    assert seen == []

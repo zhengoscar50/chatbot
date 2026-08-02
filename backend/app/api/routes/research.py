@@ -1,3 +1,4 @@
+import time
 import uuid
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 
@@ -29,6 +30,16 @@ def start_research(
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
+    jobs = request.app.state.research_jobs
+    _evict_expired(jobs, settings.research_job_ttl_seconds)
+    running = sum(1 for j in jobs.values()
+                  if j.get("owner") == user["id"] and j["status"] == "running")
+    if running >= settings.research_max_concurrent_per_user:
+        raise HTTPException(
+            status_code=429,
+            detail=f"You already have {running} research runs in progress. Wait for one to finish.",
+        )
+
     kbs = [
         {"id": kb, "top_k": settings.research_top_k}
         for kb in [row.get("kb_id"), row.get("kb_full_id"), general_kb_id] if kb
@@ -42,8 +53,9 @@ def start_research(
 
     job_id = str(uuid.uuid4())
     job = {"status": "running", "stage": STAGES[0], "report": None,
-           "citations": citations, "detail": None, "owner": user["id"]}
-    request.app.state.research_jobs[job_id] = job
+           "citations": citations, "detail": None, "owner": user["id"],
+           "created_at": time.monotonic()}
+    jobs[job_id] = job
 
     message = build_message(req.query, evidence)
     background_tasks.add_task(run_research, client, orchestration_id, job, message)
@@ -59,6 +71,22 @@ def research_status(job_id: str, request: Request, user: dict = Depends(get_curr
         status=job["status"], stage=job.get("stage"), report=job.get("report"),
         citations=job.get("citations", []), detail=job.get("detail"),
     )
+
+
+def _evict_expired(jobs: dict, ttl_seconds: int) -> None:
+    """Drop jobs older than the TTL so the in-memory store stays bounded.
+
+    Age, not status, is the criterion: the TTL is far longer than the 5-minute
+    window the frontend polls for, so a finished report is always collectable
+    before it expires. Sweeping "running" jobs too means a run that never
+    reaches a terminal event (a stream held open by keepalives) cannot occupy
+    a per-user concurrency slot forever. Its worker keeps its own reference to
+    the job dict, so evicting the entry is safe — the writes simply land on an
+    object nothing reads anymore.
+    """
+    cutoff = time.monotonic() - ttl_seconds
+    for job_id in [k for k, j in jobs.items() if j.get("created_at", 0) < cutoff]:
+        del jobs[job_id]
 
 
 def _citations_from(handler: dict) -> list:

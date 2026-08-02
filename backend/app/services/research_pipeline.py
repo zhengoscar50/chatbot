@@ -31,7 +31,11 @@ def _find_by_name(items, name):
     return next((i for i in items if i.get("name") == name), None)
 
 
-def ensure_research_pipeline(client, researcher_model, analyst_model, writer_model) -> str:
+def ensure_research_pipeline(
+    client, researcher_model: str, analyst_model: str, writer_model: str
+) -> str:
+    """Find-or-create the shared researcher/analyst/writer pipeline; return its
+    orchestration id. Called once at startup and reused by every research run."""
     existing_agents = client.list_agents().get("agents", [])
 
     def ensure_agent(name, model, prompt):
@@ -58,4 +62,5 @@ def ensure_research_pipeline(client, researcher_model, analyst_model, writer_mod
 
 
 def get_research_orchestration_id(request: Request) -> str:
+    """FastAPI dependency returning the orchestration id resolved at startup."""
     return request.app.state.research_orchestration_id

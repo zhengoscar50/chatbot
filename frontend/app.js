@@ -538,6 +538,14 @@ async function pollResearch(jobId, cardEl) {
       return;
     }
     await new Promise((r) => setTimeout(r, 3000));
+    // Stop once logged out. authFetch calls doLogout() and throws on a 401,
+    // and the catch below swallows it — without this bail the loop would keep
+    // firing every 3s and re-run doLogout(), wiping the login form the user is
+    // trying to type into.
+    if (!authToken) {
+      cardEl.remove();
+      return;
+    }
     try {
       const res = await authFetch(`/research/status/${encodeURIComponent(jobId)}`);
       if (!res.ok) continue; // transient (or a since-expired job) — keep polling
