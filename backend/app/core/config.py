@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     ingest_max_wait_seconds: float = 60.0
     ingest_background_max_wait_seconds: int = 600
     router_agent_model: str = "gpt-4o-mini"
+    default_agent_model: str = "gpt-4o-mini"
     retrieval_top_k: int = 8
     retrieval_max_context_tokens: int = 32000
     gate_history_turns: int = 2

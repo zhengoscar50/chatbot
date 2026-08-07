@@ -11,6 +11,7 @@ from app.api.routes.ingest import router as ingest_router
 from app.api.routes.sessions import router as sessions_router
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient
 from app.core.config import FRONTEND_DIR, get_settings
+from app.services.agent_service import AgentService
 from app.services.general_kb import ensure_general_kb
 from app.services.retrieval import reranker_retrieval_config
 from app.services.router_agent import ensure_router_agent
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI):
         app.state.powabase_client = client
         app.state.general_kb_id = general_kb_id
         app.state.router_agent_id = router_agent_id
+        app.state.agent_service = AgentService(client, reranker_config)
         app.state.session_service = SessionService(
             client, settings.powabase_agent_model, general_kb_id, reranker_config
         )
