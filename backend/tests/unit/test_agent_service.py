@@ -209,3 +209,24 @@ def test_delete_survives_a_failing_remote_cleanup():
 
     assert svc.delete("ag-1") is True
     assert c.get_agent_row("ag-1") is None
+
+
+def test_delete_also_removes_each_chats_scratch_kb():
+    # Cascade deletes session rows directly rather than going through
+    # SessionService.delete, so it has to clean up their scratch KBs itself —
+    # otherwise every chat leaves an orphaned knowledge base behind.
+    c = FakeClient()
+    svc = AgentService(c)
+    row = svc.create("o1", "T", "", "m", "strict", False)
+    svc.ensure_kb(row)
+    c.sessions_for_agent = [
+        {"id": "s-1", "kb_id": "scratch-1"},
+        {"id": "s-2", "kb_id": None},          # a chat with no uploads
+        {"id": "s-3", "kb_id": "scratch-3"},
+    ]
+
+    svc.delete("ag-1")
+
+    assert "scratch-1" in c.deleted_kbs
+    assert "scratch-3" in c.deleted_kbs
+    assert c.deleted_sessions == ["s-1", "s-2", "s-3"]

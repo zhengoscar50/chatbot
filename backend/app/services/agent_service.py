@@ -109,6 +109,14 @@ class AgentService:
             return False
 
         for session in self.client.list_sessions_for_agent(agent_id):
+            # Each chat may own a scratch KB. Drop it too, or deleting an agent
+            # leaves one orphaned knowledge base per chat behind.
+            scratch_kb = session.get("kb_id")
+            if scratch_kb:
+                try:
+                    self.client.delete_knowledge_base(scratch_kb)
+                except PowabaseAPIError:
+                    pass
             try:
                 self.client.delete_session_row(session["id"])
             except PowabaseAPIError:
