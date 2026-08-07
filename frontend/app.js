@@ -40,6 +40,7 @@ function init() {
   authToken = localStorage.getItem(TOKEN_KEY);
   currentUsername = localStorage.getItem(NAME_KEY);
   wireAuthForm();
+  wireAgents();
   newSessionButton.addEventListener("click", createSession);
   sidebarToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
   document.getElementById("logout-btn").addEventListener("click", doLogout);
@@ -136,12 +137,29 @@ function showAuthGate() {
   setComposerEnabled(false);
 }
 
-function enterApp() {
+async function enterApp() {
   authGate.hidden = true;
   currentUserLabel.textContent = currentUsername || "";
   newSessionButton.disabled = false;
   setComposerEnabled(true);
-  clearThread("Type a message to start a new session — or pick one on the left.");
+  // loadAgents() selects an agent and calls onAgentChanged(), which loads
+  // that agent's chats — so there is no separate loadSessions() here.
+  await loadAgents();
+}
+
+// Called by agents.js whenever the selected agent changes. Chats belong to
+// one agent, so switching agents drops the open thread and lists that
+// agent's chats instead.
+function onAgentChanged() {
+  currentSessionId = null;
+  activeTitle.textContent = "RAG Chat";
+  if (!currentAgentId) {
+    sessionList.innerHTML = "";
+    clearThread("Create an agent to get started.");
+    setSidebarStatus("No agents yet — click + above.", null);
+    return;
+  }
+  clearThread("Type a message to start a new chat with this agent.");
   loadSessions();
 }
 
@@ -154,6 +172,7 @@ function doLogout() {
   sessionList.innerHTML = "";
   attachmentChip.hidden = true;
   activeTitle.textContent = "RAG Chat";
+  resetAgentState();
   authUsernameInput.value = "";
   authPasswordInput.value = "";
   setAuthError("");
@@ -164,10 +183,11 @@ function doLogout() {
 // selected (so you can just start typing without clicking "New session").
 async function ensureSession() {
   if (currentSessionId) return currentSessionId;
+  if (!currentAgentId) throw new Error("Create an agent first.");
   const response = await authFetch("/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify({ agent_id: currentAgentId }),
   });
   const body = await response.json();
   if (!response.ok) throw new Error(errorText(body, response));

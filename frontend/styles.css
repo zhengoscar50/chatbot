@@ -963,3 +963,145 @@ body {
 :root[data-theme="dark"] .theme-ico--sun {
   display: block;
 }
+
+/* --- Agents --------------------------------------------------------------- */
+
+.agent-bar {
+  display: flex;
+  gap: 0.4rem;
+  padding: 0 0.75rem 0.5rem;
+  align-items: center;
+}
+
+.agent-bar select {
+  flex: 1;
+  min-width: 0;
+  padding: 0.4rem 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 20;
+  padding: 1rem;
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal-card {
+  background: var(--bg);
+  color: var(--text);
+  padding: 1.25rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  width: min(34rem, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.modal-card h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.modal-card h3 {
+  margin: 0.4rem 0 0;
+  font-size: 0.92rem;
+}
+
+.modal-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.88rem;
+}
+
+.modal-card label.checkbox,
+.modal-card label.train-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.modal-card input[type="text"],
+.modal-card input:not([type]),
+.modal-card textarea,
+.modal-card select {
+  font: inherit;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+
+.modal-card textarea {
+  resize: vertical;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.3rem;
+}
+
+.modal-actions .danger {
+  margin-right: auto;
+  color: var(--error);
+}
+
+#agent-doc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+#agent-doc-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.88rem;
+}
+
+.link-danger {
+  background: none;
+  border: none;
+  color: var(--error);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.link-danger:hover {
+  text-decoration: underline;
+}
+
+.train-status {
+  font-size: 0.85rem;
+  min-height: 1.2em;
+  margin: 0;
+  opacity: 0.85;
+}
+
+.muted {
+  opacity: 0.7;
+}

@@ -36,8 +36,13 @@
           <span class="sidebar__user" id="current-user"></span>
           <button type="button" id="logout-btn" class="logout-btn">Log out</button>
         </div>
-        <button id="new-session" class="new-session" disabled>+ New session</button>
-        <ul class="session-list" id="session-list" aria-label="Sessions"></ul>
+        <div class="agent-bar">
+          <select id="agent-select" aria-label="Agent"></select>
+          <button type="button" id="new-agent" class="icon-btn" title="New agent" aria-label="New agent">+</button>
+          <button type="button" id="manage-agent" class="icon-btn" title="Manage this agent" aria-label="Manage this agent">⚙</button>
+        </div>
+        <button id="new-session" class="new-session" disabled>+ New chat</button>
+        <ul class="session-list" id="session-list" aria-label="Chats"></ul>
         <p class="sidebar__status" id="sidebar-status"></p>
         <a class="admin-link" href="/admin">Admin</a>
       </aside>
@@ -86,7 +91,47 @@
         </footer>
       </div>
     </div>
+    <div id="agent-modal" class="modal" hidden>
+      <form id="agent-form" class="modal-card">
+        <h2 id="agent-modal-title">New agent</h2>
+        <label>Name
+          <input id="agent-name" required maxlength="80" placeholder="Chemistry tutor" />
+        </label>
+        <label>Instructions
+          <textarea id="agent-instructions" rows="5"
+            placeholder="You are a study tutor for AP Chemistry. Always show your working."></textarea>
+        </label>
+        <label>Model
+          <input id="agent-model" placeholder="gpt-4o-mini" />
+        </label>
+        <label>Grounding
+          <select id="agent-grounding">
+            <option value="strict">Only answer from my documents</option>
+            <option value="open">Use my documents, but answer freely</option>
+          </select>
+        </label>
+        <label class="checkbox">
+          <input type="checkbox" id="agent-general-kb" /> Also use shared general knowledge
+        </label>
+        <div id="agent-docs" hidden>
+          <h3>Trained on</h3>
+          <ul id="agent-doc-list"></ul>
+          <label class="train-row">Add a document
+            <input type="file" id="agent-train-file" accept="application/pdf" />
+          </label>
+          <p id="agent-train-status" class="train-status"></p>
+        </div>
+        <p id="agent-error" class="auth-error"></p>
+        <div class="modal-actions">
+          <button type="button" id="agent-delete" class="danger" hidden>Delete agent</button>
+          <button type="button" id="agent-cancel">Cancel</button>
+          <button type="submit" id="agent-save">Save</button>
+        </div>
+      </form>
+    </div>
+
     <script src="/theme.js"></script>
+    <script src="/agents.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>
