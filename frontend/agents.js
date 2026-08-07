@@ -36,6 +36,7 @@ function wireAgents() {
   agentTrainFile.addEventListener("change", trainAgent);
   agentSelect.addEventListener("change", () => {
     currentAgentId = agentSelect.value || null;
+    updateAgentTooltip();
     onAgentChanged();
   });
   agentModal.addEventListener("keydown", (event) => {
@@ -85,12 +86,27 @@ function renderAgentSelect() {
     agentSelect.appendChild(opt);
     return;
   }
+  // Name only. The sidebar is 16rem wide and a "(untrained)" suffix nearly
+  // doubles the label, so it got clipped — the untrained hint lives in the
+  // tooltip and in the empty-thread message instead.
   agents.forEach((a) => {
     const opt = document.createElement("option");
     opt.value = a.id;
-    opt.textContent = a.trained ? a.name : `${a.name} (untrained)`;
+    opt.textContent = a.name;
     agentSelect.appendChild(opt);
   });
+  updateAgentTooltip();
+}
+
+function selectedAgent() {
+  return agents.find((a) => a.id === currentAgentId) || null;
+}
+
+function updateAgentTooltip() {
+  const a = selectedAgent();
+  agentSelect.title = a
+    ? `${a.name} — ${a.trained ? "trained" : "no documents yet"} · ${a.model}`
+    : "No agents yet";
 }
 
 function openAgentModal(agentId) {

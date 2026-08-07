@@ -966,22 +966,33 @@ body {
 
 /* --- Agents --------------------------------------------------------------- */
 
+/* No horizontal padding: .sidebar already pads, and doubling it stole ~24px
+   from the picker in a 16rem column. */
 .agent-bar {
   display: flex;
-  gap: 0.4rem;
-  padding: 0 0.75rem 0.5rem;
+  gap: 0.35rem;
   align-items: center;
 }
 
 .agent-bar select {
-  flex: 1;
-  min-width: 0;
-  padding: 0.4rem 0.5rem;
+  flex: 1 1 auto;
+  min-width: 0;          /* lets the select actually shrink inside the flex row */
+  width: 100%;
+  padding: 0.4rem 0.4rem;
   border-radius: 6px;
   border: 1px solid var(--border);
   background: var(--bg-subtle);
   color: var(--text);
   font: inherit;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;   /* degrade to "General Agen…" rather than a clipped glyph */
+}
+
+/* Slightly smaller than the default icon button so the picker keeps the space. */
+.agent-bar .icon-btn {
+  flex: 0 0 auto;
+  width: 1.9rem;
+  height: 1.9rem;
   font-size: 0.9rem;
 }
 

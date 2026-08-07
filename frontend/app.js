@@ -159,7 +159,14 @@ function onAgentChanged() {
     setSidebarStatus("No agents yet — click + above.", null);
     return;
   }
-  clearThread("Type a message to start a new chat with this agent.");
+  // Surface the untrained state here rather than in the agent picker, where a
+  // long suffix gets clipped in a 16rem sidebar.
+  const agent = agents.find((a) => a.id === currentAgentId);
+  clearThread(
+    agent && !agent.trained
+      ? "This agent has no documents yet — open ⚙ to train it, or just start chatting."
+      : "Type a message to start a new chat with this agent."
+  );
   loadSessions();
 }
 
