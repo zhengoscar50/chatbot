@@ -96,41 +96,7 @@ answered (with a citation) by a **new** session that had uploaded nothing of its
 own; and that same session also answered from its own later upload — i.e. the
 session drew on general knowledge **plus** its own documents.
 
-## 8. Deep Research
-
-Type a question and click **Deep Research** instead of Send. The request
-retrieves broadly (the session's own documents *plus* general knowledge, at a
-wider `research_top_k` than normal chat) and hands the evidence to a three-agent
-sequential pipeline — Researcher → Analyst → Writer — that runs in the
-background while the composer stays usable. The card in the transcript shows
-the current stage and renders the finished markdown report with citations.
-
-The pipeline is built once at startup and shared; the per-agent models are
-`research_researcher_model` / `research_analyst_model` / `research_writer_model`
-in `app/core/config.py`.
-
-Jobs are held **in memory**: a report is lost on server restart, is evicted
-after `research_job_ttl_seconds` (default 30 min), and each user may have
-`research_max_concurrent_per_user` runs in flight (default 2) before further
-requests get a 429. Each run occupies a worker thread for its duration, which
-is what the cap is protecting.
-
-```bash
-# start a run (202, returns a job_id)
-curl -X POST http://127.0.0.1:8000/research \
-  -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
-  -d '{"session_id": "<id>", "query": "Compare what these documents say about X"}'
-
-# poll until status is done or failed
-curl http://127.0.0.1:8000/research/status/<job_id> -H "Authorization: Bearer <token>"
-```
-
-**Known limitation:** a sequential orchestration's final `content` concatenates
-*all three* agents' outputs, so the rendered report is roughly 3x longer than
-the Writer's report alone and shows the intermediate research and analysis
-stages. It is coherent and correctly cited, just verbose.
-
-## 9. Verification
+## 8. Verification
 
 Automated suite (faked Powabase, no network):
 
@@ -177,12 +143,3 @@ in the code:
   match this real wire format and surface a clear error when an agent run fails
   downstream (e.g. a provider rejects or rate-limits the call) instead of a bare
   500.
-- **Orchestrations ignore context injection.** Unlike an agent run, an
-  orchestration run accepts no `context_handler_id` — retrieved evidence passed
-  that way is silently dropped. Deep Research therefore embeds the retrieved
-  excerpts directly in the message body (see `build_message` in
-  `app/services/research_service.py`). Don't "fix" this back to a context
-  handler; it produces an answer with no grounding and no error.
-- `list_orchestrations` returns its list under an `"orchestrations"` key, and
-  progress events are `sequential_step` carrying a **0-based** `step` field
-  identifying the agent that is starting.
