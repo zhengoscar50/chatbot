@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from fastapi import Request
 
 from app.clients.powabase_client import PowabaseAPIError
@@ -8,6 +10,15 @@ from app.services.prompts import compose_system_prompt
 # Changing any of these requires patching the remote agent, because they feed
 # its model or its system prompt. Everything else on an agent row is local-only.
 REMOTE_FIELDS = ("instructions", "grounding", "model")
+
+
+class ModelRejectedError(Exception):
+    """The provider won't serve this model id."""
+
+    def __init__(self, model: str, detail: str):
+        self.model = model
+        self.detail = detail
+        super().__init__(f"Model {model!r} was rejected: {detail}")
 
 
 class AgentService:
@@ -22,6 +33,35 @@ class AgentService:
         self.client = client
         self.reranker_config = reranker_config
 
+    def probe_model(self, model: str) -> None:
+        """Raise ModelRejectedError unless the provider will actually serve this
+        model.
+
+        Powabase accepts any string as an agent's model and only fails at run
+        time (verified live: a nonsense id creates fine and 502s on the first
+        message), so a typo would otherwise ship as a silently broken agent.
+
+        Probing on a throwaway agent rather than the real one means a rejected
+        model never leaves a half-made agent behind, and the same code path
+        works for editing an existing agent's model without needing a rollback.
+        Costs one cheap model call.
+        """
+        probe = None
+        try:
+            probe = self.client.create_agent(
+                f"model-probe-{uuid.uuid4()}", model=model,
+                system_prompt="Reply with OK.",
+            )
+            self.client.run_agent_sync(probe["id"], "ping")
+        except PowabaseAPIError as e:
+            raise ModelRejectedError(model, str(e))
+        finally:
+            if probe:
+                try:
+                    self.client.delete_agent(probe["id"])
+                except PowabaseAPIError:
+                    pass
+
     def create(
         self,
         owner_id: str,
@@ -31,6 +71,7 @@ class AgentService:
         grounding: str,
         use_general_kb: bool,
     ) -> dict:
+        self.probe_model(model)
         prompt = compose_system_prompt(instructions, grounding)
         agent = self.client.create_agent(
             f"user-agent-{name}", model=model, system_prompt=prompt
@@ -64,6 +105,9 @@ class AgentService:
         and orphan every chat thread bound to the old one.
         """
         merged = dict(row, **fields)
+        # Validate before patching, so a bad model can't break a working agent.
+        if "model" in fields and fields["model"] != row.get("model"):
+            self.probe_model(fields["model"])
         if any(field in fields for field in REMOTE_FIELDS):
             self.client.update_agent(row["powabase_agent_id"], {
                 "model": merged["model"],

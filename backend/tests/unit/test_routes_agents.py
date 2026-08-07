@@ -289,3 +289,34 @@ def test_get_agent_502_when_powabase_is_unreachable():
     app = build_app(Failing())
     r = TestClient(app, raise_server_exceptions=False).get("/agents/ag-1")
     assert r.status_code == 502
+
+
+def test_create_agent_400_for_a_model_the_provider_refuses():
+    from app.services.agent_service import ModelRejectedError
+
+    class Refusing(FakeAgentService):
+        def create(self, *a, **k):
+            raise ModelRejectedError("not-a-real-model", "unknown model")
+
+    app = build_app(Refusing())
+    r = TestClient(app).post("/agents", json={"name": "T", "model": "not-a-real-model"})
+
+    assert r.status_code == 400
+    assert "not-a-real-model" in r.json()["detail"]
+
+
+def test_patch_agent_400_for_a_model_the_provider_refuses():
+    from app.services.agent_service import ModelRejectedError
+
+    class Refusing(FakeAgentService):
+        def update(self, row, fields):
+            raise ModelRejectedError("bad", "unknown model")
+
+    svc = Refusing()
+    svc.create("o1", "T", "", "m", "strict", False)
+    app = build_app(svc)
+
+    r = TestClient(app).patch("/agents/ag-1", json={"model": "bad"})
+
+    assert r.status_code == 400
+    assert "unchanged" in r.json()["detail"]

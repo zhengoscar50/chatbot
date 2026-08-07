@@ -1,5 +1,7 @@
+import pytest
+
 from app.clients.powabase_client import PowabaseAPIError
-from app.services.agent_service import AgentService
+from app.services.agent_service import AgentService, ModelRejectedError
 from app.services.prompts import OPEN_CLAUSE, STRICT_CLAUSE
 
 
@@ -13,19 +15,33 @@ class FakeClient:
         self.deleted_kbs = []
         self.sessions_for_agent = []
         self.deleted_sessions = []
+        self.probes = []
+        self.probe_agents = []
+        self.deleted_probes = []
         self._n = 0
 
-    # Powabase agent API
+    # Powabase agent API. Throwaway model-probe agents are tracked apart from
+    # real ones so they don't shift ids or pollute unrelated assertions.
     def create_agent(self, name, model, system_prompt, settings=None):
+        if name.startswith("model-probe-"):
+            self.probe_agents.append((name, model))
+            return {"id": f"probe-{len(self.probe_agents)}"}
         self.created_agents.append((name, model, system_prompt))
         return {"id": f"pa-{len(self.created_agents)}"}
+
+    def run_agent_sync(self, agent_id, message, response_format=None):
+        self.probes.append((agent_id, message))
+        return {"content": "OK"}
 
     def update_agent(self, agent_id, fields):
         self.updated_agents.append((agent_id, fields))
         return {"id": agent_id}
 
     def delete_agent(self, agent_id):
-        self.deleted_agents.append(agent_id)
+        if str(agent_id).startswith("probe-"):
+            self.deleted_probes.append(agent_id)
+        else:
+            self.deleted_agents.append(agent_id)
 
     def create_knowledge_base(self, name, description=None, indexing_config=None,
                               retrieval_config=None):
@@ -230,3 +246,72 @@ def test_delete_also_removes_each_chats_scratch_kb():
     assert "scratch-1" in c.deleted_kbs
     assert "scratch-3" in c.deleted_kbs
     assert c.deleted_sessions == ["s-1", "s-2", "s-3"]
+
+
+def test_create_probes_the_model_and_cleans_the_probe_up():
+    # Powabase accepts any model string and only fails at run time, so a typo
+    # would otherwise ship as a silently broken agent.
+    c = FakeClient()
+    AgentService(c).create("o1", "T", "", "gpt-4o-mini", "strict", False)
+
+    assert c.probes, "expected a probe call"
+    assert c.probe_agents[0][1] == "gpt-4o-mini"
+    # the throwaway must not linger, and the real agent must survive
+    assert c.deleted_probes == ["probe-1"]
+    assert c.deleted_agents == []
+
+
+def test_create_rejects_a_model_the_provider_refuses():
+    class Refusing(FakeClient):
+        def run_agent_sync(self, agent_id, message, response_format=None):
+            raise PowabaseAPIError(400, {"error": "unknown model"})
+
+    c = Refusing()
+    with pytest.raises(ModelRejectedError) as exc:
+        AgentService(c).create("o1", "T", "", "not-a-real-model", "strict", False)
+
+    assert exc.value.model == "not-a-real-model"
+    # no agent row was written, and the probe agent was cleaned up anyway
+    assert c.rows == {}
+    assert c.created_agents == []
+    assert c.deleted_probes == ["probe-1"]
+
+
+def test_update_probes_only_when_the_model_actually_changes():
+    c = FakeClient()
+    svc = AgentService(c)
+    row = svc.create("o1", "T", "", "m1", "strict", False)
+    c.probes.clear()
+
+    svc.update(row, {"name": "Renamed"})
+    assert c.probes == []
+
+    svc.update(row, {"model": "m1"})          # same value
+    assert c.probes == []
+
+    svc.update(row, {"model": "m2"})
+    assert len(c.probes) == 1
+
+
+def test_update_leaves_the_agent_untouched_when_the_model_is_refused():
+    class Refusing(FakeClient):
+        def __init__(self):
+            super().__init__()
+            self.refuse = False
+
+        def run_agent_sync(self, agent_id, message, response_format=None):
+            if self.refuse:
+                raise PowabaseAPIError(400, {"error": "unknown model"})
+            return {"content": "OK"}
+
+    c = Refusing()
+    svc = AgentService(c)
+    row = svc.create("o1", "T", "", "good-model", "strict", False)
+    c.refuse = True
+
+    with pytest.raises(ModelRejectedError):
+        svc.update(row, {"model": "bad-model"})
+
+    # Validated before patching, so the working agent survives intact.
+    assert c.rows["ag-1"]["model"] == "good-model"
+    assert c.updated_agents == []

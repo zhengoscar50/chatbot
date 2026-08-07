@@ -12,7 +12,7 @@ from app.models.schemas import (
     AgentUpdateRequest,
     IngestResponse,
 )
-from app.services.agent_service import AgentService, get_agent_service
+from app.services.agent_service import AgentService, ModelRejectedError, get_agent_service
 from app.services.ingest_service import (
     AttentionRequiredError,
     ExtractionFailedError,
@@ -56,9 +56,12 @@ async def create_agent(
             agents.create, user["id"], req.name, req.instructions,
             req.model or settings.default_agent_model, req.grounding, req.use_general_kb,
         )
+    except ModelRejectedError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"The model '{e.model}' isn't available. Check the id, or leave it blank to use the default.",
+        )
     except PowabaseAPIError as e:
-        # A bad model id is rejected here by the provider, not by a local list
-        # that would rot as models come and go.
         raise HTTPException(status_code=400, detail=str(e))
     return _to_response(row)
 
@@ -111,6 +114,11 @@ async def update_agent(
         return _to_response(row)
     try:
         merged = await run_in_threadpool(agents.update, row, fields)
+    except ModelRejectedError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"The model '{e.model}' isn't available. The agent is unchanged.",
+        )
     except PowabaseAPIError as e:
         raise HTTPException(status_code=400, detail=str(e))
     return _to_response(merged)
