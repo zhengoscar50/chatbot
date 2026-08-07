@@ -39,6 +39,7 @@ class ChatResponse(BaseModel):
 
 
 class SessionCreateRequest(BaseModel):
+    agent_id: str = Field(..., min_length=1)
     name: Optional[str] = None
 
 

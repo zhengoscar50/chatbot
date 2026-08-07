@@ -1,6 +1,5 @@
-import pytest
-
-from app.services.session_service import SessionService, slugify
+from app.clients.powabase_client import PowabaseAPIError
+from app.services.session_service import SessionService
 
 
 class FakeClient:
@@ -8,12 +7,16 @@ class FakeClient:
         self.rows = list(rows or [])
         self.created_kbs = []
         self.created_agents = []
-        self.links = []
         self.inserted = []
         self.updated = []
+        self.deleted_kbs = []
+        self.deleted_agents = []
+        self.deleted_rows = []
 
-    def create_knowledge_base(self, name, description="", indexing_config=None, retrieval_config=None):
-        kb = {"id": f"kb-{name}", "name": name, "indexing_config": indexing_config, "retrieval_config": retrieval_config}
+    def create_knowledge_base(self, name, description="", indexing_config=None,
+                              retrieval_config=None):
+        kb = {"id": f"kb-{name}", "name": name, "indexing_config": indexing_config,
+              "retrieval_config": retrieval_config}
         self.created_kbs.append(kb)
         return kb
 
@@ -21,9 +24,6 @@ class FakeClient:
         agent = {"id": f"agent-{name}", "name": name}
         self.created_agents.append(agent)
         return agent
-
-    def link_kb_to_agent(self, agent_id, kb_id):
-        self.links.append((agent_id, kb_id))
 
     def insert_session(self, row):
         self.inserted.append(row)
@@ -38,154 +38,118 @@ class FakeClient:
     def update_session(self, session_id, fields):
         self.updated.append((session_id, fields))
 
+    def delete_knowledge_base(self, kb_id):
+        self.deleted_kbs.append(kb_id)
 
-def test_slugify_normalizes():
-    assert slugify("Alice Smith!") == "alice-smith"
+    def delete_agent(self, agent_id):
+        self.deleted_agents.append(agent_id)
 
-
-def test_create_session_sets_owner_and_slug():
-    client = FakeClient()
-    row = SessionService(client, model="m").create_session("owner-1", "Alice", name="Taxes")
-    assert row["owner_id"] == "owner-1"
-    assert row["user_slug"] == "alice"
-    assert client.links == []
-    assert client.inserted and client.inserted[0]["owner_id"] == "owner-1"
-    # KB is NOT created up front — it's lazy (see ensure_kb). Agent still is.
-    assert client.created_kbs == []
-    assert row["kb_id"] == ""
-    assert client.created_agents
+    def delete_session_row(self, session_id):
+        self.deleted_rows.append(session_id)
 
 
-def test_ensure_kb_creates_and_persists_when_absent():
-    client = FakeClient()
-    kb_id = SessionService(client, model="m").ensure_kb({"id": "s1", "kb_id": ""})
-    assert kb_id == "kb-session-s1-kb"
-    assert client.created_kbs[0]["name"] == "session-s1-kb"
-    assert client.updated == [("s1", {"kb_id": "kb-session-s1-kb"})]
+def test_create_session_binds_to_the_agent_and_creates_no_agent():
+    # The agent is durable and user-owned now; a chat must never mint one.
+    c = FakeClient()
+    row = SessionService(c).create_session("o1", "ag-1", "My chat")
+
+    assert row["agent_id"] == "ag-1"
+    assert row["owner_id"] == "o1"
+    assert row["name"] == "My chat"
+    assert c.created_agents == []
 
 
-def test_ensure_kb_returns_existing_without_creating():
-    client = FakeClient()
-    kb_id = SessionService(client, model="m").ensure_kb({"id": "s1", "kb_id": "kb-existing"})
-    assert kb_id == "kb-existing"
-    assert client.created_kbs == []
-    assert client.updated == []
-
-
-def test_ensure_kb_full_document_branch_creates_full_kb():
-    client = FakeClient()
-    kb_id = SessionService(client, model="m").ensure_kb({"id": "s1", "kb_full_id": ""}, full_document=True)
-    assert kb_id == "kb-session-s1-full"
-    assert client.created_kbs[0]["name"] == "session-s1-full"
-    assert client.created_kbs[0]["indexing_config"] == {"strategy": "full_document"}
-    assert client.updated == [("s1", {"kb_full_id": "kb-session-s1-full"})]
-
-
-def test_ensure_kb_chunk_branch_passes_no_indexing_config():
-    client = FakeClient()
-    SessionService(client, model="m").ensure_kb({"id": "s1", "kb_id": ""})
-    assert client.created_kbs[0]["indexing_config"] is None
-
-
-def test_ensure_kb_full_returns_existing_without_creating():
-    client = FakeClient()
-    assert SessionService(client, model="m").ensure_kb(
-        {"id": "s1", "kb_full_id": "kb-existing"}, full_document=True
-    ) == "kb-existing"
-    assert client.created_kbs == []
-
-
-def test_create_session_defaults_name():
-    service = SessionService(FakeClient(), model="m")
-    row = service.create_session("owner-1", "alice")
+def test_create_session_defaults_the_name():
+    row = SessionService(FakeClient()).create_session("o1", "ag-1")
     assert row["name"] == "New session"
 
 
-def test_create_session_rejects_empty_user():
-    service = SessionService(FakeClient(), model="m")
-    with pytest.raises(ValueError):
-        service.create_session("owner-1", "!!!")
+def test_create_session_does_not_provision_a_kb_upfront():
+    c = FakeClient()
+    SessionService(c).create_session("o1", "ag-1")
+    assert c.created_kbs == []
+
+
+def test_ensure_kb_creates_one_chunk_scratch_kb():
+    c = FakeClient()
+    kb_id = SessionService(c).ensure_kb({"id": "s1", "kb_id": None})
+
+    assert kb_id == "kb-chat-s1-kb"
+    # chunk_embed: the chunk/full split belongs to the agent's permanent tier.
+    assert c.created_kbs[0]["indexing_config"] is None
+    assert c.updated == [("s1", {"kb_id": "kb-chat-s1-kb"})]
+
+
+def test_ensure_kb_returns_existing_without_creating():
+    c = FakeClient()
+    assert SessionService(c).ensure_kb({"id": "s1", "kb_id": "kb-existing"}) == "kb-existing"
+    assert c.created_kbs == []
+    assert c.updated == []
+
+
+def test_ensure_kb_passes_the_reranker_config():
+    c = FakeClient()
+    svc = SessionService(c, reranker_config={"reranker": {"model": "m", "candidate_count": 20}})
+    svc.ensure_kb({"id": "s1", "kb_id": None})
+    assert c.created_kbs[0]["retrieval_config"] == {"reranker": {"model": "m", "candidate_count": 20}}
 
 
 def test_list_filters_by_owner():
-    client = FakeClient(rows=[
+    c = FakeClient(rows=[
         {"id": "s1", "owner_id": "o1", "name": "A", "updated_at": "t1"},
         {"id": "s2", "owner_id": "o2", "name": "B", "updated_at": "t2"},
     ])
-    result = SessionService(client, model="m").list("o1")
-    assert result == [{"id": "s1", "name": "A", "updated_at": "t1"}]
+    assert SessionService(c).list("o1") == [{"id": "s1", "name": "A", "updated_at": "t1"}]
 
 
 def test_get_owned_session_returns_only_for_owner():
-    client = FakeClient(rows=[{"id": "s1", "owner_id": "o1", "kb_id": "k", "agent_id": "a"}])
-    svc = SessionService(client, model="m")
+    c = FakeClient(rows=[{"id": "s1", "owner_id": "o1", "kb_id": "k", "agent_id": "ag-1"}])
+    svc = SessionService(c)
     assert svc.get_owned_session("s1", "o1")["id"] == "s1"
     assert svc.get_owned_session("s1", "o2") is None
     assert svc.get_owned_session("missing", "o1") is None
 
 
 def test_touch_sets_updated_at_and_patches():
-    client = FakeClient()
-    service = SessionService(client, model="m")
+    c = FakeClient()
+    SessionService(c).touch("s1", name="Renamed")
 
-    service.touch("s1", name="Renamed")
-
-    session_id, fields = client.updated[0]
+    session_id, fields = c.updated[0]
     assert session_id == "s1"
     assert fields["name"] == "Renamed"
     assert "updated_at" in fields
 
 
-def test_create_session_does_not_link_kbs_even_with_general_kb():
-    client = FakeClient()
-    service = SessionService(client, model="m", general_kb_id="gkb-1")
-    service.create_session("owner-1", "alice")
-    assert client.links == []  # detached model: no knowledge_search linking
+def test_delete_removes_the_scratch_kb_and_row():
+    c = FakeClient(rows=[{"id": "s1", "kb_id": "kb1", "agent_id": "ag-1"}])
+
+    assert SessionService(c).delete("s1") is True
+
+    assert c.deleted_kbs == ["kb1"]
+    assert c.deleted_rows == ["s1"]
 
 
-def test_delete_removes_resources_and_row():
-    client = FakeClient(rows=[{"id": "s1", "user_slug": "alice", "kb_id": "kb1", "kb_full_id": "kbf", "agent_id": "a1"}])
-    client.deleted_kbs = []
-    client.deleted_agents = []
-    client.deleted_rows = []
-    client.delete_knowledge_base = lambda kb_id: client.deleted_kbs.append(kb_id)
-    client.delete_agent = lambda agent_id: client.deleted_agents.append(agent_id)
-    client.delete_session_row = lambda sid: client.deleted_rows.append(sid)
-    service = SessionService(client, model="m")
+def test_delete_never_deletes_the_agent():
+    # agent_id used to be a Powabase agent this session owned. It is now a
+    # foreign key to a user-owned agent shared with the user's other chats —
+    # deleting a chat must not destroy it.
+    c = FakeClient(rows=[{"id": "s1", "kb_id": "kb1", "agent_id": "ag-1"}])
 
-    result = service.delete("s1")
+    SessionService(c).delete("s1")
 
-    assert result is True
-    assert set(client.deleted_kbs) == {"kb1", "kbf"}
-    assert client.deleted_agents == ["a1"]
-    assert client.deleted_rows == ["s1"]
+    assert c.deleted_agents == []
 
 
 def test_delete_returns_false_for_missing_session():
-    client = FakeClient(rows=[])
-    client.delete_session_row = lambda sid: (_ for _ in ()).throw(AssertionError("should not delete"))
-    service = SessionService(client, model="m")
-
-    assert service.delete("missing") is False
+    c = FakeClient(rows=[])
+    assert SessionService(c).delete("missing") is False
+    assert c.deleted_rows == []
 
 
-def test_ensure_kb_passes_reranker_config():
-    client = FakeClient()
-    svc = SessionService(client, model="m", reranker_config={"reranker": {"model": "m", "candidate_count": 20}})
-    svc.ensure_kb({"id": "s1", "kb_id": ""})
-    assert client.created_kbs[0]["retrieval_config"] == {"reranker": {"model": "m", "candidate_count": 20}}
+def test_delete_is_best_effort_on_kb_cleanup():
+    c = FakeClient(rows=[{"id": "s1", "kb_id": "kb1", "agent_id": "ag-1"}])
+    c.delete_knowledge_base = lambda kb_id: (_ for _ in ()).throw(PowabaseAPIError(404, "gone"))
 
-
-def test_delete_is_best_effort_on_resource_cleanup():
-    from app.clients.powabase_client import PowabaseAPIError
-
-    client = FakeClient(rows=[{"id": "s1", "user_slug": "alice", "kb_id": "kb1", "agent_id": "a1"}])
-    client.deleted_rows = []
-    client.delete_knowledge_base = lambda kb_id: (_ for _ in ()).throw(PowabaseAPIError(404, "gone"))
-    client.delete_agent = lambda agent_id: (_ for _ in ()).throw(PowabaseAPIError(404, "gone"))
-    client.delete_session_row = lambda sid: client.deleted_rows.append(sid)
-    service = SessionService(client, model="m")
-
-    # KB/agent already gone must not block deleting the row.
-    assert service.delete("s1") is True
-    assert client.deleted_rows == ["s1"]
+    # A KB that is already gone must not block deleting the row.
+    assert SessionService(c).delete("s1") is True
+    assert c.deleted_rows == ["s1"]

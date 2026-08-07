@@ -27,7 +27,7 @@ def test_app_starts_when_powabase_reachable(monkeypatch):
         assert isinstance(app.state.session_service, main_module.SessionService)
         assert isinstance(app.state.powabase_client, main_module.PowabaseClient)
         assert app.state.general_kb_id == "gkb-1"
-        assert app.state.session_service.general_kb_id == "gkb-1"
+        assert isinstance(app.state.agent_service, main_module.AgentService)
         assert app.state.router_agent_id == "router-1"
 
 

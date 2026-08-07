@@ -37,9 +37,7 @@ async def lifespan(app: FastAPI):
         app.state.general_kb_id = general_kb_id
         app.state.router_agent_id = router_agent_id
         app.state.agent_service = AgentService(client, reranker_config)
-        app.state.session_service = SessionService(
-            client, settings.powabase_agent_model, general_kb_id, reranker_config
-        )
+        app.state.session_service = SessionService(client, reranker_config)
         yield
     finally:
         client.close()

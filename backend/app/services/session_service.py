@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 import uuid
 from datetime import datetime, timezone
 
@@ -8,18 +7,7 @@ from fastapi import Request
 
 from app.clients.powabase_client import PowabaseAPIError
 
-SYSTEM_PROMPT = (
-    "You are a helpful assistant. When relevant context from the knowledge "
-    "base is provided with a question, base your answer on that context and "
-    "cite your sources. If the provided context does not contain the answer, "
-    "say so plainly rather than guessing. When no context is provided, answer "
-    "normally and helpfully."
-)
 DEFAULT_NAME = "New session"
-
-
-def slugify(name: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "-", name.strip().lower()).strip("-")
 
 
 def _now_iso() -> str:
@@ -27,63 +15,41 @@ def _now_iso() -> str:
 
 
 class SessionService:
-    def __init__(
-        self,
-        client,
-        model: str,
-        general_kb_id: str | None = None,
-        reranker_config: dict | None = None,
-    ):
+    """A chat: a conversation thread bound to a user-owned agent.
+
+    Creates no agent of its own — the agent is durable and user-configured, and
+    one agent serves many chats.
+    """
+
+    def __init__(self, client, reranker_config: dict | None = None):
         self.client = client
-        self.model = model
-        self.general_kb_id = general_kb_id
         self.reranker_config = reranker_config
 
-    def create_session(self, owner_id: str, username: str, name: str | None = None) -> dict:
-        user_slug = slugify(username)
-        if not user_slug:
-            raise ValueError("User name must contain at least one letter or number")
-
-        session_id = str(uuid.uuid4())
-        agent = self.client.create_agent(
-            f"session-{session_id}-agent", model=self.model, system_prompt=SYSTEM_PROMPT
-        )
-
-        row = {
-            "id": session_id,
+    def create_session(self, owner_id: str, agent_id: str, name: str | None = None) -> dict:
+        return self.client.insert_session({
+            "id": str(uuid.uuid4()),
             "owner_id": owner_id,
-            "user_slug": user_slug,
+            "agent_id": agent_id,
             "name": name or DEFAULT_NAME,
-            "kb_id": "",  # created lazily on first upload — see ensure_kb()
-            "agent_id": agent["id"],
-        }
-        return self.client.insert_session(row)
+        })
 
-    def ensure_kb(self, row: dict, full_document: bool = False) -> str:
-        """Return the session KB id for this document class, creating it lazily.
+    def ensure_kb(self, row: dict) -> str:
+        """Return this chat's scratch KB id, creating it lazily on first upload.
 
-        A session grows up to two KBs: a chunk_embed KB (``kb_id``) for large
-        documents and a full_document KB (``kb_full_id``) for small ones. The
-        first upload of each class creates that KB and persists its id.
+        Chunk-embed only: scratch uploads are throwaway context for a single
+        conversation, so the chunk/full split is reserved for an agent's
+        permanent tier.
         """
-        column = "kb_full_id" if full_document else "kb_id"
-        existing = row.get(column)
+        existing = row.get("kb_id")
         if existing:
             return existing
         session_id = row["id"]
-        if full_document:
-            name = f"session-{session_id}-full"
-            indexing_config = {"strategy": "full_document"}
-        else:
-            name = f"session-{session_id}-kb"
-            indexing_config = None
         kb = self.client.create_knowledge_base(
-            name,
-            description=f"Documents for session {session_id}",
-            indexing_config=indexing_config,
+            f"chat-{session_id}-kb",
+            description=f"Scratch documents for chat {session_id}",
             retrieval_config=self.reranker_config,
         )
-        self.client.update_session(session_id, {column: kb["id"]})
+        self.client.update_session(session_id, {"kb_id": kb["id"]})
         return kb["id"]
 
     def list(self, owner_id: str) -> list:
@@ -111,25 +77,25 @@ class SessionService:
         self.client.update_session(session_id, {"name": name})
 
     def delete(self, session_id: str) -> bool:
-        """Delete a session: its Powabase KB + agent (best-effort) and its row.
+        """Delete a chat: its scratch KB (best-effort) and its row.
 
-        Returns False if the session doesn't exist. The row deletion is
-        authoritative and may raise PowabaseAPIError; the KB/agent cleanup is
+        Returns False if the chat doesn't exist. The row deletion is
+        authoritative and may raise PowabaseAPIError; the KB cleanup is
         best-effort so a stale/missing resource never blocks the delete.
+
+        Deliberately does NOT touch ``agent_id``. It used to hold a Powabase
+        agent this session owned; it is now a foreign key to a user-owned agent
+        that outlives the chat and is shared with the user's other chats.
         """
         row = self.client.get_session_row(session_id)
         if row is None:
             return False
-        for resource_id, delete_fn in (
-            (row.get("kb_id"), self.client.delete_knowledge_base),
-            (row.get("kb_full_id"), self.client.delete_knowledge_base),
-            (row.get("agent_id"), self.client.delete_agent),
-        ):
-            if resource_id:
-                try:
-                    delete_fn(resource_id)
-                except PowabaseAPIError:
-                    pass
+        kb_id = row.get("kb_id")
+        if kb_id:
+            try:
+                self.client.delete_knowledge_base(kb_id)
+            except PowabaseAPIError:
+                pass
         self.client.delete_session_row(session_id)
         return True
 
