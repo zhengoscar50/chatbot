@@ -182,3 +182,74 @@ def test_update_knowledge_base_patches():
     )
     PowabaseClient(BASE_URL, "k").update_knowledge_base("kb-1", {"retrieval_config": {"x": 1}})
     assert json.loads(route.calls[0].request.content) == {"retrieval_config": {"x": 1}}
+
+
+@respx.mock
+def test_update_agent_patches_fields():
+    route = respx.patch(f"{BASE_URL}/api/agents/a-1").mock(
+        return_value=httpx.Response(200, json={"id": "a-1", "model": "gpt-4o-mini"})
+    )
+    result = PowabaseClient(BASE_URL, "k").update_agent("a-1", {"model": "gpt-4o-mini"})
+    assert result["model"] == "gpt-4o-mini"
+    assert json.loads(route.calls[0].request.content) == {"model": "gpt-4o-mini"}
+
+
+@respx.mock
+def test_remove_source_from_kb_deletes_the_link_not_the_source():
+    # upload_source reuses duplicates on 409, so one source can live in several
+    # KBs. Untraining must unlink, never delete the source itself.
+    route = respx.delete(f"{BASE_URL}/api/knowledge-bases/kb-1/sources/src-1").mock(
+        return_value=httpx.Response(204)
+    )
+    PowabaseClient(BASE_URL, "k").remove_source_from_kb("kb-1", "src-1")
+    assert route.called
+
+
+@respx.mock
+def test_insert_agent_row_returns_the_created_row():
+    respx.post(f"{BASE_URL}/rest/v1/agents").mock(
+        return_value=httpx.Response(201, json=[{"id": "ag-1", "name": "Tutor"}])
+    )
+    row = PowabaseClient(BASE_URL, "k").insert_agent_row({"name": "Tutor"})
+    assert row["id"] == "ag-1"
+
+
+@respx.mock
+def test_list_agent_rows_filters_by_owner():
+    route = respx.get(f"{BASE_URL}/rest/v1/agents").mock(
+        return_value=httpx.Response(200, json=[{"id": "ag-1"}])
+    )
+    rows = PowabaseClient(BASE_URL, "k").list_agent_rows("o1")
+    assert rows == [{"id": "ag-1"}]
+    assert "owner_id=eq.o1" in str(route.calls[0].request.url)
+
+
+@respx.mock
+def test_get_agent_row_returns_none_when_absent():
+    respx.get(f"{BASE_URL}/rest/v1/agents").mock(return_value=httpx.Response(200, json=[]))
+    assert PowabaseClient(BASE_URL, "k").get_agent_row("nope") is None
+
+
+@respx.mock
+def test_update_agent_row_patches_by_id():
+    route = respx.patch(f"{BASE_URL}/rest/v1/agents").mock(return_value=httpx.Response(204))
+    PowabaseClient(BASE_URL, "k").update_agent_row("ag-1", {"name": "New"})
+    assert "id=eq.ag-1" in str(route.calls[0].request.url)
+    assert json.loads(route.calls[0].request.content) == {"name": "New"}
+
+
+@respx.mock
+def test_delete_agent_row_deletes_by_id():
+    route = respx.delete(f"{BASE_URL}/rest/v1/agents").mock(return_value=httpx.Response(204))
+    PowabaseClient(BASE_URL, "k").delete_agent_row("ag-1")
+    assert "id=eq.ag-1" in str(route.calls[0].request.url)
+
+
+@respx.mock
+def test_list_sessions_for_agent_filters_by_agent_id():
+    route = respx.get(f"{BASE_URL}/rest/v1/sessions").mock(
+        return_value=httpx.Response(200, json=[{"id": "s-1"}])
+    )
+    rows = PowabaseClient(BASE_URL, "k").list_sessions_for_agent("ag-1")
+    assert rows == [{"id": "s-1"}]
+    assert "agent_id=eq.ag-1" in str(route.calls[0].request.url)
