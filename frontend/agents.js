@@ -14,6 +14,12 @@ const agentForm = document.getElementById("agent-form");
 const agentNameInput = document.getElementById("agent-name");
 const agentInstructionsInput = document.getElementById("agent-instructions");
 const agentModelInput = document.getElementById("agent-model");
+const agentModelSelect = document.getElementById("agent-model-select");
+const agentModelCustomRow = document.getElementById("agent-model-custom-row");
+
+const OTHER_MODEL = "__other__";
+let modelChoices = [];
+let defaultModel = "";
 const agentGroundingInput = document.getElementById("agent-grounding");
 const agentGeneralKbInput = document.getElementById("agent-general-kb");
 const agentDocsSection = document.getElementById("agent-docs");
@@ -39,12 +45,18 @@ function wireAgents() {
     updateAgentTooltip();
     onAgentChanged();
   });
+  agentModelSelect.addEventListener("change", () => {
+    const custom = agentModelSelect.value === OTHER_MODEL;
+    agentModelCustomRow.hidden = !custom;
+    if (custom) agentModelInput.focus();
+  });
   agentModal.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeAgentModal();
   });
 }
 
 async function loadAgents() {
+  if (modelChoices.length === 0) await loadModelChoices();
   try {
     const res = await authFetch("/agents");
     if (!res.ok) {
@@ -102,6 +114,53 @@ function selectedAgent() {
   return agents.find((a) => a.id === currentAgentId) || null;
 }
 
+// The model list is hand-maintained server-side (Powabase publishes no
+// catalog), so "Other…" stays available for ids the list doesn't know yet.
+async function loadModelChoices() {
+  try {
+    const res = await authFetch("/models");
+    if (!res.ok) return;
+    const body = await res.json();
+    modelChoices = body.models || [];
+    defaultModel = body.default || "";
+  } catch (err) {
+    modelChoices = [];
+  }
+}
+
+function renderModelSelect(current) {
+  agentModelSelect.innerHTML = "";
+  modelChoices.forEach((m) => {
+    const opt = document.createElement("option");
+    opt.value = m;
+    opt.textContent = m === defaultModel ? `${m} (default)` : m;
+    agentModelSelect.appendChild(opt);
+  });
+  const other = document.createElement("option");
+  other.value = OTHER_MODEL;
+  other.textContent = "Other…";
+  agentModelSelect.appendChild(other);
+
+  // An agent may already hold a model the list doesn't offer — one typed
+  // before the picker existed, or dropped from the list since. Show it as a
+  // custom value rather than silently re-pointing the agent at another model.
+  if (current && !modelChoices.includes(current)) {
+    agentModelSelect.value = OTHER_MODEL;
+    agentModelInput.value = current;
+    agentModelCustomRow.hidden = false;
+  } else {
+    agentModelSelect.value = current || defaultModel || (modelChoices[0] || OTHER_MODEL);
+    agentModelInput.value = "";
+    agentModelCustomRow.hidden = true;
+  }
+}
+
+function chosenModel() {
+  return agentModelSelect.value === OTHER_MODEL
+    ? agentModelInput.value.trim()
+    : agentModelSelect.value;
+}
+
 function updateAgentTooltip() {
   const a = selectedAgent();
   agentSelect.title = a
@@ -122,9 +181,9 @@ function openAgentModal(agentId) {
   } else {
     agentNameInput.value = "";
     agentInstructionsInput.value = "";
-    agentModelInput.value = "";
     agentGroundingInput.value = "strict";
     agentGeneralKbInput.checked = false;
+    renderModelSelect(null);
   }
   agentModal.hidden = false;
   agentNameInput.focus();
@@ -141,9 +200,9 @@ async function loadAgentDetail(agentId) {
   const a = await res.json();
   agentNameInput.value = a.name;
   agentInstructionsInput.value = a.instructions || "";
-  agentModelInput.value = a.model || "";
   agentGroundingInput.value = a.grounding;
   agentGeneralKbInput.checked = a.use_general_kb;
+  renderModelSelect(a.model || "");
 }
 
 async function saveAgent(event) {
@@ -155,7 +214,11 @@ async function saveAgent(event) {
     grounding: agentGroundingInput.value,
     use_general_kb: agentGeneralKbInput.checked,
   };
-  const model = agentModelInput.value.trim();
+  const model = chosenModel();
+  if (agentModelSelect.value === OTHER_MODEL && !model) {
+    agentError.textContent = "Enter a model id, or pick one from the list.";
+    return;
+  }
   if (model) payload.model = model;
 
   const url = editingAgentId ? `/agents/${encodeURIComponent(editingAgentId)}` : "/agents";
@@ -278,6 +341,7 @@ async function trainAgent() {
 
 function resetAgentState() {
   agents = [];
+  modelChoices = [];
   currentAgentId = null;
   editingAgentId = null;
   agentSelect.innerHTML = "";
