@@ -328,11 +328,16 @@ function startRename(li, session) {
 
 async function createSession() {
   if (!authToken) return;
+  // A chat belongs to an agent, so there has to be one selected first.
+  if (!currentAgentId) {
+    setSidebarStatus("Create an agent first — click + above.", "error");
+    return;
+  }
   try {
     const response = await authFetch("/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ agent_id: currentAgentId }),
     });
     const body = await response.json();
     if (!response.ok) {

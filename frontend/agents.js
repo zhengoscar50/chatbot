@@ -46,9 +46,25 @@ function wireAgents() {
 async function loadAgents() {
   try {
     const res = await authFetch("/agents");
-    if (!res.ok) return;
+    if (!res.ok) {
+      // Say something. A silently blank picker leaves the user with no idea
+      // whether they have no agents or the request failed.
+      let body;
+      try {
+        body = await res.json();
+      } catch (parseErr) {
+        body = { detail: `${res.status} ${res.statusText}` };
+      }
+      agents = [];
+      renderAgentSelect();
+      setSidebarStatus(`Could not load agents: ${errorText(body, res)}`, "error");
+      return;
+    }
     agents = await res.json();
   } catch (err) {
+    agents = [];
+    renderAgentSelect();
+    setSidebarStatus(err.message, "error");
     return;
   }
   if (!agents.some((a) => a.id === currentAgentId)) {

@@ -68,7 +68,10 @@ async def list_agents(
     user: dict = Depends(get_current_user),
     agents: AgentService = Depends(get_agent_service),
 ):
-    rows = await run_in_threadpool(agents.list, user["id"])
+    try:
+        rows = await run_in_threadpool(agents.list, user["id"])
+    except PowabaseAPIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
     return [
         AgentSummary(
             id=r["id"], name=r["name"], model=r["model"],
@@ -84,7 +87,10 @@ async def get_agent(
     user: dict = Depends(get_current_user),
     agents: AgentService = Depends(get_agent_service),
 ):
-    row = await run_in_threadpool(agents.get_owned, agent_id, user["id"])
+    try:
+        row = await run_in_threadpool(agents.get_owned, agent_id, user["id"])
+    except PowabaseAPIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
     if row is None:
         raise HTTPException(status_code=404, detail="Agent not found")
     return _to_response(row)

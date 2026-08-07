@@ -256,3 +256,28 @@ def test_untrain_404_for_another_users_agent():
     app = build_app(svc)
 
     assert TestClient(app).delete("/agents/ag-1/documents/s1").status_code == 404
+
+
+def test_list_agents_502_when_powabase_is_unreachable():
+    # A missing agents table (or any client error) must surface as a clean 502,
+    # not an unhandled 500 — the frontend shows this string to the user.
+    from app.clients.powabase_client import PowabaseAPIError
+
+    class Failing(FakeAgentService):
+        def list(self, owner_id):
+            raise PowabaseAPIError(404, {"code": "PGRST205"})
+
+    app = build_app(Failing())
+    assert TestClient(app, raise_server_exceptions=False).get("/agents").status_code == 502
+
+
+def test_get_agent_502_when_powabase_is_unreachable():
+    from app.clients.powabase_client import PowabaseAPIError
+
+    class Failing(FakeAgentService):
+        def get_owned(self, agent_id, owner_id):
+            raise PowabaseAPIError(404, {"code": "PGRST205"})
+
+    app = build_app(Failing())
+    r = TestClient(app, raise_server_exceptions=False).get("/agents/ag-1")
+    assert r.status_code == 502
