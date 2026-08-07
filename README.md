@@ -74,7 +74,7 @@ Click **+** in the sidebar to create an agent. You give it:
 - a **name**
 - **instructions** — its system prompt, e.g. "You are a study tutor for AP
   Chemistry. Always show your working."
-- a **model** (optional; falls back to `DEFAULT_AGENT_MODEL`)
+- a **model**, picked from a list — or **Other…** to type any LiteLLM id
 - a **grounding** mode — *only answer from my documents* (strict) or *use my
   documents, but answer freely* (open)
 - whether it may also use the shared **general knowledge** base
@@ -90,6 +90,14 @@ so you can drop in a one-off document without permanently teaching the agent.
 Retrieval for one question spans up to four knowledge bases: the agent's two
 permanent ones (chunked and full-document), this chat's scratch KB, and the
 shared general KB if the agent opted in.
+
+The model list is hand-maintained in `AGENT_MODELS` (see `app/core/config.py`),
+because Powabase publishes no model catalog. Every id in the default list
+answered a live ping on 2026-08-07. Since a hand-maintained list drifts, two
+things guard it: **Other…** lets you use an id the list doesn't know, and
+creating an agent (or changing its model) probes the model first — a dead or
+mistyped id fails in the dialog with a clear message instead of becoming an
+agent that breaks on its first message.
 
 **Scope note:** agents are private to their creator. There is no sharing.
 

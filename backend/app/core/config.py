@@ -24,6 +24,20 @@ class Settings(BaseSettings):
     ingest_background_max_wait_seconds: int = 600
     router_agent_model: str = "gpt-4o-mini"
     default_agent_model: str = "gpt-4o-mini"
+    # Offered in the agent form's model picker. Powabase exposes no model
+    # catalog (/api/models 404s), so this list is hand-maintained and can drift
+    # from what the provider actually serves — which is why creating an agent
+    # still probes the chosen model, and why the UI keeps an "Other…" escape
+    # hatch. Every id here answered a live ping on 2026-08-07.
+    agent_models: str = (
+        "gpt-4o-mini,gpt-4o,gpt-5-nano,gpt-5-mini,gpt-5,"
+        "claude-haiku-4-5,claude-sonnet-4-5,claude-sonnet-5,claude-opus-5,"
+        "gemini-2.5-flash"
+    )
+
+    @property
+    def agent_model_choices(self) -> list:
+        return [m.strip() for m in self.agent_models.split(",") if m.strip()]
     retrieval_top_k: int = 8
     retrieval_max_context_tokens: int = 32000
     gate_history_turns: int = 2

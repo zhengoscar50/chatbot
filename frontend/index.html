@@ -102,7 +102,10 @@
             placeholder="You are a study tutor for AP Chemistry. Always show your working."></textarea>
         </label>
         <label>Model
-          <input id="agent-model" placeholder="gpt-4o-mini" />
+          <select id="agent-model-select"></select>
+        </label>
+        <label id="agent-model-custom-row" hidden>Model id
+          <input id="agent-model" placeholder="e.g. openrouter/meta-llama/llama-3.3-70b-instruct" />
         </label>
         <label>Grounding
           <select id="agent-grounding">
