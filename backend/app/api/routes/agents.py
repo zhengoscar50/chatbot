@@ -188,13 +188,14 @@ async def list_agent_documents(
         raise HTTPException(status_code=404, detail="Agent not found")
 
     def _collect() -> list:
+        # Powabase names these source_name / index_status, not filename / status.
         out = []
         for kb_id in _permanent_kb_ids(row):
             for item in client.list_kb_sources(kb_id).get("items", []):
                 out.append(AgentDocument(
                     source_id=item.get("source_id"),
-                    filename=item.get("filename"),
-                    status=item.get("status"),
+                    filename=item.get("source_name"),
+                    status=item.get("index_status"),
                 ))
         return out
 
@@ -219,11 +220,15 @@ async def untrain_agent_document(
     def _unlink() -> bool:
         # Unlink from whichever permanent KB holds it. Never delete the Source:
         # upload_source reuses duplicates, so it may belong to other agents too.
+        #
+        # The unlink takes the *indexed-source* id (item["id"]), not the
+        # source_id the caller passes us — those are different ids, and sending
+        # the wrong one 404s with "Indexed source not found".
         for kb_id in _permanent_kb_ids(row):
-            items = client.list_kb_sources(kb_id).get("items", [])
-            if any(item.get("source_id") == source_id for item in items):
-                client.remove_source_from_kb(kb_id, source_id)
-                return True
+            for item in client.list_kb_sources(kb_id).get("items", []):
+                if item.get("source_id") == source_id:
+                    client.remove_source_from_kb(kb_id, item["id"])
+                    return True
         return False
 
     try:

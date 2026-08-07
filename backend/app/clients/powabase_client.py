@@ -289,14 +289,21 @@ class PowabaseClient:
         self._raise_for_status(response)
         return response.json()
 
-    def remove_source_from_kb(self, kb_id: str, source_id: str) -> None:
-        """Unlink a source from a KB.
+    def remove_source_from_kb(self, kb_id: str, indexed_source_id: str) -> None:
+        """Unlink an indexed source from a KB.
+
+        Takes the **indexed-source id** — ``item["id"]`` from
+        ``list_kb_sources`` — not ``item["source_id"]``. Verified live: passing
+        a source_id returns 404 {"error": "Indexed source not found"}, while the
+        indexed-source id returns 200 {"deleted_indexed_source_id": ...}.
 
         Never deletes the Source itself: upload_source reuses duplicates on 409,
         so one source can belong to several KBs and deleting it would break the
         others.
         """
-        response = self._client.delete(f"/api/knowledge-bases/{kb_id}/sources/{source_id}")
+        response = self._client.delete(
+            f"/api/knowledge-bases/{kb_id}/sources/{indexed_source_id}"
+        )
         self._raise_for_status(response)
 
     # Agent rows (PostgREST) -------------------------------------------------

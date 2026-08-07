@@ -199,15 +199,21 @@ def test_documents_lists_both_permanent_kbs():
     row = svc.create("o1", "T", "", "m", "strict", False)
     row["kb_id"], row["kb_full_id"] = "kb-c", "kb-f"
     client = FakeIngestClient()
+    # Real Powabase shape: id is the indexed-source link, and the fields are
+    # source_name / index_status (not filename / status).
     client.kb_sources = {
-        "kb-c": [{"source_id": "s1", "filename": "big.pdf", "status": "indexed"}],
-        "kb-f": [{"source_id": "s2", "filename": "small.pdf", "status": "indexed"}],
+        "kb-c": [{"id": "ix-1", "source_id": "s1", "source_name": "big.pdf",
+                  "index_status": "indexed"}],
+        "kb-f": [{"id": "ix-2", "source_id": "s2", "source_name": "small.pdf",
+                  "index_status": "indexed"}],
     }
     app = build_app(svc, client)
 
     body = TestClient(app).get("/agents/ag-1/documents").json()
 
     assert {d["source_id"] for d in body} == {"s1", "s2"}
+    assert {d["filename"] for d in body} == {"big.pdf", "small.pdf"}
+    assert {d["status"] for d in body} == {"indexed"}
 
 
 def test_documents_empty_for_untrained_agent():
@@ -231,14 +237,16 @@ def test_untrain_unlinks_from_the_kb_that_holds_it():
     row = svc.create("o1", "T", "", "m", "strict", False)
     row["kb_id"], row["kb_full_id"] = "kb-c", "kb-f"
     client = FakeIngestClient()
-    client.kb_sources = {"kb-f": [{"source_id": "s2"}]}
+    client.kb_sources = {"kb-f": [{"id": "ix-2", "source_id": "s2"}]}
     app = build_app(svc, client)
 
     r = TestClient(app).delete("/agents/ag-1/documents/s2")
 
     assert r.status_code == 204
-    # Unlinked from the KB, and the Source itself was never deleted.
-    assert client.removed == [("kb-f", "s2")]
+    # Unlinked by the INDEXED-SOURCE id, not the source_id: Powabase 404s
+    # with "Indexed source not found" if given the latter. And the Source
+    # itself is never deleted, since it may be shared with other agents.
+    assert client.removed == [("kb-f", "ix-2")]
 
 
 def test_untrain_404_when_the_agent_does_not_hold_that_document():
