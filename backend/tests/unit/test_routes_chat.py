@@ -8,6 +8,7 @@ from app.api.deps import get_current_user
 from app.api.routes import chat as chat_route
 from app.clients.powabase_client import get_powabase_client
 from app.core.config import get_settings
+from app.services.agent_service import get_agent_service
 from app.services.general_kb import get_general_kb_id
 from app.services.router_agent import get_router_agent_id
 from app.services.session_service import get_session_service
@@ -16,7 +17,7 @@ from app.services.session_service import get_session_service
 class FakeSessionService:
     def __init__(self):
         self.touched = []
-        self.row = {"id": "s1", "agent_id": "agent-1", "name": "New session",
+        self.row = {"id": "s1", "agent_id": "ag-1", "name": "New session",
                     "powabase_session_id": None, "kb_id": "kb-s"}
 
     def get_owned_session(self, session_id, owner_id):
@@ -26,19 +27,37 @@ class FakeSessionService:
         self.touched.append((session_id, fields))
 
 
+class FakeAgentService:
+    def __init__(self, row=None):
+        self.row = row if row is not None else {
+            "id": "ag-1", "owner_id": "o1", "powabase_agent_id": "pa-1",
+            "kb_id": "ag-chunk", "kb_full_id": "ag-full",
+            "use_general_kb": False, "model": "m",
+        }
+
+    def get_owned(self, agent_id, owner_id):
+        return self.row
+
+
+# Records what the route composed, so the KB scope can be asserted.
+LAST_CHAT_ARGS = {}
+
+
 class FakeChatService:
     def __init__(self, client, agent_id, gate, retrieval_kb_ids, top_k, max_context_tokens):
-        assert agent_id == "agent-1"
+        LAST_CHAT_ARGS["agent_id"] = agent_id
+        LAST_CHAT_ARGS["kb_ids"] = retrieval_kb_ids
 
     def ask(self, query, session_id=None, history=None):
         return {"answer": "42", "session_id": "ps-new", "citations": []}
 
 
-def build_app(session_service):
+def build_app(session_service, agent_service=None):
     app = FastAPI()
     app.include_router(chat_route.router)
     app.dependency_overrides[get_powabase_client] = lambda: object()
     app.dependency_overrides[get_session_service] = lambda: session_service
+    app.dependency_overrides[get_agent_service] = lambda: (agent_service or FakeAgentService())
     app.dependency_overrides[get_general_kb_id] = lambda: "gkb-1"
     app.dependency_overrides[get_router_agent_id] = lambda: "router-1"
     app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
@@ -167,3 +186,42 @@ def test_chat_returns_answer_even_if_session_persist_fails(monkeypatch):
 
     assert response.status_code == 200
     assert response.json() == {"answer": "42", "citations": []}
+
+
+def test_chat_uses_the_agents_powabase_agent_and_full_kb_scope(monkeypatch):
+    # The chat runs on the agent it is bound to, retrieving from that agent's
+    # permanent KBs plus this chat's scratch KB.
+    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    LAST_CHAT_ARGS.clear()
+
+    post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "q"})
+
+    assert LAST_CHAT_ARGS["agent_id"] == "pa-1"
+    assert LAST_CHAT_ARGS["kb_ids"] == ["ag-chunk", "ag-full", "kb-s"]
+
+
+def test_chat_includes_general_kb_only_when_the_agent_opted_in(monkeypatch):
+    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    LAST_CHAT_ARGS.clear()
+    opted_in = FakeAgentService({
+        "id": "ag-1", "owner_id": "o1", "powabase_agent_id": "pa-1",
+        "kb_id": "ag-chunk", "kb_full_id": None,
+        "use_general_kb": True, "model": "m",
+    })
+
+    post(TestClient(build_app(FakeSessionService(), opted_in)), {"session_id": "s1", "query": "q"})
+
+    assert LAST_CHAT_ARGS["kb_ids"] == ["ag-chunk", "kb-s", "gkb-1"]
+
+
+def test_chat_404_when_the_agent_is_not_the_users(monkeypatch):
+    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    not_found = FakeAgentService()
+    not_found.row = None  # get_owned returns None for an agent that isn't yours
+
+    response = post(
+        TestClient(build_app(FakeSessionService(), not_found)),
+        {"session_id": "s1", "query": "q"},
+    )
+
+    assert response.status_code == 404

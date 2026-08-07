@@ -19,13 +19,16 @@ from app.services.session_service import SessionService, get_session_service
 router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 
-def _run_finish(service: IngestService, sessions: SessionService, row: dict, source_id: str, max_chars: int) -> None:
-    # Runs post-response: decide the KB by extracted size, then index.
+def _run_finish(service: IngestService, sessions: SessionService, row: dict, source_id: str) -> None:
+    # Runs post-response: index into this chat's scratch KB.
     # Failures are observable via GET /ingest/status.
+    #
+    # No content-aware routing here. Scratch uploads are throwaway context for a
+    # single conversation, so the chunk/full split is reserved for an agent's
+    # permanent tier (see POST /agents/{id}/train).
     try:
         service.await_extraction(source_id)
-        full_document = 0 < service.char_count(source_id) <= max_chars
-        kb_id = sessions.ensure_kb(row, full_document)
+        kb_id = sessions.ensure_kb(row)
         service.index_into(kb_id, source_id)
     except (
         AttentionRequiredError,
@@ -62,9 +65,7 @@ async def ingest_file(
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
-    background_tasks.add_task(
-        _run_finish, service, sessions, row, source_id, settings.full_document_max_chars
-    )
+    background_tasks.add_task(_run_finish, service, sessions, row, source_id)
     return JSONResponse(
         status_code=202,
         content=IngestResponse(source_id=source_id, status="processing").model_dump(),

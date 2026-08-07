@@ -10,8 +10,10 @@ from app.services.chat_service import (
     ModelBusyError,
     ProviderKeyError,
 )
+from app.services.agent_service import AgentService, get_agent_service
 from app.services.gate_service import GateService
 from app.services.general_kb import get_general_kb_id
+from app.services.retrieval_scope import kb_ids_for
 from app.services.router_agent import get_router_agent_id
 from app.services.session_service import DEFAULT_NAME, SessionService, get_session_service
 
@@ -38,6 +40,7 @@ def chat(
     user: dict = Depends(get_current_user),
     client: PowabaseClient = Depends(get_powabase_client),
     sessions: SessionService = Depends(get_session_service),
+    agents: AgentService = Depends(get_agent_service),
     general_kb_id: str = Depends(get_general_kb_id),
     router_agent_id: str = Depends(get_router_agent_id),
     settings=Depends(get_settings),
@@ -45,6 +48,10 @@ def chat(
     row = sessions.get_owned_session(req.session_id, user["id"])
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    agent_row = agents.get_owned(row["agent_id"], user["id"])
+    if agent_row is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
 
     powabase_session_id = row.get("powabase_session_id")
 
@@ -59,8 +66,8 @@ def chat(
 
     gate = GateService(client, router_agent_id)
     service = ChatService(
-        client, row["agent_id"], gate,
-        [row["kb_id"], row.get("kb_full_id"), general_kb_id],
+        client, agent_row["powabase_agent_id"], gate,
+        kb_ids_for(agent_row, row, general_kb_id),
         settings.retrieval_top_k, settings.retrieval_max_context_tokens,
     )
     try:

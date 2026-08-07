@@ -39,6 +39,7 @@ class ChatResponse(BaseModel):
 
 
 class SessionCreateRequest(BaseModel):
+    agent_id: str = Field(..., min_length=1)
     name: Optional[str] = None
 
 
@@ -108,19 +109,58 @@ class MeResponse(BaseModel):
     username: str
 
 
-class ResearchRequest(BaseModel):
-    session_id: str = Field(..., min_length=1)
-    query: str = Field(..., min_length=1)
+# NOTE: this module has no `from __future__ import annotations` and must not get
+# one (Pydantic resolves these at class-definition time). On Python 3.9 that
+# makes PEP 604 unions (`str | None`) a TypeError at import — use Optional[X].
+class AgentCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    instructions: str = Field(default="", max_length=8000)
+    model: Optional[str] = Field(default=None)
+    grounding: str = Field(default="strict")
+    use_general_kb: bool = Field(default=False)
+
+    @field_validator("grounding")
+    @classmethod
+    def _known_grounding(cls, v: str) -> str:
+        if v not in ("strict", "open"):
+            raise ValueError("grounding must be 'strict' or 'open'")
+        return v
 
 
-class ResearchStartResponse(BaseModel):
-    job_id: str
-    status: str
+class AgentUpdateRequest(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=80)
+    instructions: Optional[str] = Field(default=None, max_length=8000)
+    model: Optional[str] = None
+    grounding: Optional[str] = None
+    use_general_kb: Optional[bool] = None
+
+    @field_validator("grounding")
+    @classmethod
+    def _known_grounding(cls, v):
+        if v is not None and v not in ("strict", "open"):
+            raise ValueError("grounding must be 'strict' or 'open'")
+        return v
 
 
-class ResearchStatusResponse(BaseModel):
-    status: str
-    stage: Optional[str] = None
-    report: Optional[str] = None
-    citations: list = Field(default_factory=list)
-    detail: Optional[str] = None
+class AgentResponse(BaseModel):
+    id: str
+    name: str
+    instructions: str
+    model: str
+    grounding: str
+    use_general_kb: bool
+    trained: bool
+
+
+class AgentSummary(BaseModel):
+    id: str
+    name: str
+    model: str
+    trained: bool
+    updated_at: Optional[str] = None
+
+
+class AgentDocument(BaseModel):
+    source_id: str
+    filename: Optional[str] = None
+    status: Optional[str] = None

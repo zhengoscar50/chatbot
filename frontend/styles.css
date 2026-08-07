@@ -325,96 +325,6 @@ body {
   height: 1.1rem;
 }
 
-.research-btn {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  height: 2.1rem;
-  padding: 0 0.7rem;
-  border-radius: 999px;
-  border: 1px solid var(--accent-border);
-  background: var(--accent-surface);
-  color: var(--accent);
-  font: inherit;
-  font-size: 0.78rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
-}
-
-.research-btn:hover:not(:disabled) {
-  background: var(--accent-hover);
-  border-color: var(--accent-2);
-}
-
-.research-btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.research-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-.research-btn svg {
-  flex: none;
-  width: 1rem;
-  height: 1rem;
-}
-
-.research-stage {
-  margin: 0 0 0.4rem;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  font-weight: 600;
-}
-
-.research-report h1,
-.research-report h2,
-.research-report h3,
-.research-report h4,
-.research-report h5,
-.research-report h6 {
-  margin: 0.9rem 0 0.4rem;
-  line-height: 1.3;
-}
-
-.research-report > *:first-child {
-  margin-top: 0;
-}
-
-.research-report h1 {
-  font-size: 1.15rem;
-}
-
-.research-report h2 {
-  font-size: 1.05rem;
-}
-
-.research-report h3,
-.research-report h4,
-.research-report h5,
-.research-report h6 {
-  font-size: 0.98rem;
-}
-
-.research-report p {
-  margin: 0 0 0.6rem;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-}
-
-.research-report ul {
-  margin: 0 0 0.6rem;
-  padding-left: 1.25rem;
-}
-
-.research-report li {
-  margin: 0.2rem 0;
-}
-
 @keyframes rise {
   from {
     opacity: 0;
@@ -1052,4 +962,157 @@ body {
 }
 :root[data-theme="dark"] .theme-ico--sun {
   display: block;
+}
+
+/* --- Agents --------------------------------------------------------------- */
+
+/* No horizontal padding: .sidebar already pads, and doubling it stole ~24px
+   from the picker in a 16rem column. */
+.agent-bar {
+  display: flex;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.agent-bar select {
+  flex: 1 1 auto;
+  min-width: 0;          /* lets the select actually shrink inside the flex row */
+  width: 100%;
+  padding: 0.4rem 0.4rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.9rem;
+  text-overflow: ellipsis;   /* degrade to "General Agen…" rather than a clipped glyph */
+}
+
+/* Slightly smaller than the default icon button so the picker keeps the space. */
+.agent-bar .icon-btn {
+  flex: 0 0 auto;
+  width: 1.9rem;
+  height: 1.9rem;
+  font-size: 0.9rem;
+}
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: grid;
+  place-items: center;
+  z-index: 20;
+  padding: 1rem;
+}
+
+.modal[hidden] {
+  display: none;
+}
+
+.modal-card {
+  background: var(--bg);
+  color: var(--text);
+  padding: 1.25rem;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  width: min(34rem, 100%);
+  max-height: 88vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.modal-card h2 {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.modal-card h3 {
+  margin: 0.4rem 0 0;
+  font-size: 0.92rem;
+}
+
+.modal-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.88rem;
+}
+
+.modal-card label.checkbox,
+.modal-card label.train-row {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.modal-card input[type="text"],
+.modal-card input:not([type]),
+.modal-card textarea,
+.modal-card select {
+  font: inherit;
+  padding: 0.45rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-subtle);
+  color: var(--text);
+}
+
+.modal-card textarea {
+  resize: vertical;
+}
+
+.modal-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+  margin-top: 0.3rem;
+}
+
+.modal-actions .danger {
+  margin-right: auto;
+  color: var(--error);
+}
+
+#agent-doc-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+#agent-doc-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: center;
+  font-size: 0.88rem;
+}
+
+.link-danger {
+  background: none;
+  border: none;
+  color: var(--error);
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+
+.link-danger:hover {
+  text-decoration: underline;
+}
+
+.train-status {
+  font-size: 0.85rem;
+  min-height: 1.2em;
+  margin: 0;
+  opacity: 0.85;
+}
+
+.muted {
+  opacity: 0.7;
 }

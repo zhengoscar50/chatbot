@@ -23,19 +23,13 @@ class Settings(BaseSettings):
     ingest_max_wait_seconds: float = 60.0
     ingest_background_max_wait_seconds: int = 600
     router_agent_model: str = "gpt-4o-mini"
+    default_agent_model: str = "gpt-4o-mini"
     retrieval_top_k: int = 8
     retrieval_max_context_tokens: int = 32000
     gate_history_turns: int = 2
     reranker_model: str = "cohere/rerank-english-v3.0"
     reranker_candidate_count: int = 20
     full_document_max_chars: int = 120000
-    research_top_k: int = 12
-    research_max_context_tokens: int = 24000
-    research_max_concurrent_per_user: int = 2
-    research_job_ttl_seconds: int = 1800
-    research_researcher_model: str = "gpt-4o-mini"
-    research_analyst_model: str = "claude-sonnet-5"
-    research_writer_model: str = "gpt-4o-mini"
 
 
 @lru_cache

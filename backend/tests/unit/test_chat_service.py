@@ -199,3 +199,38 @@ def test_ask_skips_retrieval_when_gate_false():
     assert result["answer"] == "hi there"
     assert client.handler_calls == []                      # no retrieval
     assert client.calls[0]["context_handler_id"] is None   # no injection
+
+
+def test_ask_skips_retrieval_when_the_agent_has_no_knowledge_bases():
+    # A brand-new agent: untrained, no chat uploads, general knowledge off.
+    # Sending an empty knowledge_bases list makes Powabase 400 with
+    # "knowledge_bases is required and must not be empty", so the agent must
+    # answer from the model instead.
+    client = FakeClient(events=[
+        {"event": "start", "data": {"session_id": "sess-1"}},
+        {"event": "complete", "data": {"content": "I'm an assistant.", "citations": []}},
+    ])
+    gate = FakeGate(needs=True)
+    service = ChatService(client, "agent-1", gate, [], top_k=4, max_context_tokens=2000)
+
+    result = service.ask("what are you?")
+
+    assert result["answer"] == "I'm an assistant."
+    assert client.handler_calls == []
+    assert client.calls[0]["context_handler_id"] is None
+    # And the gate isn't consulted at all — there is nothing to search, so the
+    # LLM call it would cost is pure waste.
+    assert gate.calls == []
+
+
+def test_ask_skips_retrieval_when_every_kb_id_is_falsy():
+    client = FakeClient(events=[
+        {"event": "complete", "data": {"content": "ok", "citations": []}},
+    ])
+    gate = FakeGate(needs=True)
+    service = ChatService(client, "agent-1", gate, [None, "", None], top_k=4, max_context_tokens=2000)
+
+    service.ask("hello")
+
+    assert client.handler_calls == []
+    assert gate.calls == []

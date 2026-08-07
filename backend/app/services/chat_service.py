@@ -60,11 +60,15 @@ class ChatService:
 
     def ask(self, query: str, session_id: str | None = None, history: list | None = None) -> dict:
         context_handler_id = None
-        if self.gate.needs_kb(query, history or []):
-            knowledge_bases = [
-                {"id": kb_id, "top_k": self.top_k}
-                for kb_id in self.retrieval_kb_ids if kb_id
-            ]
+        knowledge_bases = [
+            {"id": kb_id, "top_k": self.top_k}
+            for kb_id in self.retrieval_kb_ids if kb_id
+        ]
+        # An agent with nothing to search — untrained, no chat uploads, general
+        # knowledge off — answers from the model alone. Checking this before the
+        # gate skips a pointless LLM call, and avoids sending an empty
+        # knowledge_bases list, which Powabase rejects with a 400.
+        if knowledge_bases and self.gate.needs_kb(query, history or []):
             handler = self.client.create_context_handler(
                 query, knowledge_bases, self.max_context_tokens
             )

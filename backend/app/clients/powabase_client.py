@@ -277,6 +277,75 @@ class PowabaseClient:
         response = self._client.delete(f"/api/agents/{agent_id}")
         self._raise_for_status(response)
 
+    def update_agent(self, agent_id: str, fields: dict) -> dict:
+        """Patch an agent in place.
+
+        Verified live 2026-08-06: PATCH /api/agents/{id} is supported; PUT and
+        POST return 405 with Allow: PATCH, DELETE, HEAD, OPTIONS, GET. Editing
+        in place rather than recreating keeps the agent id stable, so existing
+        chat threads stay bound to it.
+        """
+        response = self._client.patch(f"/api/agents/{agent_id}", json=fields)
+        self._raise_for_status(response)
+        return response.json()
+
+    def remove_source_from_kb(self, kb_id: str, indexed_source_id: str) -> None:
+        """Unlink an indexed source from a KB.
+
+        Takes the **indexed-source id** — ``item["id"]`` from
+        ``list_kb_sources`` — not ``item["source_id"]``. Verified live: passing
+        a source_id returns 404 {"error": "Indexed source not found"}, while the
+        indexed-source id returns 200 {"deleted_indexed_source_id": ...}.
+
+        Never deletes the Source itself: upload_source reuses duplicates on 409,
+        so one source can belong to several KBs and deleting it would break the
+        others.
+        """
+        response = self._client.delete(
+            f"/api/knowledge-bases/{kb_id}/sources/{indexed_source_id}"
+        )
+        self._raise_for_status(response)
+
+    # Agent rows (PostgREST) -------------------------------------------------
+    # The _row suffix is load-bearing: list_agents() above means *Powabase*
+    # agents at /api/agents. These talk to our own table at /rest/v1/agents.
+
+    def insert_agent_row(self, row: dict) -> dict:
+        response = self._client.post(
+            "/rest/v1/agents", json=row, headers={"Prefer": "return=representation"}
+        )
+        self._raise_for_status(response)
+        return response.json()[0]
+
+    def list_agent_rows(self, owner_id: str) -> list:
+        response = self._client.get(
+            "/rest/v1/agents",
+            params={"owner_id": f"eq.{owner_id}", "order": "updated_at.desc"},
+        )
+        self._raise_for_status(response)
+        return response.json()
+
+    def get_agent_row(self, agent_id: str):
+        response = self._client.get("/rest/v1/agents", params={"id": f"eq.{agent_id}"})
+        self._raise_for_status(response)
+        rows = response.json()
+        return rows[0] if rows else None
+
+    def update_agent_row(self, agent_id: str, fields: dict) -> None:
+        response = self._client.patch(
+            "/rest/v1/agents", params={"id": f"eq.{agent_id}"}, json=fields
+        )
+        self._raise_for_status(response)
+
+    def delete_agent_row(self, agent_id: str) -> None:
+        response = self._client.delete("/rest/v1/agents", params={"id": f"eq.{agent_id}"})
+        self._raise_for_status(response)
+
+    def list_sessions_for_agent(self, agent_id: str) -> list:
+        response = self._client.get("/rest/v1/sessions", params={"agent_id": f"eq.{agent_id}"})
+        self._raise_for_status(response)
+        return response.json()
+
     # Provider keys ---------------------------------------------------------
 
     def create_provider_key(self, provider: str, api_key: str) -> dict:
@@ -285,68 +354,6 @@ class PowabaseClient:
         )
         self._raise_for_status(response)
         return response.json()
-
-    # Orchestrations ---------------------------------------------------------
-
-    def create_orchestration(self, name: str, strategy: str, orchestrator_config: dict | None = None) -> dict:
-        body: dict = {"name": name, "strategy": strategy}
-        if orchestrator_config is not None:
-            body["orchestrator_config"] = orchestrator_config
-        response = self._client.post("/api/orchestrations", json=body)
-        self._raise_for_status(response)
-        return response.json()
-
-    def add_orchestration_entity(self, orch_id: str, agent_id: str, role_description: str, position: int = 0) -> dict:
-        response = self._client.post(
-            f"/api/orchestrations/{orch_id}/entities",
-            json={"entity_type": "agent", "entity_ref_id": agent_id,
-                  "role_description": role_description, "position": position},
-        )
-        self._raise_for_status(response)
-        return response.json()
-
-    def list_orchestrations(self) -> dict:
-        response = self._client.get("/api/orchestrations")
-        self._raise_for_status(response)
-        return response.json()
-
-    def run_orchestration_stream(self, orch_id: str, message: str, on_event) -> None:
-        with self._client.stream(
-            "POST", f"/api/orchestrations/{orch_id}/run/stream",
-            json={"message": message}, timeout=300.0,
-        ) as response:
-            if response.status_code >= 400:
-                response.read()
-                self._raise_for_status(response)
-            buf: list = []
-            event_name: list = [None]  # boxed so the closure can rebind it
-            def _flush():
-                if not buf:
-                    event_name[0] = None
-                    return
-                payload = "\n".join(buf)
-                buf.clear()
-                try:
-                    data = json.loads(payload)
-                except json.JSONDecodeError:
-                    data = {"raw": payload}
-                # Mirror parse_sse: a literal "event:" line wins if present,
-                # else the discriminator is the JSON body's own "event" key.
-                name = event_name[0]
-                if name is None and isinstance(data, dict):
-                    name = data.get("event")
-                event_name[0] = None
-                on_event(name or "message", data)
-            for line in response.iter_lines():
-                if line == "":
-                    _flush()
-                elif line.startswith(":"):
-                    continue
-                elif line.startswith("event:"):
-                    event_name[0] = line[len("event:"):].strip()
-                elif line.startswith("data:"):
-                    buf.append(line[len("data:"):].strip())
-            _flush()
 
 
 def get_powabase_client(request: Request) -> PowabaseClient:

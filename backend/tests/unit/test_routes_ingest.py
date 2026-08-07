@@ -118,11 +118,12 @@ class RoutingSessionService:
         self.calls = []
 
     def get_owned_session(self, session_id, owner_id):
-        return {"id": session_id, "kb_id": "", "kb_full_id": ""}
+        return {"id": session_id, "kb_id": ""}
 
-    def ensure_kb(self, row, full_document=False):
-        self.calls.append(full_document)
-        return "kb-routed"
+    def ensure_kb(self, row):
+        # No full_document parameter: the chat scratch KB is chunk-only.
+        self.calls.append(row["id"])
+        return "kb-scratch"
 
 
 def build_routing_app(svc):
@@ -134,12 +135,14 @@ def build_routing_app(svc):
     return app
 
 
-def test_ingest_small_char_count_routes_full_document_true(monkeypatch):
-    # Routing now happens in the background task (TestClient runs it after
-    # the response), driven by the extracted char_count, not upload size.
+def test_chat_upload_always_uses_the_chunk_only_scratch_kb(monkeypatch):
+    # Content-aware routing moved to the agent's permanent tier
+    # (POST /agents/{id}/train). Scratch uploads are throwaway context for one
+    # conversation, so a small document is no longer routed to a full_document
+    # KB here — ensure_kb takes no full_document argument at all.
     set_env(monkeypatch)
     monkeypatch.setattr(ingest_route, "IngestService", FakeIngestService)
-    FakeIngestService.char_count_value = 100
+    FakeIngestService.char_count_value = 100  # small: would once have gone full_document
     svc = RoutingSessionService()
 
     response = TestClient(build_routing_app(svc)).post(
@@ -149,23 +152,7 @@ def test_ingest_small_char_count_routes_full_document_true(monkeypatch):
     )
 
     assert response.status_code == 202
-    assert svc.calls == [True]
-
-
-def test_ingest_large_char_count_routes_full_document_false(monkeypatch):
-    set_env(monkeypatch)
-    monkeypatch.setattr(ingest_route, "IngestService", FakeIngestService)
-    FakeIngestService.char_count_value = 200000
-    svc = RoutingSessionService()
-
-    response = TestClient(build_routing_app(svc)).post(
-        "/ingest/file",
-        data={"session_id": "s1"},
-        files={"file": ("doc.pdf", io.BytesIO(b"%PDF-1.4"), "application/pdf")},
-    )
-
-    assert response.status_code == 202
-    assert svc.calls == [False]
+    assert svc.calls == ["s1"]
 
 
 def test_status_reports_indexed(monkeypatch):
@@ -174,7 +161,7 @@ def test_status_reports_indexed(monkeypatch):
 
     class SS:
         def get_owned_session(self, session_id, owner_id):
-            return {"id": session_id, "kb_id": "kb-1", "kb_full_id": ""}
+            return {"id": session_id, "kb_id": "kb-1"}
 
     app = FastAPI()
     app.include_router(ingest_route.router)
