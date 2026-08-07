@@ -2,9 +2,10 @@
 
 A RAG chatbot backend (FastAPI) + simple frontend, backed by
 [Powabase](https://powabase.ai)'s native Sources/Knowledge-Base/Agent
-pipeline for ingestion, retrieval, and generation. Supports per-user **saved
-sessions** (each with its own isolated documents) plus an admin-curated shared
-general-knowledge base.
+pipeline for ingestion, retrieval, and generation. Users create their own
+**agents** — each with its own instructions, model and a permanent knowledge
+base they train — and hold many chats with each agent. Training persists across
+chats; documents uploaded inside a chat stay in that chat.
 
 ## 1. Create a Powabase project (one-time, human step)
 
@@ -21,8 +22,9 @@ general-knowledge base.
    - set `POWABASE_PROVIDER_NAME` / `POWABASE_PROVIDER_KEY` in `.env` (the
      bootstrap script in step 3 below registers it for you).
 
-You do **not** need `POWABASE_KB_ID` / `POWABASE_AGENT_ID` — each profile
-creates and manages its own Knowledge Base and agent automatically.
+You do **not** need `POWABASE_KB_ID` / `POWABASE_AGENT_ID` — each agent
+creates and manages its own Knowledge Bases automatically. `DEFAULT_AGENT_MODEL`
+(default `gpt-4o-mini`) is used for agents whose creator doesn't pick a model.
 
 ## 2. Install dependencies
 
@@ -54,25 +56,44 @@ uvicorn app.main:app --reload
 Open http://127.0.0.1:8000/ for the chat UI, or http://127.0.0.1:8000/docs
 for the Swagger UI.
 
-## 5. Create the sessions table (one-time)
+## 5. Create the tables (one-time)
 
-Sessions are stored in a `public.sessions` table. Create it once by pasting
-`backend/migrations/001_create_sessions.sql` into the Powabase Studio **SQL
-Editor** (or running it via the Database URL). The app can't save sessions
-until this table exists.
+Paste each file in `backend/migrations/` into the Powabase Studio **SQL Editor**
+in order (or run them via the Database URL). The app can't save anything until
+they exist.
 
-## 6. Sessions & per-session isolation
+`004_user_owned_agents.sql` is **destructive**: it creates `public.agents` and
+drops/recreates `public.sessions`, discarding any existing chats. That is
+deliberate — `sessions.agent_id` changed meaning from a Powabase agent id to a
+foreign key into `public.agents`.
 
-Type a **user** name in the sidebar, then create **sessions** — saved,
-resumable conversations. Each session has its own isolated documents: a PDF
-uploaded in one session is never visible to another session or user. Sessions
-are listed by name in the left sidebar; click one to resume it. The first
-message you send names the session.
+## 6. Agents and chats
 
-**Scope note:** still a demonstration of *data isolation*, not access control
-— users are passwordless names.
+Click **+** in the sidebar to create an agent. You give it:
 
-**Run single-worker** (the default `uvicorn app.main:app --reload` is). Session
+- a **name**
+- **instructions** — its system prompt, e.g. "You are a study tutor for AP
+  Chemistry. Always show your working."
+- a **model** (optional; falls back to `DEFAULT_AGENT_MODEL`)
+- a **grounding** mode — *only answer from my documents* (strict) or *use my
+  documents, but answer freely* (open)
+- whether it may also use the shared **general knowledge** base
+
+Then open **⚙ Manage** to train it: upload PDFs into its permanent knowledge
+base, see what it has been trained on, and remove a document you didn't mean to
+add. Training persists — every future chat with that agent can use it.
+
+Chats are listed under the selected agent. Each chat also has its own **scratch**
+documents: a PDF you attach inside a chat is answerable there and nowhere else,
+so you can drop in a one-off document without permanently teaching the agent.
+
+Retrieval for one question spans up to four knowledge bases: the agent's two
+permanent ones (chunked and full-document), this chat's scratch KB, and the
+shared general KB if the agent opted in.
+
+**Scope note:** agents are private to their creator. There is no sharing.
+
+**Run single-worker** (the default `uvicorn app.main:app --reload` is). Agent
 resources are provisioned per request; running multiple workers is untested.
 
 ## 7. Admin: shared general knowledge
@@ -81,20 +102,13 @@ Set `ADMIN_PASSWORD` in `backend/.env` to enable the admin feature. Then open
 `/admin` (there's an "Admin" link at the bottom of the sidebar), enter the
 password, and upload PDFs into the shared **general knowledge** base.
 
-Every **new** session's chatbot answers from general knowledge **plus** that
-session's own uploaded documents. Sessions created before general knowledge was
-added keep only their own documents (new-sessions-only). If `ADMIN_PASSWORD` is
-not set, the admin endpoints are disabled and the rest of the app runs normally.
+Unlike before, general knowledge is **opt-in per agent** rather than automatic:
+an agent uses it only if its creator ticked "Also use shared general knowledge".
+If `ADMIN_PASSWORD` is not set, the admin endpoints are disabled and the rest of
+the app runs normally.
 
 **Scope note:** the admin password is checked server-side but sent with each
 admin request — a demo-grade gate, not hardened authentication.
-
-Verified live 2026-07-24 (`ADMIN_PASSWORD` set, model
-`openrouter/nvidia/nemotron-3-super-120b-a12b:free`): wrong admin password →
-401, correct → 200; a general-knowledge PDF trained via `/admin/train` was
-answered (with a citation) by a **new** session that had uploaded nothing of its
-own; and that same session also answered from its own later upload — i.e. the
-session drew on general knowledge **plus** its own documents.
 
 ## 8. Verification
 
@@ -105,30 +119,47 @@ cd backend
 pytest -v
 ```
 
-Manual isolation + resume proof (run the migration in step 5 first). Verified
-2026-07-24 against a live Powabase project with
-`openrouter/nvidia/nemotron-3-super-120b-a12b:free`:
+Manual proof (run the migrations in step 5 first), against a live Powabase
+project. Everything is scoped to the logged-in user, so pass a bearer token:
 
-- [x] User `alice`, **New session**, upload a PDF, ask about it → cited answer;
-      the session is named from your first message.
-- [x] **New session** again, ask about the *first* session's document → not
-      found (the second session can't see it; zero citations).
-- [x] Reopen the first session → its messages (question + answer) are still there.
-- [x] User `bob` has zero of alice's sessions.
-- [x] Sessions persist in the `public.sessions` table (listed via `GET /sessions`).
+- [ ] Create an agent → 201, listed by `GET /agents` with `trained: false`.
+- [ ] `POST /sessions` with someone else's `agent_id` → **404**.
+- [ ] Train a PDF into it → listed by `GET /agents/{id}/documents`; `trained`
+      flips to `true`.
+- [ ] A **brand new chat** with that agent answers from the trained document,
+      with a citation. This is the point of the feature: training outlives the
+      chat it was added in.
+- [ ] A PDF attached *inside* a chat is answerable there, but a second chat with
+      the same agent can't see it.
+- [ ] Edit the instructions → the next answer changes, and `powabase_agent_id`
+      is unchanged (edits patch in place rather than recreating).
+- [ ] An agent with `use_general_kb: false` doesn't answer from general
+      knowledge; flipping it to `true` makes the same question answerable.
+- [ ] Untrain the document → gone from `GET /agents/{id}/documents`.
+- [ ] Delete the agent → its chats go with it, and `GET /agents` no longer
+      lists it.
 
 ```bash
-# create a session for a user (provisions its own KB + agent)
+TOKEN=... # from POST /auth/login
+
+# create an agent
+curl -X POST http://127.0.0.1:8000/agents \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"name": "Chem tutor", "instructions": "Always show your working.",
+       "grounding": "strict"}'
+
+# train it — this is permanent, and every future chat can use it
+curl -X POST http://127.0.0.1:8000/agents/<agent_id>/train \
+  -H "Authorization: Bearer $TOKEN" -F 'file=@/path/to/your.pdf'
+
+# start a chat with it
 curl -X POST http://127.0.0.1:8000/sessions \
-  -H "Content-Type: application/json" -d '{"user": "alice"}'
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d '{"agent_id": "<agent_id>"}'
 
-# upload a PDF into that session's knowledge base
-curl -X POST http://127.0.0.1:8000/ingest/file \
-  -F 'session_id=<id from above>' -F 'file=@/path/to/your.pdf'
-
-# ask a question, scoped to that session
+# ask
 curl -X POST http://127.0.0.1:8000/chat \
-  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
   -d '{"session_id": "<id>", "query": "What does this document say about X?"}'
 ```
 
