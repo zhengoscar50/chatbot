@@ -11,7 +11,6 @@ from app.models.schemas import (
     SessionResponse,
     SessionSummary,
 )
-from app.services.agent_service import AgentService, get_agent_service
 from app.services.session_service import SessionService, get_session_service
 
 router = APIRouter(tags=["sessions"])
@@ -22,16 +21,9 @@ async def create_session(
     req: SessionCreateRequest,
     user: dict = Depends(get_current_user),
     sessions: SessionService = Depends(get_session_service),
-    agents: AgentService = Depends(get_agent_service),
 ):
-    # A chat belongs to an agent, so the agent must exist and be yours first.
-    agent = await run_in_threadpool(agents.get_owned, req.agent_id, user["id"])
-    if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
     try:
-        row = await run_in_threadpool(
-            sessions.create_session, user["id"], req.agent_id, req.name
-        )
+        row = await run_in_threadpool(sessions.create_session, user["id"], req.name)
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return SessionResponse(id=row["id"], name=row["name"])

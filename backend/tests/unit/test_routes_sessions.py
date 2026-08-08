@@ -4,21 +4,12 @@ from fastapi.testclient import TestClient
 from app.api.deps import get_current_user
 from app.api.routes import sessions as sessions_route
 from app.clients.powabase_client import get_powabase_client
-from app.services.agent_service import get_agent_service
 from app.services.session_service import get_session_service
 
 
-class FakeAgentService:
-    def __init__(self, owned=True):
-        self.owned = owned
-
-    def get_owned(self, agent_id, owner_id):
-        return {"id": agent_id, "owner_id": owner_id} if self.owned else None
-
-
 class FakeSessionService:
-    def create_session(self, owner_id, agent_id, name=None):
-        return {"id": "s1", "name": name or "New session", "agent_id": agent_id}
+    def create_session(self, owner_id, name=None):
+        return {"id": "s1", "name": name or "New session"}
 
     def list(self, owner_id):
         return [{"id": "s1", "name": "Taxes", "updated_at": "t1"}]
@@ -41,24 +32,23 @@ class FakeClient:
         }
 
 
-def build_app(agent_owned=True):
+def build_app():
     app = FastAPI()
     app.include_router(sessions_route.router)
     app.dependency_overrides[get_session_service] = lambda: FakeSessionService()
-    app.dependency_overrides[get_agent_service] = lambda: FakeAgentService(agent_owned)
     app.dependency_overrides[get_powabase_client] = lambda: FakeClient()
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
     return app
 
 
 def test_create_session_returns_id_and_name():
-    r = TestClient(build_app()).post("/sessions", json={"agent_id": "ag-1", "name": "Taxes"})
+    r = TestClient(build_app()).post("/sessions", json={"name": "Taxes"})
     assert r.status_code == 200
     assert r.json() == {"id": "s1", "name": "Taxes"}
 
 
 def test_create_session_defaults_name_when_omitted():
-    r = TestClient(build_app()).post("/sessions", json={"agent_id": "ag-1"})
+    r = TestClient(build_app()).post("/sessions", json={})
     assert r.status_code == 200
     assert r.json() == {"id": "s1", "name": "New session"}
 
@@ -174,13 +164,4 @@ def test_delete_404_for_missing_session():
 
 def test_delete_404_for_non_owner():
     r = TestClient(build_app()).delete("/sessions/not-mine")
-    assert r.status_code == 404
-
-
-def test_create_session_requires_an_agent_id():
-    assert TestClient(build_app()).post("/sessions", json={}).status_code == 422
-
-
-def test_create_session_404_for_another_users_agent():
-    r = TestClient(build_app(agent_owned=False)).post("/sessions", json={"agent_id": "ag-x"})
     assert r.status_code == 404

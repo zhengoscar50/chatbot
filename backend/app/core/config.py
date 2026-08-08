@@ -22,8 +22,9 @@ class Settings(BaseSettings):
     poll_interval_seconds: float = 2.0
     ingest_max_wait_seconds: float = 60.0
     ingest_background_max_wait_seconds: int = 600
-    router_agent_model: str = "gpt-4o-mini"
+    orchestrator_model: str = "gpt-4o-mini"
     default_agent_model: str = "gpt-4o-mini"
+    general_assistant_model: str = "gpt-4o-mini"
     # Offered in the agent form's model picker. Powabase exposes no model
     # catalog (/api/models 404s), so this list is hand-maintained and can drift
     # from what the provider actually serves — which is why creating an agent
@@ -40,7 +41,7 @@ class Settings(BaseSettings):
         return [m.strip() for m in self.agent_models.split(",") if m.strip()]
     retrieval_top_k: int = 8
     retrieval_max_context_tokens: int = 32000
-    gate_history_turns: int = 2
+    history_turns: int = 2
     reranker_model: str = "cohere/rerank-english-v3.0"
     reranker_candidate_count: int = 20
     full_document_max_chars: int = 120000

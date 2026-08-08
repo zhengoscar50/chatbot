@@ -50,25 +50,24 @@ class ModelBusyError(Exception):
 
 
 class ChatService:
-    def __init__(self, client, agent_id, gate, retrieval_kb_ids, top_k, max_context_tokens):
+    def __init__(self, client, agent_id, retrieval_kb_ids, top_k, max_context_tokens):
         self.client = client
         self.agent_id = agent_id
-        self.gate = gate
         self.retrieval_kb_ids = retrieval_kb_ids
         self.top_k = top_k
         self.max_context_tokens = max_context_tokens
 
-    def ask(self, query: str, session_id: str | None = None, history: list | None = None) -> dict:
+    def ask(self, query: str, session_id: str | None = None, retrieve: bool = True) -> dict:
         context_handler_id = None
         knowledge_bases = [
             {"id": kb_id, "top_k": self.top_k}
             for kb_id in self.retrieval_kb_ids if kb_id
         ]
-        # An agent with nothing to search — untrained, no chat uploads, general
-        # knowledge off — answers from the model alone. Checking this before the
-        # gate skips a pointless LLM call, and avoids sending an empty
-        # knowledge_bases list, which Powabase rejects with a 400.
-        if knowledge_bases and self.gate.needs_kb(query, history or []):
+        # `retrieve` comes from the orchestrator, which decided routing and
+        # retrieval in one call. An empty scope still skips retrieval: an agent
+        # with nothing to search answers from the model, and Powabase rejects an
+        # empty knowledge_bases list with a 400.
+        if retrieve and knowledge_bases:
             handler = self.client.create_context_handler(
                 query, knowledge_bases, self.max_context_tokens
             )

@@ -33,13 +33,18 @@ class ChatRequest(BaseModel):
     query: str = Field(..., min_length=1)
 
 
+class AnsweredBy(BaseModel):
+    id: Optional[str] = None      # None when the general assistant answered
+    name: str
+
+
 class ChatResponse(BaseModel):
     answer: str
     citations: list[dict[str, Any]] = Field(default_factory=list)
+    answered_by: Optional[AnsweredBy] = None
 
 
 class SessionCreateRequest(BaseModel):
-    agent_id: str = Field(..., min_length=1)
     name: Optional[str] = None
 
 

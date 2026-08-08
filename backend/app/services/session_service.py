@@ -15,21 +15,22 @@ def _now_iso() -> str:
 
 
 class SessionService:
-    """A chat: a conversation thread bound to a user-owned agent.
+    """A chat: a conversation thread owned by a user.
 
-    Creates no agent of its own — the agent is durable and user-configured, and
-    one agent serves many chats.
+    Creates no agent of its own. Chats are not bound to an agent at all — the
+    orchestrator picks one per message from the user's whole roster.
     """
 
     def __init__(self, client, reranker_config: dict | None = None):
         self.client = client
         self.reranker_config = reranker_config
 
-    def create_session(self, owner_id: str, agent_id: str, name: str | None = None) -> dict:
+    def create_session(self, owner_id: str, name: str | None = None) -> dict:
+        """Create a chat. Chats belong to the user, not to an agent — the
+        orchestrator picks an agent per message."""
         return self.client.insert_session({
             "id": str(uuid.uuid4()),
             "owner_id": owner_id,
-            "agent_id": agent_id,
             "name": name or DEFAULT_NAME,
         })
 
@@ -83,9 +84,8 @@ class SessionService:
         authoritative and may raise PowabaseAPIError; the KB cleanup is
         best-effort so a stale/missing resource never blocks the delete.
 
-        Deliberately does NOT touch ``agent_id``. It used to hold a Powabase
-        agent this session owned; it is now a foreign key to a user-owned agent
-        that outlives the chat and is shared with the user's other chats.
+        Chats own nothing but their scratch KB: agents are separate, durable
+        and shared across every chat.
         """
         row = self.client.get_session_row(session_id)
         if row is None:
