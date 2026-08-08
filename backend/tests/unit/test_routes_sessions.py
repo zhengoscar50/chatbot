@@ -9,7 +9,7 @@ from app.services.session_service import get_session_service
 
 class FakeSessionService:
     def create_session(self, owner_id, name=None):
-        return {"id": "s1", "name": name or "New session"}
+        return {"id": "s1", "name": name or "New chat"}
 
     def list(self, owner_id):
         return [{"id": "s1", "name": "Taxes", "updated_at": "t1"}]
@@ -51,7 +51,7 @@ def test_create_session_returns_id_and_name():
 def test_create_session_defaults_name_when_omitted():
     r = TestClient(build_app()).post("/sessions", json={})
     assert r.status_code == 200
-    assert r.json() == {"id": "s1", "name": "New session"}
+    assert r.json() == {"id": "s1", "name": "New chat"}
 
 
 def test_list_sessions_for_current_user():

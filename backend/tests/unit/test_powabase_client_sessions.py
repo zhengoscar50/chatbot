@@ -11,13 +11,13 @@ BASE_URL = "https://demo.p.powabase.ai"
 @respx.mock
 def test_insert_session_returns_created_row():
     route = respx.post(f"{BASE_URL}/rest/v1/sessions").mock(
-        return_value=httpx.Response(201, json=[{"id": "s1", "name": "New session"}])
+        return_value=httpx.Response(201, json=[{"id": "s1", "name": "New chat"}])
     )
     client = PowabaseClient(BASE_URL, "k")
 
-    row = client.insert_session({"id": "s1", "user_slug": "alice", "name": "New session"})
+    row = client.insert_session({"id": "s1", "user_slug": "alice", "name": "New chat"})
 
-    assert row == {"id": "s1", "name": "New session"}
+    assert row == {"id": "s1", "name": "New chat"}
     # PostgREST needs Prefer: return=representation to return the created row.
     assert route.calls.last.request.headers["prefer"] == "return=representation"
 

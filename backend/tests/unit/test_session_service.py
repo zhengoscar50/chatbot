@@ -61,7 +61,7 @@ def test_create_session_creates_no_agent_and_binds_to_none():
 
 def test_create_session_defaults_the_name():
     row = SessionService(FakeClient()).create_session("o1")
-    assert row["name"] == "New session"
+    assert row["name"] == "New chat"
 
 
 def test_create_session_does_not_provision_a_kb_upfront():

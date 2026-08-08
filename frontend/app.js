@@ -187,7 +187,7 @@ function doLogout() {
 }
 
 // Return the active session id, creating a new session on the fly if none is
-// selected (so you can just start typing without clicking "New session").
+// selected (so you can just start typing without clicking "New chat").
 async function ensureSession() {
   if (currentSessionId) return currentSessionId;
   const response = await authFetch("/sessions", {
@@ -368,7 +368,8 @@ async function openSession(id, name) {
       messages.innerHTML = "";
       body.messages.forEach((m) => {
         if (m.role === "user") appendMessage("user", null, m.text);
-        else appendMessage("assistant", "AI", m.text, m.citations);
+        else appendMessage("assistant", "AI", m.text, m.citations, 
+                           m.answered_by ? { name: m.answered_by } : null);
       });
     }
   } catch (err) {

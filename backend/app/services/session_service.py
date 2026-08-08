@@ -7,7 +7,7 @@ from fastapi import Request
 
 from app.clients.powabase_client import PowabaseAPIError
 
-DEFAULT_NAME = "New session"
+DEFAULT_NAME = "New chat"
 
 
 def _now_iso() -> str:
