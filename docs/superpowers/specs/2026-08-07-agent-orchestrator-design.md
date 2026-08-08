@@ -147,3 +147,59 @@ documents into an answer the user attributed to another.
   No cap is imposed; watch it.
 - **A hallucinated agent id** must be validated against the roster before use,
   or the orchestrator could name an agent that isn't the user's.
+
+---
+
+## Amendment (2026-08-07): Powabase threads can't be shared
+
+**Discovered during the Task 9 live smoke**, after the backend was built.
+
+A Powabase conversation thread belongs to **exactly one agent**. Verified in
+isolation: agent 1 opens a thread, agent 2 posts into it with the same
+`session_id`, and Powabase rejects it —
+
+```
+UniqueViolation: duplicate key value violates unique constraint
+"agent_sessions_session_id_key"
+DETAIL:  Key (session_id)=(sess_11da110e98fd) already exists.
+```
+
+The design assumed one chat maps to one Powabase thread that any agent could
+answer into. It cannot. Every previous feature had exactly one agent per
+conversation, so nothing surfaced this before.
+
+Routing itself was proven working in that same smoke: a chemistry question
+routed to the chemistry agent and answered from its document with a citation,
+and a user with no agents was served by the general assistant. Only the
+*second* agent in a chat failed.
+
+### Decision: own the transcript
+
+Powabase threads are abandoned. The app stores its own `messages` table, and
+each request passes recent turns inline to whichever agent answers, running it
+statelessly (no `session_id`).
+
+Rejected alternatives:
+
+- **A thread per agent per chat.** Smallest change, but each agent then keeps a
+  separate memory, so a follow-up to one agent about what another just said
+  cannot work. That guts the "one conversation" premise the feature exists for.
+- **Route once per chat.** Cheap, but it is the per-chat binding the user
+  explicitly rejected.
+
+There is precedent: Deep Research already ran agents statelessly with context
+inline, for the analogous reason that orchestrations ignore context injection.
+
+### Consequences
+
+- New `public.messages` table; `sessions.powabase_session_id` becomes dead and
+  is dropped.
+- `ChatService` runs agents without a `session_id`; conversation history is
+  composed into the message.
+- `GET /sessions/{id}/messages` and the admin transcript read our table instead
+  of Powabase.
+- A chat's name is taken from its first user message directly, rather than from
+  the thread-creation turn.
+- **Gain:** conversation history is no longer coupled to a Powabase primitive,
+  and the transcript survives independently of any agent's lifetime — deleting
+  an agent no longer risks taking chat history with it.
