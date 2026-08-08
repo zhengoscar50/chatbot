@@ -19,9 +19,6 @@ ORCHESTRATOR_SYSTEM_PROMPT = (
     "small talk and general questions — a general assistant handles those.\n"
     "- For a follow-up that continues the previous exchange (\"explain that "
     "again\", \"why?\"), keep the assistant that just answered.\n"
-    "- Set needs_kb to true if answering could depend on specific documents, "
-    "facts or data; false only for greetings, small talk, or questions needing "
-    "no lookup. When unsure, choose true.\n"
     "Give a one-sentence reason naming the description you matched (or why "
     "none fits) before choosing.\n"
     "Respond only as JSON."
@@ -40,9 +37,8 @@ ROUTE_RESPONSE_FORMAT = {
                 # message routes somewhere surprising.
                 "reason": {"type": "string"},
                 "agent_id": {"type": ["string", "null"]},
-                "needs_kb": {"type": "boolean"},
             },
-            "required": ["reason", "agent_id", "needs_kb"],
+            "required": ["reason", "agent_id"],
             "additionalProperties": False,
         },
     },
@@ -50,9 +46,16 @@ ROUTE_RESPONSE_FORMAT = {
 
 # agent_id is None when the general assistant should answer. `reason` is the
 # router's own explanation, kept for debugging a surprising route.
-Decision = namedtuple("Decision", "agent_id needs_kb reason", defaults=("",))
+#
+# There is deliberately no "needs_kb": asking the model to predict whether
+# documents would help proved unreliable in both directions, and the costs are
+# asymmetric — a wasted retrieval is a fraction of a cent, a skipped one
+# answers a question about the user's own documents from general knowledge.
+# ChatService already skips retrieval when the scope is empty, so the only
+# thing the prediction ever bought was avoiding one lookup on "hi".
+Decision = namedtuple("Decision", "agent_id reason", defaults=("",))
 
-GENERAL = Decision(None, True, "routing unavailable")
+GENERAL = Decision(None, "routing unavailable")
 
 
 def _find_by_name(items, name):
@@ -127,15 +130,12 @@ class OrchestratorService:
         except Exception:
             return GENERAL
 
-        needs_kb = data.get("needs_kb")
-        needs_kb = True if needs_kb is None else bool(needs_kb)
-
         agent_id = data.get("agent_id")
         # Never trust an id the model invented: it could name another user's
         # agent, or nothing at all.
         if agent_id not in {a["id"] for a in roster}:
             agent_id = None
-        return Decision(agent_id, needs_kb, str(data.get("reason") or ""))
+        return Decision(agent_id, str(data.get("reason") or ""))
 
     @staticmethod
     def _build_message(query: str, roster: list, history: list) -> str:
@@ -152,7 +152,7 @@ class OrchestratorService:
                 lines.append("%s: %s" % (turn.get("role", "user"), turn.get("text", "")))
         lines.append("")
         lines.append("Current user message: %s" % query)
-        lines.append("Which assistant should answer, and is a document lookup needed?")
+        lines.append("Which assistant should answer?")
         return "\n".join(lines)
 
 

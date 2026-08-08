@@ -47,13 +47,11 @@ def decision(content, roster=ROSTER, **kw):
 def test_routes_to_the_named_agent():
     _, d = decision(json.dumps({"agent_id": "ag-legal", "needs_kb": True}))
     assert d.agent_id == "ag-legal"
-    assert d.needs_kb is True
 
 
 def test_null_agent_id_means_the_general_assistant():
     _, d = decision(json.dumps({"agent_id": None, "needs_kb": False}))
     assert d.agent_id is None
-    assert d.needs_kb is False
 
 
 def test_an_agent_id_outside_the_roster_is_rejected():
@@ -61,32 +59,32 @@ def test_an_agent_id_outside_the_roster_is_rejected():
     # agent, or nothing at all.
     _, d = decision(json.dumps({"agent_id": "ag-not-mine", "needs_kb": True}))
     assert d.agent_id is None
-    assert d.needs_kb is True
 
 
 def test_unparseable_output_falls_back_to_the_general_assistant():
     _, d = decision("not json at all")
     assert d.agent_id is None
-    assert d.needs_kb is True
 
 
-def test_missing_needs_kb_defaults_to_retrieving():
-    _, d = decision(json.dumps({"agent_id": "ag-chem"}))
-    assert d.agent_id == "ag-chem"
-    assert d.needs_kb is True
+def test_retrieval_is_no_longer_the_routers_decision():
+    # Predicting whether documents help proved unreliable in both directions,
+    # and skipping a needed lookup silently answers from general knowledge.
+    # ChatService guards the empty-scope case instead.
+    from app.services.orchestrator import ROUTE_RESPONSE_FORMAT
+    assert "needs_kb" not in ROUTE_RESPONSE_FORMAT["json_schema"]["schema"]["properties"]
 
 
 def test_a_provider_error_never_raises():
     c = FakeClient(raises=True)
     d = OrchestratorService(c, "orch-1").route("q", ROSTER)
-    assert d.agent_id is None and d.needs_kb is True
+    assert d.agent_id is None
 
 
 def test_an_empty_roster_skips_the_llm_call_entirely():
     # Nothing to choose between: don't pay for a routing call.
     c = FakeClient(content=json.dumps({"agent_id": "x", "needs_kb": True}))
     d = OrchestratorService(c, "orch-1").route("q", [])
-    assert d.agent_id is None and d.needs_kb is True
+    assert d.agent_id is None
     assert c.calls == []
 
 
@@ -126,19 +124,17 @@ def test_a_fenced_json_reply_is_still_parsed():
     # in ```json … ```. Without stripping it, json.loads raises and the
     # fail-safe sends the message to the general assistant — routing appears to
     # "prefer general" rather than failing visibly.
-    _, d = decision('```json\n{"agent_id": "ag-chem", "needs_kb": true}\n```')
+    _, d = decision('```json\n{"agent_id": "ag-chem"}\n```')
     assert d.agent_id == "ag-chem"
-    assert d.needs_kb is True
 
 
 def test_a_bare_fenced_reply_is_still_parsed():
-    _, d = decision('```\n{"agent_id": "ag-legal", "needs_kb": false}\n```')
+    _, d = decision('```\n{"agent_id": "ag-legal"}\n```')
     assert d.agent_id == "ag-legal"
-    assert d.needs_kb is False
 
 
 def test_fenced_reply_with_surrounding_whitespace():
-    _, d = decision('\n  ```json\n{"agent_id": "ag-chem", "needs_kb": true}\n```  \n')
+    _, d = decision('\n  ```json\n{"agent_id": "ag-chem"}\n```  \n')
     assert d.agent_id == "ag-chem"
 
 
@@ -186,3 +182,5 @@ def test_a_missing_reason_is_tolerated():
     _, d = decision(json.dumps({"agent_id": "ag-chem", "needs_kb": True}))
     assert d.agent_id == "ag-chem"
     assert d.reason == ""
+
+

@@ -73,9 +73,9 @@ class FakeChatService:
         return {"answer": "42", "citations": []}
 
 
-def route_to(agent_id, needs_kb=True):
+def route_to(agent_id):
     """Pin the orchestrator's decision so route behavior is tested, not routing."""
-    return lambda self, q, roster, history=None: Decision(agent_id, needs_kb)
+    return lambda self, q, roster, history=None: Decision(agent_id)
 
 
 def build_app(session_service, agent_service=None):
@@ -284,11 +284,13 @@ def test_chat_falls_back_to_the_general_assistant(monkeypatch):
     assert r.json()["answered_by"] == {"id": None, "name": "General assistant"}
 
 
-def test_chat_passes_the_retrieval_decision_through(monkeypatch):
+def test_chat_always_retrieves_and_lets_the_scope_decide(monkeypatch):
+    # Retrieval is no longer predicted by the router; ChatService skips it when
+    # the scope is empty, which is a fact rather than a guess.
     monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to(None, needs_kb=False))
+    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to(None))
     LAST_CHAT_ARGS.clear()
 
     post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "hi"})
 
-    assert LAST_CHAT_ARGS["retrieve"] is False
+    assert LAST_CHAT_ARGS["retrieve"] is True
