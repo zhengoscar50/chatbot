@@ -70,9 +70,6 @@ class FakeClient:
     def delete_agent_row(self, agent_id):
         self.rows.pop(agent_id, None)
 
-    def list_sessions_for_agent(self, agent_id):
-        return self.sessions_for_agent
-
     def delete_session_row(self, session_id):
         self.deleted_sessions.append(session_id)
 
@@ -192,20 +189,31 @@ def test_update_returns_the_merged_row():
     assert merged["instructions"] == "Keep."
 
 
-def test_delete_cascades_to_kbs_chats_and_the_remote_agent():
+def test_delete_removes_the_permanent_kbs_and_the_remote_agent():
     c = FakeClient()
     svc = AgentService(c)
     row = svc.create("o1", "T", "", "", "m", "strict", False)
     svc.ensure_kb(row, full_document=False)
     svc.ensure_kb(c.get_agent_row("ag-1"), full_document=True)
-    c.sessions_for_agent = [{"id": "s-1"}, {"id": "s-2"}]
 
     assert svc.delete("ag-1") is True
 
     assert set(c.deleted_kbs) == {"kb-1", "kb-2"}
     assert c.deleted_agents == ["pa-1"]
-    assert c.deleted_sessions == ["s-1", "s-2"]
     assert c.get_agent_row("ag-1") is None
+
+
+def test_delete_never_touches_chats():
+    # Chats belong to the user, not the agent — the orchestrator picks per
+    # message. Deleting one agent must leave every conversation intact,
+    # including the turns that agent answered.
+    c = FakeClient()
+    svc = AgentService(c)
+    svc.create("o1", "T", "", "", "m", "strict", False)
+
+    svc.delete("ag-1")
+
+    assert c.deleted_sessions == []
 
 
 def test_delete_returns_false_for_unknown_agent():
@@ -227,25 +235,7 @@ def test_delete_survives_a_failing_remote_cleanup():
     assert c.get_agent_row("ag-1") is None
 
 
-def test_delete_also_removes_each_chats_scratch_kb():
-    # Cascade deletes session rows directly rather than going through
-    # SessionService.delete, so it has to clean up their scratch KBs itself —
-    # otherwise every chat leaves an orphaned knowledge base behind.
-    c = FakeClient()
-    svc = AgentService(c)
-    row = svc.create("o1", "T", "", "", "m", "strict", False)
-    svc.ensure_kb(row)
-    c.sessions_for_agent = [
-        {"id": "s-1", "kb_id": "scratch-1"},
-        {"id": "s-2", "kb_id": None},          # a chat with no uploads
-        {"id": "s-3", "kb_id": "scratch-3"},
-    ]
 
-    svc.delete("ag-1")
-
-    assert "scratch-1" in c.deleted_kbs
-    assert "scratch-3" in c.deleted_kbs
-    assert c.deleted_sessions == ["s-1", "s-2", "s-3"]
 
 
 def test_create_probes_the_model_and_cleans_the_probe_up():

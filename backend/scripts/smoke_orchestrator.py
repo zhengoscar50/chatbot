@@ -153,10 +153,22 @@ check("...and records which agent answered",
       any(m.get("answered_by") for m in transcript if m["role"] == "assistant"),
       [m.get("answered_by") for m in transcript if m["role"] == "assistant"][:4])
 
-C.delete("/agents/" + legal, headers=H)
+# Assert the DELETE itself succeeded. Only checking that the chat still works
+# afterwards hid a 502 here for a whole session: the cascade queried
+# sessions.agent_id, a column migration 005 had dropped.
+before = len(C.get("/sessions", headers=H).json())
+r = C.delete("/agents/" + legal, headers=H)
+check("deleting an agent returns 204", r.status_code == 204, "%s %s" % (r.status_code, r.text[:80]))
+check("...and it is gone from the roster",
+      all(a["id"] != legal for a in C.get("/agents", headers=H).json()))
+check("...while every chat survives (chats belong to the user, not an agent)",
+      len(C.get("/sessions", headers=H).json()) == before, before)
 a_after, who_after, _ = ask(chat, "Where is the emergency eyewash station?")
-check("deleting one agent leaves the chat usable", bool(a_after) and who_after is not None,
-      who_after)
+check("...and the chat still answers", bool(a_after) and who_after is not None, who_after)
+kept = C.get("/sessions/%s/messages" % chat, headers=H).json()["messages"]
+check("...and turns the deleted agent answered keep their attribution",
+      any(m.get("answered_by") == "Contracts" for m in kept),
+      [m.get("answered_by") for m in kept if m["role"] == "assistant"][:5])
 
 C.delete("/agents/" + chem, headers=H)
 passed = sum(1 for _, ok in RESULTS if ok)

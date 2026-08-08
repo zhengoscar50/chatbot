@@ -355,13 +355,6 @@ class PowabaseClient:
         self._raise_for_status(response)
         return response.json()
 
-    def list_sessions_for_agent(self, agent_id: str) -> list:
-        response = self._client.get("/rest/v1/sessions", params={"agent_id": f"eq.{agent_id}"})
-        self._raise_for_status(response)
-        return response.json()
-
-    # Provider keys ---------------------------------------------------------
-
     def create_provider_key(self, provider: str, api_key: str) -> dict:
         response = self._client.post(
             "/api/ai-provider-keys", json={"provider": provider, "api_key": api_key}
