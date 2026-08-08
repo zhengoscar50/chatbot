@@ -341,6 +341,25 @@ class PowabaseClient:
         response = self._client.delete("/rest/v1/agents", params={"id": f"eq.{agent_id}"})
         self._raise_for_status(response)
 
+    # Message rows (PostgREST) ----------------------------------------------
+    # The app owns its transcript: a Powabase thread is bound to exactly one
+    # agent, so it cannot carry a conversation several agents take turns in.
+
+    def insert_message(self, row: dict) -> dict:
+        response = self._client.post(
+            "/rest/v1/messages", json=row, headers={"Prefer": "return=representation"}
+        )
+        self._raise_for_status(response)
+        return response.json()[0]
+
+    def list_messages(self, session_id: str) -> list:
+        response = self._client.get(
+            "/rest/v1/messages",
+            params={"session_id": f"eq.{session_id}", "order": "created_at.asc"},
+        )
+        self._raise_for_status(response)
+        return response.json()
+
     def list_sessions_for_agent(self, agent_id: str) -> list:
         response = self._client.get("/rest/v1/sessions", params={"agent_id": f"eq.{agent_id}"})
         self._raise_for_status(response)

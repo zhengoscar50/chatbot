@@ -23,13 +23,14 @@ class FakeSessionService:
 
 
 class FakeClient:
-    def get_session_messages(self, ps):
-        return {
-            "messages": [
-                {"role": "user", "content": "hi"},
-                {"role": "assistant", "content": "hello", "citations": [{"key": "1"}]},
-            ]
-        }
+    """Backs MessageStore: rows from our own messages table."""
+
+    def list_messages(self, session_id):
+        return [
+            {"role": "user", "content": "hi"},
+            {"role": "assistant", "content": "hello", "citations": [{"key": "1"}],
+             "answered_by_name": "Chem tutor"},
+        ]
 
 
 def build_app():
@@ -63,10 +64,15 @@ def test_messages_formats_roles_and_citations():
     r = TestClient(build_app()).get("/sessions/s1/messages")
     assert r.status_code == 200
     body = r.json()
-    assert body["messages"][0] == {"role": "user", "text": "hi", "citations": []}
+    assert body["messages"][0] == {
+        "role": "user", "text": "hi", "citations": [], "answered_by": None,
+    }
     assert body["messages"][1]["role"] == "assistant"
     assert body["messages"][1]["text"] == "hello"
     assert body["messages"][1]["citations"] == [{"key": "1"}]
+    # The transcript remembers which agent answered, so reopening a chat
+    # still shows the attribution the badge displayed live.
+    assert body["messages"][1]["answered_by"] == "Chem tutor"
 
 
 def test_messages_404_for_missing_session():
@@ -81,27 +87,22 @@ def test_get_messages_404_for_non_owner():
     assert r.status_code == 404
 
 
-def test_messages_empty_when_session_has_no_powabase_session():
-    # A brand-new session (no first message yet) has no powabase_session_id,
-    # so /messages returns an empty list without calling Powabase.
-    class NoThreadService(FakeSessionService):
-        def get_owned_session(self, session_id, owner_id):
-            return {"id": session_id}  # no powabase_session_id
-
-    class ExplodingClient:
-        def get_session_messages(self, ps):
-            raise AssertionError("should not be called when there is no thread")
+def test_messages_empty_for_a_brand_new_chat():
+    # A chat nobody has spoken in yet simply has no rows.
+    class EmptyClient:
+        def list_messages(self, session_id):
+            return []
 
     app = FastAPI()
     app.include_router(sessions_route.router)
-    app.dependency_overrides[get_session_service] = lambda: NoThreadService()
-    app.dependency_overrides[get_powabase_client] = lambda: ExplodingClient()
+    app.dependency_overrides[get_session_service] = lambda: FakeSessionService()
+    app.dependency_overrides[get_powabase_client] = lambda: EmptyClient()
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
 
     r = TestClient(app).get("/sessions/s1/messages")
 
     assert r.status_code == 200
-    assert r.json() == {"messages": []}
+    assert r.json()["messages"] == []
 
 
 def test_rename_session_updates_name():

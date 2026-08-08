@@ -44,6 +44,20 @@ class FakeAgentService:
         return [self.row] if self.row else []
 
 
+class FakeMessageClient:
+    """Backs MessageStore. The route reads recent turns and writes both turns."""
+
+    def __init__(self):
+        self.rows = []
+
+    def list_messages(self, session_id):
+        return [r for r in self.rows if r["session_id"] == session_id]
+
+    def insert_message(self, row):
+        self.rows.append(row)
+        return row
+
+
 # Records what the route composed, so the KB scope can be asserted.
 LAST_CHAT_ARGS = {}
 
@@ -53,9 +67,10 @@ class FakeChatService:
         LAST_CHAT_ARGS["agent_id"] = agent_id
         LAST_CHAT_ARGS["kb_ids"] = retrieval_kb_ids
 
-    def ask(self, query, session_id=None, retrieve=True):
+    def ask(self, query, retrieve=True):
         LAST_CHAT_ARGS["retrieve"] = retrieve
-        return {"answer": "42", "session_id": "ps-new", "citations": []}
+        LAST_CHAT_ARGS["query"] = query
+        return {"answer": "42", "citations": []}
 
 
 def route_to(agent_id, needs_kb=True):
@@ -66,7 +81,8 @@ def route_to(agent_id, needs_kb=True):
 def build_app(session_service, agent_service=None):
     app = FastAPI()
     app.include_router(chat_route.router)
-    app.dependency_overrides[get_powabase_client] = lambda: object()
+    app.state.message_client = FakeMessageClient()
+    app.dependency_overrides[get_powabase_client] = lambda: app.state.message_client
     app.dependency_overrides[get_session_service] = lambda: session_service
     app.dependency_overrides[get_agent_service] = lambda: (agent_service or FakeAgentService())
     app.dependency_overrides[get_general_kb_id] = lambda: "gkb-1"
@@ -96,17 +112,40 @@ def test_chat_returns_the_answer(monkeypatch):
     }
 
 
-def test_chat_saves_powabase_session_and_autonames_on_first_turn(monkeypatch):
+def test_chat_persists_both_turns_and_autonames_on_the_first_message(monkeypatch):
     monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to("ag-1"))
     svc = FakeSessionService()
+    app = build_app(svc)
 
-    post(TestClient(build_app(svc)), {"session_id": "s1", "query": "What are my taxes?"})
+    post(TestClient(app), {"session_id": "s1", "query": "What are my taxes?"})
+
+    rows = app.state.message_client.rows
+    assert [r["role"] for r in rows] == ["user", "assistant"]
+    assert rows[0]["content"] == "What are my taxes?"
+    assert rows[1]["answered_by_name"] == "Chem tutor"
 
     session_id, fields = svc.touched[0]
     assert session_id == "s1"
-    assert fields["powabase_session_id"] == "ps-new"
     assert fields["name"] == "What are my taxes?"
     assert "updated_at" not in fields  # touch() adds updated_at itself
+
+
+def test_chat_carries_recent_turns_into_the_agents_message(monkeypatch):
+    # Agents run statelessly, so prior turns must reach them in the message.
+    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to("ag-1"))
+    app = build_app(FakeSessionService())
+    app.state.message_client.rows = [
+        {"session_id": "s1", "role": "user", "content": "where is the eyewash?"},
+        {"session_id": "s1", "role": "assistant", "content": "Corridor Seven."},
+    ]
+
+    post(TestClient(app), {"session_id": "s1", "query": "say that again"})
+
+    sent = LAST_CHAT_ARGS["query"]
+    assert "Corridor Seven." in sent
+    assert sent.rstrip().endswith("Current message: say that again")
 
 
 def test_chat_404_for_missing_session(monkeypatch):
@@ -136,7 +175,7 @@ def test_chat_requires_session_id(monkeypatch):
 
 def test_chat_returns_402_on_insufficient_credits(monkeypatch):
     class Insufficient(FakeChatService):
-        def ask(self, query, session_id=None, retrieve=True):
+        def ask(self, query, retrieve=True):
             raise chat_route.InsufficientCreditsError("no credits left")
 
     monkeypatch.setattr(chat_route, "ChatService", Insufficient)
@@ -149,7 +188,7 @@ def test_chat_returns_402_on_insufficient_credits(monkeypatch):
 
 def test_chat_returns_503_when_model_busy(monkeypatch):
     class Busy(FakeChatService):
-        def ask(self, query, session_id=None, retrieve=True):
+        def ask(self, query, retrieve=True):
             raise chat_route.ModelBusyError("The model is busy right now. Please wait a few seconds and try again.")
 
     monkeypatch.setattr(chat_route, "ChatService", Busy)
@@ -162,7 +201,7 @@ def test_chat_returns_503_when_model_busy(monkeypatch):
 
 def test_chat_returns_424_on_provider_key_error(monkeypatch):
     class ProviderError(FakeChatService):
-        def ask(self, query, session_id=None, retrieve=True):
+        def ask(self, query, retrieve=True):
             raise chat_route.ProviderKeyError("bad key")
 
     monkeypatch.setattr(chat_route, "ChatService", ProviderError)
@@ -177,7 +216,7 @@ def test_chat_returns_424_on_provider_key_error(monkeypatch):
 
 def test_chat_returns_502_when_agent_run_fails(monkeypatch):
     class FailedRun(FakeChatService):
-        def ask(self, query, session_id=None, retrieve=True):
+        def ask(self, query, retrieve=True):
             raise RuntimeError("litellm.APIError: insufficient OpenRouter credits")
 
     monkeypatch.setattr(chat_route, "ChatService", FailedRun)

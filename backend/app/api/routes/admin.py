@@ -119,11 +119,8 @@ def admin_session_messages(
     row = client.get_session_row(session_id)
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    psid = row.get("powabase_session_id")
-    if not psid:
-        return MessagesResponse(messages=[])
     try:
-        raw = client.get_session_messages(psid)
+        raw = client.list_messages(session_id)
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return MessagesResponse(messages=_format_messages(raw))

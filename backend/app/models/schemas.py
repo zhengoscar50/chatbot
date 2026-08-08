@@ -67,6 +67,7 @@ class ChatMessage(BaseModel):
     role: str
     text: str
     citations: list[dict[str, Any]] = Field(default_factory=list)
+    answered_by: Optional[str] = None   # which agent produced an assistant turn
 
 
 class MessagesResponse(BaseModel):

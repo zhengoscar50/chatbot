@@ -11,7 +11,9 @@ from app.services.chat_service import (
     ProviderKeyError,
 )
 from app.services.agent_service import AgentService, get_agent_service
+from app.services.conversation import conversation_message
 from app.services.general_assistant import get_general_assistant_id
+from app.services.message_store import MessageStore, get_message_store
 from app.services.general_kb import get_general_kb_id
 from app.services.orchestrator import OrchestratorService, get_orchestrator_agent_id
 from app.services.retrieval_scope import kb_ids_for
@@ -34,15 +36,6 @@ def _recent_turns(raw, turns: int) -> list:
     return history[-(turns * 2):] if turns > 0 else []
 
 
-def _load_history(client, powabase_session_id, turns: int) -> list:
-    if not powabase_session_id:
-        return []
-    try:
-        return _recent_turns(client.get_session_messages(powabase_session_id), turns)
-    except PowabaseAPIError:
-        return []
-
-
 @router.post("", response_model=ChatResponse)
 def chat(
     req: ChatRequest,
@@ -50,6 +43,7 @@ def chat(
     client: PowabaseClient = Depends(get_powabase_client),
     sessions: SessionService = Depends(get_session_service),
     agents: AgentService = Depends(get_agent_service),
+    messages: MessageStore = Depends(get_message_store),
     general_kb_id: str = Depends(get_general_kb_id),
     orchestrator_agent_id: str = Depends(get_orchestrator_agent_id),
     general_assistant_id: str = Depends(get_general_assistant_id),
@@ -59,8 +53,10 @@ def chat(
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    powabase_session_id = row.get("powabase_session_id")
-    history = _load_history(client, powabase_session_id, settings.history_turns)
+    try:
+        history = messages.recent_turns(req.session_id, settings.history_turns)
+    except PowabaseAPIError:
+        history = []
 
     # One call decides both which agent answers and whether to retrieve.
     roster = agents.list(user["id"])
@@ -81,9 +77,12 @@ def chat(
         kb_ids_for(agent_row, row, general_kb_id),
         settings.retrieval_top_k, settings.retrieval_max_context_tokens,
     )
+    # Agents run statelessly: a Powabase thread is bound to exactly one agent,
+    # so a chat several agents take turns in cannot use one. History travels in
+    # the message instead.
     try:
         result = service.ask(
-            req.query, session_id=powabase_session_id, retrieve=decision.needs_kb
+            conversation_message(history, req.query), retrieve=decision.needs_kb
         )
     except ModelBusyError as e:
         raise HTTPException(status_code=503, detail=e.message)
@@ -99,17 +98,19 @@ def chat(
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
+    # Persist the turns and the chat's recency best-effort: the answer is
+    # already computed (and paid for), so a write failure must not fail the
+    # request. (Downside: that exchange is missing when the chat is reopened —
+    # acceptable vs. losing the answer with a 500.)
     updates: dict = {}
-    if not powabase_session_id and result.get("session_id"):
-        updates["powabase_session_id"] = result["session_id"]
-        if row.get("name") == DEFAULT_NAME:
-            updates["name"] = _title_from(req.query)
-
-    # Persist the thread id / name / recency best-effort: the answer is already
-    # computed (and paid for), so a session-row write failure must not fail the
-    # request. (Downside on a first-turn failure: the thread isn't saved and the
-    # session won't resume — acceptable vs. losing the answer with a 500.)
+    if row.get("name") == DEFAULT_NAME:
+        updates["name"] = _title_from(req.query)
     try:
+        messages.add_user_turn(req.session_id, req.query)
+        messages.add_assistant_turn(
+            req.session_id, result["answer"], result["citations"],
+            answered_by_id=answered_by.id, answered_by_name=answered_by.name,
+        )
         sessions.touch(req.session_id, **updates)
     except (PowabaseAPIError, RuntimeError):
         pass
