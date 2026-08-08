@@ -210,11 +210,6 @@ class PowabaseClient:
         )
         self._raise_for_status(response)
 
-    def get_session_messages(self, powabase_session_id: str) -> dict:
-        response = self._client.get(f"/api/sessions/{powabase_session_id}/messages")
-        self._raise_for_status(response)
-        return response.json()
-
     def delete_session_row(self, session_id: str) -> None:
         response = self._client.delete(
             "/rest/v1/sessions", params={"id": f"eq.{session_id}"}
