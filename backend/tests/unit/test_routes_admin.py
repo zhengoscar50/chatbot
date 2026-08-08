@@ -7,6 +7,7 @@ from app.api.routes import admin as admin_route
 from app.clients.powabase_client import get_powabase_client
 from app.core.config import get_settings
 from app.services.general_kb import get_general_kb_id
+from app.services.agent_service import get_agent_service
 from app.services.session_service import get_session_service
 
 
@@ -89,6 +90,20 @@ class FakeAdminClient:
         return self.session_messages.get(powabase_session_id, {"messages": []})
 
 
+class FakeAdminAgentService:
+    """Deleting a user must also take their agents."""
+
+    def __init__(self):
+        self.deleted = []
+
+    def list(self, owner_id):
+        return [{"id": "ag-1", "owner_id": owner_id}]
+
+    def delete(self, agent_id):
+        self.deleted.append(agent_id)
+        return True
+
+
 class FakeSessionService:
     def __init__(self):
         self.deleted = []
@@ -103,11 +118,14 @@ def build_users_app():
     app.include_router(admin_route.router)
     client = FakeAdminClient()
     sessions = FakeSessionService()
+    agents = FakeAdminAgentService()
     app.dependency_overrides[get_powabase_client] = lambda: client
     app.dependency_overrides[get_general_kb_id] = lambda: "gkb-1"
     app.dependency_overrides[get_session_service] = lambda: sessions
+    app.dependency_overrides[get_agent_service] = lambda: agents
     app.state.fake_client = client
     app.state.fake_sessions = sessions
+    app.state.fake_agents = agents
     return app
 
 
@@ -330,3 +348,15 @@ def test_delete_user_404_unknown(monkeypatch):
         "/admin/users/ghost", headers={"X-Admin-Password": "s3cret"}
     )
     assert r.status_code == 404
+
+
+def test_delete_user_also_deletes_their_agents(monkeypatch):
+    # Otherwise the agents outlive their owner: unreachable through the API,
+    # still holding their knowledge bases and Powabase agents.
+    set_admin(monkeypatch)
+    app = build_users_app()
+
+    r = TestClient(app).delete("/admin/users/u1", headers={"X-Admin-Password": "s3cret"})
+
+    assert r.status_code == 204
+    assert app.state.fake_agents.deleted == ["ag-1"]

@@ -30,6 +30,22 @@ class FakeSessionService:
     def delete(self, sid): self.deleted.append(sid); return True
 
 
+class FakeAgentService:
+    def __init__(self, rows=None):
+        self.rows = rows if rows is not None else [
+            {"id": "ag-1", "owner_id": "u1"},
+            {"id": "ag-2", "owner_id": "u1"},
+        ]
+        self.deleted = []
+
+    def list(self, owner_id):
+        return [r for r in self.rows if r["owner_id"] == owner_id]
+
+    def delete(self, agent_id):
+        self.deleted.append(agent_id)
+        return True
+
+
 def test_list_users_with_counts():
     rows = admin_users.list_users_with_counts(FakeClient())
     by_id = {r["id"]: r for r in rows}
@@ -39,16 +55,51 @@ def test_list_users_with_counts():
 
 
 def test_delete_user_cascades_sessions_then_user():
-    client, ss = FakeClient(), FakeSessionService()
-    assert admin_users.delete_user(client, ss, "u1") is True
+    client, ss, ags = FakeClient(), FakeSessionService(), FakeAgentService()
+    assert admin_users.delete_user(client, ss, ags, "u1") is True
     assert set(ss.deleted) == {"s1", "s2"}
     assert client.deleted_users == ["u1"]
 
 
-def test_delete_user_missing_returns_false():
+def test_delete_user_also_deletes_their_agents():
+    # Without this the agents survive with no owner: unreachable through the
+    # API, still holding their knowledge bases and Powabase agents forever.
+    client, ss, ags = FakeClient(), FakeSessionService(), FakeAgentService()
+
+    admin_users.delete_user(client, ss, ags, "u1")
+
+    assert set(ags.deleted) == {"ag-1", "ag-2"}
+
+
+def test_delete_user_leaves_other_users_agents_alone():
     client, ss = FakeClient(), FakeSessionService()
-    assert admin_users.delete_user(client, ss, "ghost") is False
+    ags = FakeAgentService([{"id": "ag-1", "owner_id": "u1"},
+                            {"id": "ag-mine", "owner_id": "u2"}])
+
+    admin_users.delete_user(client, ss, ags, "u1")
+
+    assert ags.deleted == ["ag-1"]
+
+
+def test_delete_user_survives_a_failing_agent_delete():
+    # The user row delete is authoritative; a stale remote resource must not
+    # leave the account half-removed.
+    from app.clients.powabase_client import PowabaseAPIError
+
+    class Failing(FakeAgentService):
+        def delete(self, agent_id):
+            raise PowabaseAPIError(404, {"error": "gone"})
+
+    client, ss = FakeClient(), FakeSessionService()
+    assert admin_users.delete_user(client, ss, Failing(), "u1") is True
+    assert client.deleted_users == ["u1"]
+
+
+def test_delete_user_missing_returns_false():
+    client, ss, ags = FakeClient(), FakeSessionService(), FakeAgentService()
+    assert admin_users.delete_user(client, ss, ags, "ghost") is False
     assert client.deleted_users == []
+    assert ags.deleted == []
 
 
 def test_reset_password_hashes_and_updates():

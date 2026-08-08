@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.clients.powabase_client import PowabaseAPIError
 from app.core.security import hash_password
 from app.models.schemas import validate_username
 
@@ -25,11 +26,30 @@ def list_users_with_counts(client) -> list:
     ]
 
 
-def delete_user(client, session_service, user_id: str) -> bool:
+def delete_user(client, session_service, agent_service, user_id: str) -> bool:
+    """Delete a user and everything they own: their chats and their agents.
+
+    Both cascades are best-effort — the user row delete is authoritative, and a
+    stale remote resource must not leave the account half-removed. Skipping the
+    agents entirely (as this did before agents became user-owned) stranded them
+    with no owner: unreachable through the API, yet still holding their
+    knowledge bases and Powabase agents indefinitely.
+    """
     if client.get_user(user_id) is None:
         return False
-    for s in client.list_sessions(user_id):
-        session_service.delete(s["id"])  # cascades KB + agent + row (best-effort)
+
+    for session in client.list_sessions(user_id):
+        try:
+            session_service.delete(session["id"])   # scratch KB + row
+        except PowabaseAPIError:
+            pass
+
+    for agent in agent_service.list(user_id):
+        try:
+            agent_service.delete(agent["id"])       # permanent KBs + remote agent + row
+        except PowabaseAPIError:
+            pass
+
     client.delete_user(user_id)
     return True
 

@@ -16,6 +16,7 @@ from app.models.schemas import (
     SessionSummary,
 )
 from app.services import admin_users
+from app.services.agent_service import AgentService, get_agent_service
 from app.services.admin_users import UsernameTakenError
 from app.services.general_kb import get_general_kb_id
 from app.services.ingest_service import (
@@ -159,7 +160,8 @@ def admin_delete_user(
     _: None = Depends(require_admin_header),
     client: PowabaseClient = Depends(get_powabase_client),
     sessions: SessionService = Depends(get_session_service),
+    agents: AgentService = Depends(get_agent_service),
 ):
-    if not admin_users.delete_user(client, sessions, user_id):
+    if not admin_users.delete_user(client, sessions, agents, user_id):
         raise HTTPException(status_code=404, detail="User not found")
     return Response(status_code=204)
