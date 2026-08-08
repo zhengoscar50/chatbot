@@ -5,10 +5,8 @@
 // and this file calls back into onAgentChanged()/authFetch()/errorText().
 
 let agents = [];
-let currentAgentId = null;
 let editingAgentId = null;
 
-const agentSelect = document.getElementById("agent-select");
 const agentModal = document.getElementById("agent-modal");
 const agentForm = document.getElementById("agent-form");
 const agentNameInput = document.getElementById("agent-name");
@@ -29,22 +27,23 @@ const agentTrainStatus = document.getElementById("agent-train-status");
 const agentError = document.getElementById("agent-error");
 const agentDeleteButton = document.getElementById("agent-delete");
 const agentModalTitle = document.getElementById("agent-modal-title");
-const manageAgentButton = document.getElementById("manage-agent");
+const agentDescriptionInput = document.getElementById("agent-description");
+const agentListModal = document.getElementById("agent-list-modal");
+const agentList = document.getElementById("agent-list");
 
 function wireAgents() {
-  document.getElementById("new-agent").addEventListener("click", () => openAgentModal(null));
-  manageAgentButton.addEventListener("click", () => {
-    if (currentAgentId) openAgentModal(currentAgentId);
+  document.getElementById("manage-agents").addEventListener("click", openAgentList);
+  document.getElementById("agent-list-close").addEventListener("click", () => {
+    agentListModal.hidden = true;
+  });
+  document.getElementById("agent-list-new").addEventListener("click", () => {
+    agentListModal.hidden = true;
+    openAgentModal(null);
   });
   document.getElementById("agent-cancel").addEventListener("click", closeAgentModal);
   agentForm.addEventListener("submit", saveAgent);
   agentDeleteButton.addEventListener("click", deleteAgent);
   agentTrainFile.addEventListener("change", trainAgent);
-  agentSelect.addEventListener("change", () => {
-    currentAgentId = agentSelect.value || null;
-    updateAgentTooltip();
-    onAgentChanged();
-  });
   agentModelSelect.addEventListener("change", () => {
     const custom = agentModelSelect.value === OTHER_MODEL;
     agentModelCustomRow.hidden = !custom;
@@ -69,49 +68,55 @@ async function loadAgents() {
         body = { detail: `${res.status} ${res.statusText}` };
       }
       agents = [];
-      renderAgentSelect();
       setSidebarStatus(`Could not load agents: ${errorText(body, res)}`, "error");
       return;
     }
     agents = await res.json();
   } catch (err) {
     agents = [];
-    renderAgentSelect();
     setSidebarStatus(err.message, "error");
     return;
   }
-  if (!agents.some((a) => a.id === currentAgentId)) {
-    currentAgentId = agents.length > 0 ? agents[0].id : null;
-  }
-  renderAgentSelect();
-  agentSelect.value = currentAgentId || "";
-  manageAgentButton.disabled = !currentAgentId;
-  onAgentChanged();
+  if (!agentListModal.hidden) renderAgentList();
 }
 
-function renderAgentSelect() {
-  agentSelect.innerHTML = "";
+function openAgentList() {
+  agentListModal.hidden = false;
+  renderAgentList();
+}
+
+function renderAgentList() {
+  agentList.innerHTML = "";
   if (agents.length === 0) {
-    const opt = document.createElement("option");
-    opt.value = "";
-    opt.textContent = "No agents yet — click +";
-    agentSelect.appendChild(opt);
+    const li = document.createElement("li");
+    li.className = "muted";
+    li.textContent = "No agents yet. Create one to give the orchestrator something to route to.";
+    agentList.appendChild(li);
     return;
   }
-  // Name only. The sidebar is 16rem wide and a "(untrained)" suffix nearly
-  // doubles the label, so it got clipped — the untrained hint lives in the
-  // tooltip and in the empty-thread message instead.
   agents.forEach((a) => {
-    const opt = document.createElement("option");
-    opt.value = a.id;
-    opt.textContent = a.name;
-    agentSelect.appendChild(opt);
+    const li = document.createElement("li");
+    const main = document.createElement("div");
+    const name = document.createElement("strong");
+    name.textContent = a.name;
+    main.appendChild(name);
+    const desc = document.createElement("div");
+    desc.className = "muted";
+    // An agent with no description is effectively unroutable — say so.
+    desc.textContent = a.description
+      || "No description — the orchestrator can't route to this reliably.";
+    main.appendChild(desc);
+    li.appendChild(main);
+    const edit = document.createElement("button");
+    edit.type = "button";
+    edit.textContent = "Edit";
+    edit.addEventListener("click", () => {
+      agentListModal.hidden = true;
+      openAgentModal(a.id);
+    });
+    li.appendChild(edit);
+    agentList.appendChild(li);
   });
-  updateAgentTooltip();
-}
-
-function selectedAgent() {
-  return agents.find((a) => a.id === currentAgentId) || null;
 }
 
 // The model list is hand-maintained server-side (Powabase publishes no
@@ -161,13 +166,6 @@ function chosenModel() {
     : agentModelSelect.value;
 }
 
-function updateAgentTooltip() {
-  const a = selectedAgent();
-  agentSelect.title = a
-    ? `${a.name} — ${a.trained ? "trained" : "no documents yet"} · ${a.model}`
-    : "No agents yet";
-}
-
 function openAgentModal(agentId) {
   editingAgentId = agentId;
   agentError.textContent = "";
@@ -180,6 +178,7 @@ function openAgentModal(agentId) {
     loadAgentDocuments(agentId);
   } else {
     agentNameInput.value = "";
+    agentDescriptionInput.value = "";
     agentInstructionsInput.value = "";
     agentGroundingInput.value = "strict";
     agentGeneralKbInput.checked = false;
@@ -199,6 +198,7 @@ async function loadAgentDetail(agentId) {
   if (!res.ok) return;
   const a = await res.json();
   agentNameInput.value = a.name;
+  agentDescriptionInput.value = a.description || "";
   agentInstructionsInput.value = a.instructions || "";
   agentGroundingInput.value = a.grounding;
   agentGeneralKbInput.checked = a.use_general_kb;
@@ -210,6 +210,7 @@ async function saveAgent(event) {
   agentError.textContent = "";
   const payload = {
     name: agentNameInput.value.trim(),
+    description: agentDescriptionInput.value.trim(),
     instructions: agentInstructionsInput.value,
     grounding: agentGroundingInput.value,
     use_general_kb: agentGeneralKbInput.checked,
@@ -238,7 +239,6 @@ async function saveAgent(event) {
       agentError.textContent = errorText(body, res);
       return;
     }
-    if (!editingAgentId) currentAgentId = body.id;
     closeAgentModal();
     await loadAgents();
   } catch (err) {
@@ -262,9 +262,9 @@ async function deleteAgent() {
       agentError.textContent = "Could not delete this agent.";
       return;
     }
-    currentAgentId = null;
     closeAgentModal();
     await loadAgents();
+    openAgentList();
   } catch (err) {
     agentError.textContent = err.message;
   }
@@ -342,8 +342,7 @@ async function trainAgent() {
 function resetAgentState() {
   agents = [];
   modelChoices = [];
-  currentAgentId = null;
   editingAgentId = null;
-  agentSelect.innerHTML = "";
   agentModal.hidden = true;
+  agentListModal.hidden = true;
 }
