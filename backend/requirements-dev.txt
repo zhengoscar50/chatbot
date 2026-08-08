@@ -1,3 +1,5 @@
 -r requirements.txt
 pytest
 respx
+# UI smoke only (scripts/ui_smoke.py); needs: playwright install chromium
+playwright
