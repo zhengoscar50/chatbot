@@ -91,9 +91,14 @@ class AdminRenameRequest(BaseModel):
         return validate_username(v)
 
 
+class SignupPolicyResponse(BaseModel):
+    invite_required: bool
+
+
 class RegisterRequest(BaseModel):
     username: str
     password: str = Field(..., min_length=8)
+    invite_code: Optional[str] = None
 
     @field_validator("username")
     @classmethod

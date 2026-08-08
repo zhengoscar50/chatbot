@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     orchestrator_model: str = "gpt-4o-mini"
     default_agent_model: str = "gpt-4o-mini"
     general_assistant_model: str = "gpt-4o-mini"
+    # Empty means open registration, so local development and the test
+    # suite are unaffected. Set it on a deployment whose URL gets shared:
+    # a forwarded link would otherwise let anyone register and spend the
+    # owner's LLM credits.
+    signup_invite_code: str = ""
     # Offered in the agent form's model picker. Powabase exposes no model
     # catalog (/api/models 404s), so this list is hand-maintained and can drift
     # from what the provider actually serves — which is why creating an agent

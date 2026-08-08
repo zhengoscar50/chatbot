@@ -18,6 +18,7 @@ const authGate = document.getElementById("auth-gate");
 const authForm = document.getElementById("auth-form");
 const authUsernameInput = document.getElementById("auth-username");
 const authPasswordInput = document.getElementById("auth-password");
+const authInviteInput = document.getElementById("auth-invite");
 const authSubmit = document.getElementById("auth-submit");
 const authError = document.getElementById("auth-error");
 const authToggle = document.getElementById("auth-toggle");
@@ -29,6 +30,10 @@ const NAME_KEY = "rag-chat-username";
 let authToken = null;
 let currentUsername = null;
 let authMode = "login"; // or "register"
+// Deployments that share a public URL require an invite code to register,
+// so a forwarded link alone cannot spend the owner's LLM credits. Local
+// development leaves it unset and the field never appears.
+let inviteRequired = false;
 let currentSessionId = null;
 let isAsking = false;
 let uploadPollToken = 0;
@@ -40,6 +45,7 @@ function init() {
   authToken = localStorage.getItem(TOKEN_KEY);
   currentUsername = localStorage.getItem(NAME_KEY);
   wireAuthForm();
+  loadSignupPolicy();
   wireAgents();
   newSessionButton.addEventListener("click", createSession);
   sidebarToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
@@ -59,10 +65,21 @@ async function authFetch(url, options = {}) {
   return response;
 }
 
+async function loadSignupPolicy() {
+  try {
+    const res = await fetch("/auth/signup-policy");
+    if (!res.ok) return;
+    inviteRequired = Boolean((await res.json()).invite_required);
+  } catch (err) {
+    // Leave the field hidden; a wrong guess here only costs a clear 403.
+  }
+}
+
 function wireAuthForm() {
   authToggle.addEventListener("click", () => {
     authMode = authMode === "login" ? "register" : "login";
     setAuthError("");
+    authInviteInput.hidden = !(inviteRequired && authMode === "register");
     if (authMode === "register") {
       authModeLabel.textContent = "Create an account";
       authSubmit.textContent = "Register";
@@ -86,10 +103,14 @@ function wireAuthForm() {
     authSubmit.disabled = true;
     try {
       const endpoint = authMode === "register" ? "/auth/register" : "/auth/login";
+      const payload = { username, password };
+      if (authMode === "register" && inviteRequired) {
+        payload.invite_code = authInviteInput.value.trim();
+      }
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(payload),
       });
       let body;
       try {

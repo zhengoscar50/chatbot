@@ -25,12 +25,13 @@ class FakeClient:
         return next((u for u in self.users if u["id"] == user_id), None)
 
 
-def build_app(client):
+def build_app(client, invite_code=""):
     app = FastAPI()
     app.include_router(auth_route.router)
     app.dependency_overrides[get_powabase_client] = lambda: client
     app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
-        auth_jwt_secret="test-secret", auth_token_ttl_hours=168
+        auth_jwt_secret="test-secret", auth_token_ttl_hours=168,
+        signup_invite_code=invite_code,
     )
     return app
 
@@ -86,3 +87,61 @@ def test_register_space_username_422():
         "/auth/register", json={"username": "Oscar Zheng", "password": "password123"}
     )
     assert r.status_code == 422
+
+
+# --- invite-code gate -------------------------------------------------------
+
+def test_signup_policy_reports_whether_a_code_is_needed():
+    open_app = TestClient(build_app(FakeClient()))
+    assert open_app.get("/auth/signup-policy").json() == {"invite_required": False}
+
+    gated = TestClient(build_app(FakeClient(), invite_code="let-me-in"))
+    assert gated.get("/auth/signup-policy").json() == {"invite_required": True}
+
+
+def test_signup_policy_never_leaks_the_code():
+    body = TestClient(build_app(FakeClient(), invite_code="s3cret")).get(
+        "/auth/signup-policy"
+    ).text
+    assert "s3cret" not in body
+
+
+def test_registration_is_open_when_no_code_is_configured():
+    r = TestClient(build_app(FakeClient())).post(
+        "/auth/register", json={"username": "alice", "password": "password123"}
+    )
+    assert r.status_code == 200
+
+
+def test_registration_requires_the_code_when_configured():
+    c = TestClient(build_app(FakeClient(), invite_code="let-me-in"))
+    r = c.post("/auth/register", json={"username": "alice", "password": "password123"})
+    assert r.status_code == 403
+    assert "invite code" in r.json()["detail"].lower()
+
+
+def test_registration_rejects_a_wrong_code():
+    c = TestClient(build_app(FakeClient(), invite_code="let-me-in"))
+    r = c.post("/auth/register", json={
+        "username": "alice", "password": "password123", "invite_code": "nope",
+    })
+    assert r.status_code == 403
+
+
+def test_registration_accepts_the_right_code():
+    c = TestClient(build_app(FakeClient(), invite_code="let-me-in"))
+    r = c.post("/auth/register", json={
+        "username": "alice", "password": "password123", "invite_code": "let-me-in",
+    })
+    assert r.status_code == 200
+
+
+def test_login_is_never_gated_by_the_invite_code():
+    # Rotating the code must not lock out anyone who already registered.
+    client = FakeClient()
+    TestClient(build_app(client)).post(
+        "/auth/register", json={"username": "alice", "password": "password123"}
+    )
+    gated = TestClient(build_app(client, invite_code="rotated-code"))
+    r = gated.post("/auth/login", json={"username": "alice", "password": "password123"})
+    assert r.status_code == 200

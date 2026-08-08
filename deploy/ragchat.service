@@ -1,0 +1,32 @@
+# /etc/systemd/system/ragchat.service
+[Unit]
+Description=RAG Chatbot (FastAPI)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/rag-chatbot/backend
+EnvironmentFile=/home/ubuntu/rag-chatbot/backend/.env
+
+# ONE worker, deliberately. Startup does a find-or-create for the shared
+# general KB, orchestrator and general assistant; concurrent workers would race
+# and could duplicate them. Bind to localhost only — the public entrypoint is
+# the Cloudflare tunnel, so nothing should reach uvicorn directly.
+ExecStart=/home/ubuntu/rag-chatbot/backend/.venv/bin/uvicorn app.main:app \
+    --host 127.0.0.1 --port 8000 --workers 1
+
+# Startup hard-fails if Powabase is unreachable, so a blip at boot would
+# otherwise leave a dead box. Back off rather than hammering the API.
+Restart=on-failure
+RestartSec=10
+
+# The service only needs its own directory.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/rag-chatbot
+
+[Install]
+WantedBy=multi-user.target
