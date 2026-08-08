@@ -18,6 +18,7 @@ const authGate = document.getElementById("auth-gate");
 const authForm = document.getElementById("auth-form");
 const authUsernameInput = document.getElementById("auth-username");
 const authPasswordInput = document.getElementById("auth-password");
+const authInviteInput = document.getElementById("auth-invite");
 const authSubmit = document.getElementById("auth-submit");
 const authError = document.getElementById("auth-error");
 const authToggle = document.getElementById("auth-toggle");
@@ -29,6 +30,10 @@ const NAME_KEY = "rag-chat-username";
 let authToken = null;
 let currentUsername = null;
 let authMode = "login"; // or "register"
+// Deployments that share a public URL require an invite code to register,
+// so a forwarded link alone cannot spend the owner's LLM credits. Local
+// development leaves it unset and the field never appears.
+let inviteRequired = false;
 let currentSessionId = null;
 let isAsking = false;
 let uploadPollToken = 0;
@@ -40,6 +45,7 @@ function init() {
   authToken = localStorage.getItem(TOKEN_KEY);
   currentUsername = localStorage.getItem(NAME_KEY);
   wireAuthForm();
+  loadSignupPolicy();
   wireAgents();
   newSessionButton.addEventListener("click", createSession);
   sidebarToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
@@ -59,10 +65,21 @@ async function authFetch(url, options = {}) {
   return response;
 }
 
+async function loadSignupPolicy() {
+  try {
+    const res = await fetch("/auth/signup-policy");
+    if (!res.ok) return;
+    inviteRequired = Boolean((await res.json()).invite_required);
+  } catch (err) {
+    // Leave the field hidden; a wrong guess here only costs a clear 403.
+  }
+}
+
 function wireAuthForm() {
   authToggle.addEventListener("click", () => {
     authMode = authMode === "login" ? "register" : "login";
     setAuthError("");
+    authInviteInput.hidden = !(inviteRequired && authMode === "register");
     if (authMode === "register") {
       authModeLabel.textContent = "Create an account";
       authSubmit.textContent = "Register";
@@ -86,10 +103,14 @@ function wireAuthForm() {
     authSubmit.disabled = true;
     try {
       const endpoint = authMode === "register" ? "/auth/register" : "/auth/login";
+      const payload = { username, password };
+      if (authMode === "register" && inviteRequired) {
+        payload.invite_code = authInviteInput.value.trim();
+      }
       const response = await fetch(endpoint, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify(payload),
       });
       let body;
       try {
@@ -142,31 +163,10 @@ async function enterApp() {
   currentUserLabel.textContent = currentUsername || "";
   newSessionButton.disabled = false;
   setComposerEnabled(true);
-  // loadAgents() selects an agent and calls onAgentChanged(), which loads
-  // that agent's chats — so there is no separate loadSessions() here.
+  clearThread("Type a message to start a chat.");
+  // The roster is loaded for the Manage agents list; chats are independent of
+  // it now, so it never touches the thread.
   await loadAgents();
-}
-
-// Called by agents.js whenever the selected agent changes. Chats belong to
-// one agent, so switching agents drops the open thread and lists that
-// agent's chats instead.
-function onAgentChanged() {
-  currentSessionId = null;
-  activeTitle.textContent = "RAG Chat";
-  if (!currentAgentId) {
-    sessionList.innerHTML = "";
-    clearThread("Create an agent to get started.");
-    setSidebarStatus("No agents yet — click + above.", null);
-    return;
-  }
-  // Surface the untrained state here rather than in the agent picker, where a
-  // long suffix gets clipped in a 16rem sidebar.
-  const agent = agents.find((a) => a.id === currentAgentId);
-  clearThread(
-    agent && !agent.trained
-      ? "This agent has no documents yet — open ⚙ to train it, or just start chatting."
-      : "Type a message to start a new chat with this agent."
-  );
   loadSessions();
 }
 
@@ -190,11 +190,10 @@ function doLogout() {
 // selected (so you can just start typing without clicking "New session").
 async function ensureSession() {
   if (currentSessionId) return currentSessionId;
-  if (!currentAgentId) throw new Error("Create an agent first.");
   const response = await authFetch("/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ agent_id: currentAgentId }),
+    body: JSON.stringify({}),
   });
   const body = await response.json();
   if (!response.ok) throw new Error(errorText(body, response));
@@ -335,16 +334,11 @@ function startRename(li, session) {
 
 async function createSession() {
   if (!authToken) return;
-  // A chat belongs to an agent, so there has to be one selected first.
-  if (!currentAgentId) {
-    setSidebarStatus("Create an agent first — click + above.", "error");
-    return;
-  }
   try {
     const response = await authFetch("/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agent_id: currentAgentId }),
+      body: JSON.stringify({}),
     });
     const body = await response.json();
     if (!response.ok) {
@@ -495,7 +489,7 @@ chatForm.addEventListener("submit", async (event) => {
       body = { detail: `${response.status} ${response.statusText}` };
     }
     if (response.ok) {
-      appendMessage("assistant", "AI", body.answer, body.citations);
+      appendMessage("assistant", "AI", body.answer, body.citations, body.answered_by);
       loadSessions(); // refresh titles/order (first message names the session)
     } else {
       appendMessage("error", "!", errorText(body, response));
@@ -563,7 +557,10 @@ function appendThinking() {
   return row;
 }
 
-function appendMessage(role, avatarText, text, citations) {
+// `answeredBy` names the agent the orchestrator picked. Showing it is the
+// only feedback loop for mis-routing — a wrong pick is fixable only if it is
+// visible.
+function appendMessage(role, avatarText, text, citations, answeredBy) {
   const existingEmpty = messages.querySelector(".empty-state");
   if (existingEmpty) existingEmpty.remove();
 
@@ -596,6 +593,12 @@ function appendMessage(role, avatarText, text, citations) {
     content.appendChild(p);
     if (citations && citations.length > 0) {
       content.appendChild(buildReferenceList(citations));
+    }
+    if (answeredBy && answeredBy.name) {
+      const badge = document.createElement("span");
+      badge.className = "agent-badge";
+      badge.textContent = answeredBy.name;
+      content.appendChild(badge);
     }
     row.appendChild(content);
   }

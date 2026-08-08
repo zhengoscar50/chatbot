@@ -82,6 +82,9 @@ class FakeAdminClient:
     def get_session_row(self, session_id):
         return self.session_rows.get(session_id)
 
+    def list_messages(self, session_id):
+        return [{"role": "user", "content": "hi", "citations": []}]
+
     def get_session_messages(self, powabase_session_id):
         return self.session_messages.get(powabase_session_id, {"messages": []})
 

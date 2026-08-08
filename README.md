@@ -171,6 +171,18 @@ curl -X POST http://127.0.0.1:8000/chat \
   -d '{"session_id": "<id>", "query": "What does this document say about X?"}'
 ```
 
+## Deploying
+
+`deploy/README.md` is the runbook: an AWS free-tier `t3.micro` behind a
+Cloudflare tunnel, with no inbound web ports open. Two things matter before
+you share a URL:
+
+- **Set `SIGNUP_INVITE_CODE`.** Otherwise anyone the link reaches can register
+  and spend your LLM credits.
+- **Apply the migrations first.** Powabase has no SQL endpoint, so every
+  numbered file in `backend/migrations/` is pasted into the Studio SQL Editor
+  by hand — including after an update.
+
 ## Notes on the Powabase wire format
 
 Powabase-specific details, each discovered during live verification and handled

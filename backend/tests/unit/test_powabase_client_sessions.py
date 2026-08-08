@@ -70,15 +70,6 @@ def test_update_session_patches_by_id():
 
 
 @respx.mock
-def test_get_session_messages_calls_api():
-    respx.get(f"{BASE_URL}/api/sessions/ps1/messages").mock(
-        return_value=httpx.Response(200, json={"messages": []})
-    )
-    client = PowabaseClient(BASE_URL, "k")
-    assert client.get_session_messages("ps1") == {"messages": []}
-
-
-@respx.mock
 def test_get_session_row_returns_none_on_malformed_id_400():
     # PostgREST rejects a non-uuid id with 400; it matches no session → None.
     respx.get(f"{BASE_URL}/rest/v1/sessions").mock(
@@ -180,3 +171,22 @@ def test_delete_user_deletes_by_id():
     route = respx.delete(f"{BASE_URL}/rest/v1/users").mock(return_value=httpx.Response(204))
     PowabaseClient(BASE_URL, "k").delete_user("u1")
     assert route.calls[0].request.url.params["id"] == "eq.u1"
+
+
+@respx.mock
+def test_insert_and_list_messages_use_our_own_table():
+    # The transcript lives in public.messages now: Powabase threads are bound
+    # to one agent, so they can't carry a multi-agent conversation.
+    respx.post(f"{BASE_URL}/rest/v1/messages").mock(
+        return_value=httpx.Response(201, json=[{"id": "m-1"}])
+    )
+    route = respx.get(f"{BASE_URL}/rest/v1/messages").mock(
+        return_value=httpx.Response(200, json=[{"id": "m-1", "role": "user"}])
+    )
+    c = PowabaseClient(BASE_URL, "k")
+
+    assert c.insert_message({"session_id": "s1", "role": "user", "content": "hi"})["id"] == "m-1"
+    assert c.list_messages("s1")[0]["role"] == "user"
+    url = str(route.calls[0].request.url)
+    assert "session_id=eq.s1" in url
+    assert "order=created_at.asc" in url

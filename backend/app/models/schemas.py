@@ -33,13 +33,18 @@ class ChatRequest(BaseModel):
     query: str = Field(..., min_length=1)
 
 
+class AnsweredBy(BaseModel):
+    id: Optional[str] = None      # None when the general assistant answered
+    name: str
+
+
 class ChatResponse(BaseModel):
     answer: str
     citations: list[dict[str, Any]] = Field(default_factory=list)
+    answered_by: Optional[AnsweredBy] = None
 
 
 class SessionCreateRequest(BaseModel):
-    agent_id: str = Field(..., min_length=1)
     name: Optional[str] = None
 
 
@@ -62,6 +67,7 @@ class ChatMessage(BaseModel):
     role: str
     text: str
     citations: list[dict[str, Any]] = Field(default_factory=list)
+    answered_by: Optional[str] = None   # which agent produced an assistant turn
 
 
 class MessagesResponse(BaseModel):
@@ -85,9 +91,14 @@ class AdminRenameRequest(BaseModel):
         return validate_username(v)
 
 
+class SignupPolicyResponse(BaseModel):
+    invite_required: bool
+
+
 class RegisterRequest(BaseModel):
     username: str
     password: str = Field(..., min_length=8)
+    invite_code: Optional[str] = None
 
     @field_validator("username")
     @classmethod
@@ -115,6 +126,7 @@ class MeResponse(BaseModel):
 class AgentCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=80)
     instructions: str = Field(default="", max_length=8000)
+    description: str = Field(default="", max_length=500)
     model: Optional[str] = Field(default=None)
     grounding: str = Field(default="strict")
     use_general_kb: bool = Field(default=False)
@@ -130,6 +142,7 @@ class AgentCreateRequest(BaseModel):
 class AgentUpdateRequest(BaseModel):
     name: Optional[str] = Field(default=None, min_length=1, max_length=80)
     instructions: Optional[str] = Field(default=None, max_length=8000)
+    description: Optional[str] = Field(default=None, max_length=500)
     model: Optional[str] = None
     grounding: Optional[str] = None
     use_general_kb: Optional[bool] = None
@@ -146,6 +159,7 @@ class AgentResponse(BaseModel):
     id: str
     name: str
     instructions: str
+    description: str = ""
     model: str
     grounding: str
     use_general_kb: bool
@@ -155,6 +169,7 @@ class AgentResponse(BaseModel):
 class AgentSummary(BaseModel):
     id: str
     name: str
+    description: str = ""
     model: str
     trained: bool
     updated_at: Optional[str] = None

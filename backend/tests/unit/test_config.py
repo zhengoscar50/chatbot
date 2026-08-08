@@ -31,11 +31,11 @@ def test_gating_defaults(monkeypatch):
     monkeypatch.setenv("AUTH_JWT_SECRET", "test-secret")
     from app.core.config import Settings
     s = Settings()
-    assert s.router_agent_model == "gpt-4o-mini"
+    assert s.orchestrator_model == "gpt-4o-mini"
     assert s.retrieval_top_k == 8
     assert s.retrieval_max_context_tokens == 32000
     assert s.full_document_max_chars == 120000
-    assert s.gate_history_turns == 2
+    assert s.history_turns == 2
     assert s.ingest_background_max_wait_seconds == 600
     assert s.reranker_model == "cohere/rerank-english-v3.0"
     assert s.reranker_candidate_count == 20

@@ -1,0 +1,21 @@
+# /etc/systemd/system/cloudflared.service
+#
+# Dials out to Cloudflare, which terminates TLS and routes to the app on
+# localhost. Because the connection is outbound, the security group needs NO
+# inbound web ports at all.
+[Unit]
+Description=Cloudflare Tunnel
+After=network-online.target ragchat.service
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+# TUNNEL_TOKEN is set when you create the tunnel in the Cloudflare dashboard.
+EnvironmentFile=/home/ubuntu/.cloudflared.env
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate run
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

@@ -11,7 +11,7 @@ from app.models.schemas import (
     SessionResponse,
     SessionSummary,
 )
-from app.services.agent_service import AgentService, get_agent_service
+from app.services.message_store import MessageStore, get_message_store
 from app.services.session_service import SessionService, get_session_service
 
 router = APIRouter(tags=["sessions"])
@@ -22,16 +22,9 @@ async def create_session(
     req: SessionCreateRequest,
     user: dict = Depends(get_current_user),
     sessions: SessionService = Depends(get_session_service),
-    agents: AgentService = Depends(get_agent_service),
 ):
-    # A chat belongs to an agent, so the agent must exist and be yours first.
-    agent = await run_in_threadpool(agents.get_owned, req.agent_id, user["id"])
-    if agent is None:
-        raise HTTPException(status_code=404, detail="Agent not found")
     try:
-        row = await run_in_threadpool(
-            sessions.create_session, user["id"], req.agent_id, req.name
-        )
+        row = await run_in_threadpool(sessions.create_session, user["id"], req.name)
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return SessionResponse(id=row["id"], name=row["name"])
@@ -88,30 +81,31 @@ async def session_messages(
     session_id: str,
     user: dict = Depends(get_current_user),
     sessions: SessionService = Depends(get_session_service),
-    client: PowabaseClient = Depends(get_powabase_client),
+    messages: MessageStore = Depends(get_message_store),
 ):
     row = await run_in_threadpool(sessions.get_owned_session, session_id, user["id"])
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
-    powabase_session_id = row.get("powabase_session_id")
-    if not powabase_session_id:
-        return MessagesResponse(messages=[])
     try:
-        raw = await run_in_threadpool(client.get_session_messages, powabase_session_id)
+        raw = await run_in_threadpool(messages.transcript, session_id)
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return MessagesResponse(messages=_format_messages(raw))
 
 
 def _format_messages(raw) -> list:
-    # Powabase's session-messages shape is verified live in the final task; this
-    # defensively handles a {"messages": [...]} or bare-list payload of
-    # {role, content|text, citations?} items.
+    """Rows from our own messages table into the API shape.
+
+    Still tolerates a {"messages": [...]} wrapper so old callers and fixtures
+    keep working.
+    """
     items = raw.get("messages", []) if isinstance(raw, dict) else (raw or [])
     formatted = []
     for item in items:
-        role = item.get("role", "assistant")
-        text = item.get("content") or item.get("text") or ""
-        citations = item.get("citations") or []
-        formatted.append(ChatMessage(role=role, text=text, citations=citations))
+        formatted.append(ChatMessage(
+            role=item.get("role", "assistant"),
+            text=item.get("content") or item.get("text") or "",
+            citations=item.get("citations") or [],
+            answered_by=item.get("answered_by_name"),
+        ))
     return formatted

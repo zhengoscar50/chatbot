@@ -210,11 +210,6 @@ class PowabaseClient:
         )
         self._raise_for_status(response)
 
-    def get_session_messages(self, powabase_session_id: str) -> dict:
-        response = self._client.get(f"/api/sessions/{powabase_session_id}/messages")
-        self._raise_for_status(response)
-        return response.json()
-
     def delete_session_row(self, session_id: str) -> None:
         response = self._client.delete(
             "/rest/v1/sessions", params={"id": f"eq.{session_id}"}
@@ -341,12 +336,24 @@ class PowabaseClient:
         response = self._client.delete("/rest/v1/agents", params={"id": f"eq.{agent_id}"})
         self._raise_for_status(response)
 
-    def list_sessions_for_agent(self, agent_id: str) -> list:
-        response = self._client.get("/rest/v1/sessions", params={"agent_id": f"eq.{agent_id}"})
+    # Message rows (PostgREST) ----------------------------------------------
+    # The app owns its transcript: a Powabase thread is bound to exactly one
+    # agent, so it cannot carry a conversation several agents take turns in.
+
+    def insert_message(self, row: dict) -> dict:
+        response = self._client.post(
+            "/rest/v1/messages", json=row, headers={"Prefer": "return=representation"}
+        )
+        self._raise_for_status(response)
+        return response.json()[0]
+
+    def list_messages(self, session_id: str) -> list:
+        response = self._client.get(
+            "/rest/v1/messages",
+            params={"session_id": f"eq.{session_id}", "order": "created_at.asc"},
+        )
         self._raise_for_status(response)
         return response.json()
-
-    # Provider keys ---------------------------------------------------------
 
     def create_provider_key(self, provider: str, api_key: str) -> dict:
         response = self._client.post(

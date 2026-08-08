@@ -245,11 +245,3 @@ def test_delete_agent_row_deletes_by_id():
     assert "id=eq.ag-1" in str(route.calls[0].request.url)
 
 
-@respx.mock
-def test_list_sessions_for_agent_filters_by_agent_id():
-    route = respx.get(f"{BASE_URL}/rest/v1/sessions").mock(
-        return_value=httpx.Response(200, json=[{"id": "s-1"}])
-    )
-    rows = PowabaseClient(BASE_URL, "k").list_sessions_for_agent("ag-1")
-    assert rows == [{"id": "s-1"}]
-    assert "agent_id=eq.ag-1" in str(route.calls[0].request.url)

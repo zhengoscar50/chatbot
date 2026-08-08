@@ -8,16 +8,6 @@ from app.services.chat_service import (
 )
 
 
-class FakeGate:
-    def __init__(self, needs=True):
-        self.needs = needs
-        self.calls = []
-
-    def needs_kb(self, query, history=None):
-        self.calls.append((query, history))
-        return self.needs
-
-
 class FakeClient:
     def __init__(self, events, handler_id="handler-1"):
         self.events = events
@@ -48,7 +38,7 @@ def test_ask_returns_answer_and_session_id():
             },
         ]
     )
-    service = ChatService(client, "agent-1", FakeGate(needs=False), ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
+    service = ChatService(client, "agent-1", ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
 
     result = service.ask("What is the answer?")
 
@@ -70,7 +60,7 @@ def test_ask_raises_insufficient_credits():
             }
         ]
     )
-    service = ChatService(client, "agent-1", FakeGate(needs=False), ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
+    service = ChatService(client, "agent-1", ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
 
     with pytest.raises(InsufficientCreditsError):
         service.ask("hello")
@@ -85,7 +75,7 @@ def test_ask_raises_provider_key_error():
             }
         ]
     )
-    service = ChatService(client, "agent-1", FakeGate(needs=False), ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
+    service = ChatService(client, "agent-1", ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
 
     with pytest.raises(ProviderKeyError):
         service.ask("hello")
@@ -109,7 +99,7 @@ def test_ask_raises_runtime_error_when_complete_event_reports_failure():
             },
         ]
     )
-    service = ChatService(client, "agent-1", FakeGate(needs=False), ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
+    service = ChatService(client, "agent-1", ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
 
     with pytest.raises(RuntimeError, match="insufficient OpenRouter credits"):
         service.ask("hello")
@@ -133,7 +123,7 @@ def test_ask_raises_model_busy_on_resource_exhausted():
             }
         ]
     )
-    service = ChatService(client, "agent-1", FakeGate(needs=False), ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
+    service = ChatService(client, "agent-1", ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
 
     with pytest.raises(ModelBusyError):
         service.ask("hi")
@@ -153,7 +143,7 @@ def test_ask_raises_model_busy_on_rate_limit_in_complete_event():
             },
         ]
     )
-    service = ChatService(client, "agent-1", FakeGate(needs=False), ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
+    service = ChatService(client, "agent-1", ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
 
     with pytest.raises(ModelBusyError):
         service.ask("hi")
@@ -163,7 +153,7 @@ def test_ask_non_throttle_error_uses_error_field_not_dict_repr():
     client = FakeClient(
         events=[{"event": "error", "data": {"error": "some unexpected failure"}}]
     )
-    service = ChatService(client, "agent-1", FakeGate(needs=False), ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
+    service = ChatService(client, "agent-1", ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
 
     with pytest.raises(RuntimeError) as exc:
         service.ask("hi")
@@ -173,28 +163,28 @@ def test_ask_non_throttle_error_uses_error_field_not_dict_repr():
     assert "'event'" not in msg  # not the raw dict repr
 
 
-def test_ask_retrieves_and_injects_when_gate_true():
+def test_ask_retrieves_when_the_decision_says_to():
     client = FakeClient(events=[
         {"event": "start", "data": {"session_id": "sess-1"}},
         {"event": "complete", "data": {"content": "grounded", "citations": [{"source_id": "s"}]}},
     ])
-    service = ChatService(client, "agent-1", FakeGate(needs=True), ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
+    service = ChatService(client, "agent-1", ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
 
-    result = service.ask("what does the doc say?", session_id="ps-1")
+    result = service.ask("what does the doc say?", session_id="ps-1", retrieve=True)
 
     assert result["answer"] == "grounded"
     assert client.handler_calls[0]["knowledge_bases"] == [{"id": "kb-s", "top_k": 4}, {"id": "gkb-1", "top_k": 4}]
     assert client.calls[0]["context_handler_id"] == "handler-1"
 
 
-def test_ask_skips_retrieval_when_gate_false():
+def test_ask_skips_retrieval_when_the_decision_says_not_to():
     client = FakeClient(events=[
         {"event": "start", "data": {"session_id": "sess-1"}},
         {"event": "complete", "data": {"content": "hi there", "citations": []}},
     ])
-    service = ChatService(client, "agent-1", FakeGate(needs=False), ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
+    service = ChatService(client, "agent-1", ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
 
-    result = service.ask("hello")
+    result = service.ask("hello", retrieve=False)
 
     assert result["answer"] == "hi there"
     assert client.handler_calls == []                      # no retrieval
@@ -210,27 +200,21 @@ def test_ask_skips_retrieval_when_the_agent_has_no_knowledge_bases():
         {"event": "start", "data": {"session_id": "sess-1"}},
         {"event": "complete", "data": {"content": "I'm an assistant.", "citations": []}},
     ])
-    gate = FakeGate(needs=True)
-    service = ChatService(client, "agent-1", gate, [], top_k=4, max_context_tokens=2000)
+    service = ChatService(client, "agent-1", [], top_k=4, max_context_tokens=2000)
 
-    result = service.ask("what are you?")
+    result = service.ask("what are you?", retrieve=True)
 
     assert result["answer"] == "I'm an assistant."
     assert client.handler_calls == []
     assert client.calls[0]["context_handler_id"] is None
-    # And the gate isn't consulted at all — there is nothing to search, so the
-    # LLM call it would cost is pure waste.
-    assert gate.calls == []
 
 
 def test_ask_skips_retrieval_when_every_kb_id_is_falsy():
     client = FakeClient(events=[
         {"event": "complete", "data": {"content": "ok", "citations": []}},
     ])
-    gate = FakeGate(needs=True)
-    service = ChatService(client, "agent-1", gate, [None, "", None], top_k=4, max_context_tokens=2000)
+    service = ChatService(client, "agent-1", [None, "", None], top_k=4, max_context_tokens=2000)
 
-    service.ask("hello")
+    service.ask("hello", retrieve=True)
 
     assert client.handler_calls == []
-    assert gate.calls == []

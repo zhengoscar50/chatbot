@@ -48,25 +48,25 @@ class FakeClient:
         self.deleted_rows.append(session_id)
 
 
-def test_create_session_binds_to_the_agent_and_creates_no_agent():
-    # The agent is durable and user-owned now; a chat must never mint one.
+def test_create_session_creates_no_agent_and_binds_to_none():
+    # Chats belong to the user; the orchestrator picks an agent per message.
     c = FakeClient()
-    row = SessionService(c).create_session("o1", "ag-1", "My chat")
+    row = SessionService(c).create_session("o1", "My chat")
 
-    assert row["agent_id"] == "ag-1"
     assert row["owner_id"] == "o1"
     assert row["name"] == "My chat"
+    assert "agent_id" not in row
     assert c.created_agents == []
 
 
 def test_create_session_defaults_the_name():
-    row = SessionService(FakeClient()).create_session("o1", "ag-1")
+    row = SessionService(FakeClient()).create_session("o1")
     assert row["name"] == "New session"
 
 
 def test_create_session_does_not_provision_a_kb_upfront():
     c = FakeClient()
-    SessionService(c).create_session("o1", "ag-1")
+    SessionService(c).create_session("o1")
     assert c.created_kbs == []
 
 

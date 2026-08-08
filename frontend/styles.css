@@ -1116,3 +1116,42 @@ body {
 .muted {
   opacity: 0.7;
 }
+
+/* --- Orchestrator attribution --------------------------------------------- */
+
+.agent-badge {
+  display: inline-block;
+  margin-top: 0.45rem;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+#agent-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+#agent-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+}
+
+#agent-list li:last-child {
+  border-bottom: none;
+}
+
+#agent-list .muted {
+  font-size: 0.82rem;
+  margin-top: 0.15rem;
+}

@@ -19,7 +19,8 @@ def test_app_starts_when_powabase_reachable(monkeypatch):
         main_module.PowabaseClient, "list_agents", lambda self: {"agents": []}
     )
     monkeypatch.setattr(main_module, "ensure_general_kb", lambda client, reranker_config=None: "gkb-1")
-    monkeypatch.setattr(main_module, "ensure_router_agent", lambda client, model: "router-1")
+    monkeypatch.setattr(main_module, "ensure_orchestrator_agent", lambda client, model: "orch-1")
+    monkeypatch.setattr(main_module, "ensure_general_assistant", lambda client, model: "general-1")
 
     app = main_module.create_app()
     with TestClient(app) as client:
@@ -28,7 +29,8 @@ def test_app_starts_when_powabase_reachable(monkeypatch):
         assert isinstance(app.state.powabase_client, main_module.PowabaseClient)
         assert app.state.general_kb_id == "gkb-1"
         assert isinstance(app.state.agent_service, main_module.AgentService)
-        assert app.state.router_agent_id == "router-1"
+        assert app.state.orchestrator_agent_id == "orch-1"
+        assert app.state.general_assistant_id == "general-1"
 
 
 def test_app_fails_to_start_when_powabase_unreachable(monkeypatch):

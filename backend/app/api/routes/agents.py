@@ -37,6 +37,7 @@ def _to_response(row: dict) -> AgentResponse:
         id=row["id"],
         name=row["name"],
         instructions=row.get("instructions") or "",
+        description=row.get("description") or "",
         model=row["model"],
         grounding=row.get("grounding", "strict"),
         use_general_kb=bool(row.get("use_general_kb")),
@@ -53,7 +54,7 @@ async def create_agent(
 ):
     try:
         row = await run_in_threadpool(
-            agents.create, user["id"], req.name, req.instructions,
+            agents.create, user["id"], req.name, req.instructions, req.description,
             req.model or settings.default_agent_model, req.grounding, req.use_general_kb,
         )
     except ModelRejectedError as e:
@@ -78,6 +79,7 @@ async def list_agents(
     return [
         AgentSummary(
             id=r["id"], name=r["name"], model=r["model"],
+            description=r.get("description") or "",
             trained=_trained(r), updated_at=r.get("updated_at"),
         )
         for r in rows

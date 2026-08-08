@@ -25,6 +25,7 @@
         <p class="auth-card__mode" id="auth-mode-label">Log in to continue</p>
         <input id="auth-username" class="auth-input" placeholder="Username" autocomplete="username" />
         <input id="auth-password" type="password" class="auth-input" placeholder="Password (8+ characters)" autocomplete="current-password" />
+        <input id="auth-invite" class="auth-input" placeholder="Invite code" autocomplete="off" hidden />
         <button type="submit" id="auth-submit" class="auth-submit">Log in</button>
         <p class="auth-error" id="auth-error"></p>
         <button type="button" id="auth-toggle" class="auth-toggle">Need an account? Register</button>
@@ -36,11 +37,7 @@
           <span class="sidebar__user" id="current-user"></span>
           <button type="button" id="logout-btn" class="logout-btn">Log out</button>
         </div>
-        <div class="agent-bar">
-          <select id="agent-select" aria-label="Agent"></select>
-          <button type="button" id="new-agent" class="icon-btn" title="New agent" aria-label="New agent">+</button>
-          <button type="button" id="manage-agent" class="icon-btn" title="Manage this agent" aria-label="Manage this agent">⚙</button>
-        </div>
+        <button type="button" id="manage-agents" class="new-session">⚙ Manage agents</button>
         <button id="new-session" class="new-session" disabled>+ New chat</button>
         <ul class="session-list" id="session-list" aria-label="Chats"></ul>
         <p class="sidebar__status" id="sidebar-status"></p>
@@ -91,11 +88,27 @@
         </footer>
       </div>
     </div>
+    <div id="agent-list-modal" class="modal" hidden>
+      <div class="modal-card">
+        <h2>Your agents</h2>
+        <p class="muted">The orchestrator picks one per message, using these descriptions.</p>
+        <ul id="agent-list"></ul>
+        <div class="modal-actions">
+          <button type="button" id="agent-list-close">Close</button>
+          <button type="button" id="agent-list-new">New agent</button>
+        </div>
+      </div>
+    </div>
+
     <div id="agent-modal" class="modal" hidden>
       <form id="agent-form" class="modal-card">
         <h2 id="agent-modal-title">New agent</h2>
         <label>Name
           <input id="agent-name" required maxlength="80" placeholder="Chemistry tutor" />
+        </label>
+        <label>What is this for?
+          <input id="agent-description" maxlength="500"
+                 placeholder="Answers questions about our AP Chemistry course materials." />
         </label>
         <label>Instructions
           <textarea id="agent-instructions" rows="5"

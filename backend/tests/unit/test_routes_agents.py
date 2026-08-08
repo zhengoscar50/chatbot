@@ -17,11 +17,12 @@ class FakeAgentService:
         self.trained_full = []
         self._n = 0
 
-    def create(self, owner_id, name, instructions, model, grounding, use_general_kb):
+    def create(self, owner_id, name, instructions, description, model, grounding, use_general_kb):
         self._n += 1
         row = {
             "id": f"ag-{self._n}", "owner_id": owner_id, "name": name,
-            "instructions": instructions, "model": model, "grounding": grounding,
+            "instructions": instructions, "description": description,
+            "model": model, "grounding": grounding,
             "use_general_kb": use_general_kb, "powabase_agent_id": "pa-1",
             "kb_id": None, "kb_full_id": None, "updated_at": "2026-08-06T00:00:00Z",
         }
@@ -112,8 +113,8 @@ def test_create_agent_rejects_empty_name():
 
 def test_list_agents_returns_only_mine():
     svc = FakeAgentService()
-    svc.create("o1", "Mine", "", "m", "strict", False)
-    svc.create("other", "Theirs", "", "m", "strict", False)
+    svc.create("o1", "Mine", "", "", "m", "strict", False)
+    svc.create("other", "Theirs", "", "", "m", "strict", False)
     app = build_app(svc)
 
     assert [a["name"] for a in TestClient(app).get("/agents").json()] == ["Mine"]
@@ -121,7 +122,7 @@ def test_list_agents_returns_only_mine():
 
 def test_trained_flag_is_true_once_a_kb_exists():
     svc = FakeAgentService()
-    row = svc.create("o1", "T", "", "m", "strict", False)
+    row = svc.create("o1", "T", "", "", "m", "strict", False)
     row["kb_id"] = "kb-1"
     app = build_app(svc)
 
@@ -135,7 +136,7 @@ def test_get_agent_404_for_unknown_id():
 
 def test_patch_updates_fields():
     svc = FakeAgentService()
-    svc.create("o1", "Old", "", "m", "strict", False)
+    svc.create("o1", "Old", "", "", "m", "strict", False)
     app = build_app(svc)
 
     r = TestClient(app).patch("/agents/ag-1", json={"name": "New", "grounding": "open"})
@@ -147,7 +148,7 @@ def test_patch_updates_fields():
 
 def test_patch_ignores_unset_fields():
     svc = FakeAgentService()
-    svc.create("o1", "Keep", "Keep me.", "m", "strict", False)
+    svc.create("o1", "Keep", "Keep me.", "", "m", "strict", False)
     app = build_app(svc)
 
     TestClient(app).patch("/agents/ag-1", json={"name": "Renamed"})
@@ -157,7 +158,7 @@ def test_patch_ignores_unset_fields():
 
 def test_patch_404_for_another_users_agent():
     svc = FakeAgentService()
-    svc.create("someone-else", "Theirs", "", "m", "strict", False)
+    svc.create("someone-else", "Theirs", "", "", "m", "strict", False)
     app = build_app(svc)
 
     assert TestClient(app).patch("/agents/ag-1", json={"name": "x"}).status_code == 404
@@ -165,7 +166,7 @@ def test_patch_404_for_another_users_agent():
 
 def test_delete_agent_204_and_cascades():
     svc = FakeAgentService()
-    svc.create("o1", "T", "", "m", "strict", False)
+    svc.create("o1", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     assert TestClient(app).delete("/agents/ag-1").status_code == 204
@@ -174,7 +175,7 @@ def test_delete_agent_204_and_cascades():
 
 def test_delete_404_for_another_users_agent():
     svc = FakeAgentService()
-    svc.create("someone-else", "T", "", "m", "strict", False)
+    svc.create("someone-else", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     assert TestClient(app).delete("/agents/ag-1").status_code == 404
@@ -185,7 +186,7 @@ def test_delete_404_for_another_users_agent():
 
 def test_train_404_for_another_users_agent():
     svc = FakeAgentService()
-    svc.create("someone-else", "T", "", "m", "strict", False)
+    svc.create("someone-else", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     r = TestClient(app).post(
@@ -196,7 +197,7 @@ def test_train_404_for_another_users_agent():
 
 def test_documents_lists_both_permanent_kbs():
     svc = FakeAgentService()
-    row = svc.create("o1", "T", "", "m", "strict", False)
+    row = svc.create("o1", "T", "", "", "m", "strict", False)
     row["kb_id"], row["kb_full_id"] = "kb-c", "kb-f"
     client = FakeIngestClient()
     # Real Powabase shape: id is the indexed-source link, and the fields are
@@ -218,7 +219,7 @@ def test_documents_lists_both_permanent_kbs():
 
 def test_documents_empty_for_untrained_agent():
     svc = FakeAgentService()
-    svc.create("o1", "T", "", "m", "strict", False)
+    svc.create("o1", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     assert TestClient(app).get("/agents/ag-1/documents").json() == []
@@ -226,7 +227,7 @@ def test_documents_empty_for_untrained_agent():
 
 def test_documents_404_for_another_users_agent():
     svc = FakeAgentService()
-    svc.create("someone-else", "T", "", "m", "strict", False)
+    svc.create("someone-else", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     assert TestClient(app).get("/agents/ag-1/documents").status_code == 404
@@ -234,7 +235,7 @@ def test_documents_404_for_another_users_agent():
 
 def test_untrain_unlinks_from_the_kb_that_holds_it():
     svc = FakeAgentService()
-    row = svc.create("o1", "T", "", "m", "strict", False)
+    row = svc.create("o1", "T", "", "", "m", "strict", False)
     row["kb_id"], row["kb_full_id"] = "kb-c", "kb-f"
     client = FakeIngestClient()
     client.kb_sources = {"kb-f": [{"id": "ix-2", "source_id": "s2"}]}
@@ -251,7 +252,7 @@ def test_untrain_unlinks_from_the_kb_that_holds_it():
 
 def test_untrain_404_when_the_agent_does_not_hold_that_document():
     svc = FakeAgentService()
-    row = svc.create("o1", "T", "", "m", "strict", False)
+    row = svc.create("o1", "T", "", "", "m", "strict", False)
     row["kb_id"] = "kb-c"
     app = build_app(svc, FakeIngestClient())
 
@@ -260,7 +261,7 @@ def test_untrain_404_when_the_agent_does_not_hold_that_document():
 
 def test_untrain_404_for_another_users_agent():
     svc = FakeAgentService()
-    svc.create("someone-else", "T", "", "m", "strict", False)
+    svc.create("someone-else", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     assert TestClient(app).delete("/agents/ag-1/documents/s1").status_code == 404
@@ -313,10 +314,31 @@ def test_patch_agent_400_for_a_model_the_provider_refuses():
             raise ModelRejectedError("bad", "unknown model")
 
     svc = Refusing()
-    svc.create("o1", "T", "", "m", "strict", False)
+    svc.create("o1", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     r = TestClient(app).patch("/agents/ag-1", json={"model": "bad"})
 
     assert r.status_code == 400
     assert "unchanged" in r.json()["detail"]
+
+
+def test_create_agent_accepts_and_returns_a_description():
+    app = build_app()
+    r = TestClient(app).post("/agents", json={
+        "name": "Tutor", "description": "Answers AP Chemistry questions.",
+    })
+    assert r.status_code == 201
+    assert r.json()["description"] == "Answers AP Chemistry questions."
+
+
+def test_agent_description_defaults_to_empty():
+    app = build_app()
+    assert TestClient(app).post("/agents", json={"name": "T"}).json()["description"] == ""
+
+
+def test_list_agents_includes_descriptions_for_routing():
+    svc = FakeAgentService()
+    svc.create("o1", "T", "", "Answers chemistry questions.", "m", "strict", False)
+    app = build_app(svc)
+    assert TestClient(app).get("/agents").json()[0]["description"] == "Answers chemistry questions."

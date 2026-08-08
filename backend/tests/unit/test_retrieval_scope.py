@@ -42,3 +42,18 @@ def test_no_duplicates_when_ids_repeat():
 def test_agent_with_only_a_full_document_kb():
     only_full = {"kb_id": None, "kb_full_id": "ag-full", "use_general_kb": False}
     assert kb_ids_for(only_full, None, "gen") == ["ag-full"]
+
+
+def test_general_assistant_sees_only_the_chat_scratch_and_general_kb():
+    # No agent_row means the general assistant is answering. It must NEVER see
+    # a specialist's permanent KBs — that would leak one agent's documents into
+    # an answer the UI attributes to another.
+    assert kb_ids_for(None, {"kb_id": "sc"}, "gen") == ["sc", "gen"]
+
+
+def test_general_assistant_with_no_chat_uploads():
+    assert kb_ids_for(None, None, "gen") == ["gen"]
+
+
+def test_general_assistant_with_no_general_kb():
+    assert kb_ids_for(None, {"kb_id": "sc"}, None) == ["sc"]

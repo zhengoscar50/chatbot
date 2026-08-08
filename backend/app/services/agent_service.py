@@ -67,6 +67,7 @@ class AgentService:
         owner_id: str,
         name: str,
         instructions: str,
+        description: str,
         model: str,
         grounding: str,
         use_general_kb: bool,
@@ -80,6 +81,7 @@ class AgentService:
             "owner_id": owner_id,
             "name": name,
             "instructions": instructions,
+            "description": description,
             "model": model,
             "grounding": grounding,
             "use_general_kb": use_general_kb,
@@ -142,8 +144,12 @@ class AgentService:
         return kb["id"]
 
     def delete(self, agent_id: str) -> bool:
-        """Delete an agent and everything it owns: its chats, its permanent KBs
-        and its Powabase agent.
+        """Delete an agent: its permanent KBs and its Powabase agent.
+
+        Chats are NOT touched. They belong to the user, not to an agent — the
+        orchestrator picks an agent per message — so deleting one agent must
+        leave every conversation intact, including the turns that agent
+        answered. (The transcript keeps its name, so old turns stay attributed.)
 
         Remote cleanup is best-effort so a stale resource never blocks the
         authoritative row delete — the same rule SessionService.delete follows.
@@ -151,20 +157,6 @@ class AgentService:
         row = self.client.get_agent_row(agent_id)
         if row is None:
             return False
-
-        for session in self.client.list_sessions_for_agent(agent_id):
-            # Each chat may own a scratch KB. Drop it too, or deleting an agent
-            # leaves one orphaned knowledge base per chat behind.
-            scratch_kb = session.get("kb_id")
-            if scratch_kb:
-                try:
-                    self.client.delete_knowledge_base(scratch_kb)
-                except PowabaseAPIError:
-                    pass
-            try:
-                self.client.delete_session_row(session["id"])
-            except PowabaseAPIError:
-                pass
 
         for resource_id, delete_fn in (
             (row.get("kb_id"), self.client.delete_knowledge_base),

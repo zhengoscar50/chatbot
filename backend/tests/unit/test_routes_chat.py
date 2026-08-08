@@ -9,15 +9,16 @@ from app.api.routes import chat as chat_route
 from app.clients.powabase_client import get_powabase_client
 from app.core.config import get_settings
 from app.services.agent_service import get_agent_service
+from app.services.general_assistant import get_general_assistant_id
 from app.services.general_kb import get_general_kb_id
-from app.services.router_agent import get_router_agent_id
+from app.services.orchestrator import Decision, OrchestratorService, get_orchestrator_agent_id
 from app.services.session_service import get_session_service
 
 
 class FakeSessionService:
     def __init__(self):
         self.touched = []
-        self.row = {"id": "s1", "agent_id": "ag-1", "name": "New session",
+        self.row = {"id": "s1", "name": "New session",
                     "powabase_session_id": None, "kb_id": "kb-s"}
 
     def get_owned_session(self, session_id, owner_id):
@@ -27,16 +28,34 @@ class FakeSessionService:
         self.touched.append((session_id, fields))
 
 
+DEFAULT_AGENT = {
+    "id": "ag-1", "owner_id": "o1", "name": "Chem tutor",
+    "powabase_agent_id": "pa-1", "description": "Chemistry.",
+    "kb_id": "ag-chunk", "kb_full_id": "ag-full",
+    "use_general_kb": False, "model": "m",
+}
+
+
 class FakeAgentService:
     def __init__(self, row=None):
-        self.row = row if row is not None else {
-            "id": "ag-1", "owner_id": "o1", "powabase_agent_id": "pa-1",
-            "kb_id": "ag-chunk", "kb_full_id": "ag-full",
-            "use_general_kb": False, "model": "m",
-        }
+        self.row = row if row is not None else DEFAULT_AGENT
 
-    def get_owned(self, agent_id, owner_id):
-        return self.row
+    def list(self, owner_id):
+        return [self.row] if self.row else []
+
+
+class FakeMessageClient:
+    """Backs MessageStore. The route reads recent turns and writes both turns."""
+
+    def __init__(self):
+        self.rows = []
+
+    def list_messages(self, session_id):
+        return [r for r in self.rows if r["session_id"] == session_id]
+
+    def insert_message(self, row):
+        self.rows.append(row)
+        return row
 
 
 # Records what the route composed, so the KB scope can be asserted.
@@ -44,24 +63,33 @@ LAST_CHAT_ARGS = {}
 
 
 class FakeChatService:
-    def __init__(self, client, agent_id, gate, retrieval_kb_ids, top_k, max_context_tokens):
+    def __init__(self, client, agent_id, retrieval_kb_ids, top_k, max_context_tokens):
         LAST_CHAT_ARGS["agent_id"] = agent_id
         LAST_CHAT_ARGS["kb_ids"] = retrieval_kb_ids
 
-    def ask(self, query, session_id=None, history=None):
-        return {"answer": "42", "session_id": "ps-new", "citations": []}
+    def ask(self, query, retrieve=True):
+        LAST_CHAT_ARGS["retrieve"] = retrieve
+        LAST_CHAT_ARGS["query"] = query
+        return {"answer": "42", "citations": []}
+
+
+def route_to(agent_id):
+    """Pin the orchestrator's decision so route behavior is tested, not routing."""
+    return lambda self, q, roster, history=None: Decision(agent_id)
 
 
 def build_app(session_service, agent_service=None):
     app = FastAPI()
     app.include_router(chat_route.router)
-    app.dependency_overrides[get_powabase_client] = lambda: object()
+    app.state.message_client = FakeMessageClient()
+    app.dependency_overrides[get_powabase_client] = lambda: app.state.message_client
     app.dependency_overrides[get_session_service] = lambda: session_service
     app.dependency_overrides[get_agent_service] = lambda: (agent_service or FakeAgentService())
     app.dependency_overrides[get_general_kb_id] = lambda: "gkb-1"
-    app.dependency_overrides[get_router_agent_id] = lambda: "router-1"
+    app.dependency_overrides[get_orchestrator_agent_id] = lambda: "orch-1"
+    app.dependency_overrides[get_general_assistant_id] = lambda: "general-1"
     app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
-        retrieval_top_k=4, retrieval_max_context_tokens=2000, gate_history_turns=2
+        retrieval_top_k=4, retrieval_max_context_tokens=2000, history_turns=2
     )
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
     return app
@@ -71,27 +99,53 @@ def post(client, body):
     return client.post("/chat", json=body)
 
 
-def test_chat_routes_to_session_agent_and_returns_answer(monkeypatch):
+def test_chat_returns_the_answer(monkeypatch):
     monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
     svc = FakeSessionService()
 
     response = post(TestClient(build_app(svc)), {"session_id": "s1", "query": "hi"})
 
     assert response.status_code == 200
-    assert response.json() == {"answer": "42", "citations": []}
+    assert response.json() == {
+        "answer": "42", "citations": [],
+        "answered_by": {"id": None, "name": "General assistant"},
+    }
 
 
-def test_chat_saves_powabase_session_and_autonames_on_first_turn(monkeypatch):
+def test_chat_persists_both_turns_and_autonames_on_the_first_message(monkeypatch):
     monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to("ag-1"))
     svc = FakeSessionService()
+    app = build_app(svc)
 
-    post(TestClient(build_app(svc)), {"session_id": "s1", "query": "What are my taxes?"})
+    post(TestClient(app), {"session_id": "s1", "query": "What are my taxes?"})
+
+    rows = app.state.message_client.rows
+    assert [r["role"] for r in rows] == ["user", "assistant"]
+    assert rows[0]["content"] == "What are my taxes?"
+    assert rows[1]["answered_by_name"] == "Chem tutor"
 
     session_id, fields = svc.touched[0]
     assert session_id == "s1"
-    assert fields["powabase_session_id"] == "ps-new"
     assert fields["name"] == "What are my taxes?"
     assert "updated_at" not in fields  # touch() adds updated_at itself
+
+
+def test_chat_carries_recent_turns_into_the_agents_message(monkeypatch):
+    # Agents run statelessly, so prior turns must reach them in the message.
+    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to("ag-1"))
+    app = build_app(FakeSessionService())
+    app.state.message_client.rows = [
+        {"session_id": "s1", "role": "user", "content": "where is the eyewash?"},
+        {"session_id": "s1", "role": "assistant", "content": "Corridor Seven."},
+    ]
+
+    post(TestClient(app), {"session_id": "s1", "query": "say that again"})
+
+    sent = LAST_CHAT_ARGS["query"]
+    assert "Corridor Seven." in sent
+    assert sent.rstrip().endswith("Current message: say that again")
 
 
 def test_chat_404_for_missing_session(monkeypatch):
@@ -121,7 +175,7 @@ def test_chat_requires_session_id(monkeypatch):
 
 def test_chat_returns_402_on_insufficient_credits(monkeypatch):
     class Insufficient(FakeChatService):
-        def ask(self, query, session_id=None, history=None):
+        def ask(self, query, retrieve=True):
             raise chat_route.InsufficientCreditsError("no credits left")
 
     monkeypatch.setattr(chat_route, "ChatService", Insufficient)
@@ -134,7 +188,7 @@ def test_chat_returns_402_on_insufficient_credits(monkeypatch):
 
 def test_chat_returns_503_when_model_busy(monkeypatch):
     class Busy(FakeChatService):
-        def ask(self, query, session_id=None, history=None):
+        def ask(self, query, retrieve=True):
             raise chat_route.ModelBusyError("The model is busy right now. Please wait a few seconds and try again.")
 
     monkeypatch.setattr(chat_route, "ChatService", Busy)
@@ -147,7 +201,7 @@ def test_chat_returns_503_when_model_busy(monkeypatch):
 
 def test_chat_returns_424_on_provider_key_error(monkeypatch):
     class ProviderError(FakeChatService):
-        def ask(self, query, session_id=None, history=None):
+        def ask(self, query, retrieve=True):
             raise chat_route.ProviderKeyError("bad key")
 
     monkeypatch.setattr(chat_route, "ChatService", ProviderError)
@@ -162,7 +216,7 @@ def test_chat_returns_424_on_provider_key_error(monkeypatch):
 
 def test_chat_returns_502_when_agent_run_fails(monkeypatch):
     class FailedRun(FakeChatService):
-        def ask(self, query, session_id=None, history=None):
+        def ask(self, query, retrieve=True):
             raise RuntimeError("litellm.APIError: insufficient OpenRouter credits")
 
     monkeypatch.setattr(chat_route, "ChatService", FailedRun)
@@ -185,43 +239,58 @@ def test_chat_returns_answer_even_if_session_persist_fails(monkeypatch):
     response = post(TestClient(build_app(TouchFailsService())), {"session_id": "s1", "query": "hi"})
 
     assert response.status_code == 200
-    assert response.json() == {"answer": "42", "citations": []}
+    assert response.json() == {
+        "answer": "42", "citations": [],
+        "answered_by": {"id": None, "name": "General assistant"},
+    }
 
 
-def test_chat_uses_the_agents_powabase_agent_and_full_kb_scope(monkeypatch):
-    # The chat runs on the agent it is bound to, retrieving from that agent's
-    # permanent KBs plus this chat's scratch KB.
+def test_chat_routes_to_the_agent_the_orchestrator_picked(monkeypatch):
+    # The picked specialist answers, retrieving from its permanent KBs plus
+    # this chat's scratch KB.
     monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to("ag-1"))
     LAST_CHAT_ARGS.clear()
 
-    post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "q"})
+    r = post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "q"})
 
     assert LAST_CHAT_ARGS["agent_id"] == "pa-1"
     assert LAST_CHAT_ARGS["kb_ids"] == ["ag-chunk", "ag-full", "kb-s"]
+    assert r.json()["answered_by"] == {"id": "ag-1", "name": "Chem tutor"}
 
 
 def test_chat_includes_general_kb_only_when_the_agent_opted_in(monkeypatch):
     monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to("ag-1"))
     LAST_CHAT_ARGS.clear()
-    opted_in = FakeAgentService({
-        "id": "ag-1", "owner_id": "o1", "powabase_agent_id": "pa-1",
-        "kb_id": "ag-chunk", "kb_full_id": None,
-        "use_general_kb": True, "model": "m",
-    })
+    opted_in = FakeAgentService(dict(DEFAULT_AGENT, kb_full_id=None, use_general_kb=True))
 
     post(TestClient(build_app(FakeSessionService(), opted_in)), {"session_id": "s1", "query": "q"})
 
     assert LAST_CHAT_ARGS["kb_ids"] == ["ag-chunk", "kb-s", "gkb-1"]
 
 
-def test_chat_404_when_the_agent_is_not_the_users(monkeypatch):
+def test_chat_falls_back_to_the_general_assistant(monkeypatch):
     monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
-    not_found = FakeAgentService()
-    not_found.row = None  # get_owned returns None for an agent that isn't yours
+    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to(None))
+    LAST_CHAT_ARGS.clear()
 
-    response = post(
-        TestClient(build_app(FakeSessionService(), not_found)),
-        {"session_id": "s1", "query": "q"},
-    )
+    r = post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "hi"})
 
-    assert response.status_code == 404
+    assert LAST_CHAT_ARGS["agent_id"] == "general-1"
+    # Never a specialist's permanent KBs — that would leak one agent's
+    # documents into an answer attributed to another.
+    assert LAST_CHAT_ARGS["kb_ids"] == ["kb-s", "gkb-1"]
+    assert r.json()["answered_by"] == {"id": None, "name": "General assistant"}
+
+
+def test_chat_always_retrieves_and_lets_the_scope_decide(monkeypatch):
+    # Retrieval is no longer predicted by the router; ChatService skips it when
+    # the scope is empty, which is a fact rather than a guess.
+    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to(None))
+    LAST_CHAT_ARGS.clear()
+
+    post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "hi"})
+
+    assert LAST_CHAT_ARGS["retrieve"] is True

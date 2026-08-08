@@ -1,10 +1,14 @@
+import hmac
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import get_current_user
 from app.clients.powabase_client import PowabaseClient, get_powabase_client
 from app.core.config import get_settings
 from app.core.security import create_access_token
-from app.models.schemas import AuthResponse, LoginRequest, MeResponse, RegisterRequest
+from app.models.schemas import (
+    AuthResponse, LoginRequest, MeResponse, RegisterRequest, SignupPolicyResponse,
+)
 from app.services.auth_service import (
     AuthService, DuplicateUsernameError, InvalidCredentialsError,
 )
@@ -16,12 +20,29 @@ def _token_for(user: dict, settings) -> str:
     return create_access_token(user["id"], settings.auth_jwt_secret, settings.auth_token_ttl_hours)
 
 
+@router.get("/signup-policy", response_model=SignupPolicyResponse)
+def signup_policy(settings=Depends(get_settings)):
+    """Whether registration needs an invite code, so the form can adapt.
+
+    Deliberately does not reveal the code itself.
+    """
+    return SignupPolicyResponse(invite_required=bool(settings.signup_invite_code))
+
+
 @router.post("/register", response_model=AuthResponse)
 def register(
     req: RegisterRequest,
     client: PowabaseClient = Depends(get_powabase_client),
     settings=Depends(get_settings),
 ):
+    # Gates registration only. Login is untouched, so rotating the code can
+    # never lock out an existing user.
+    required = settings.signup_invite_code
+    if required and not hmac.compare_digest(req.invite_code or "", required):
+        raise HTTPException(
+            status_code=403,
+            detail="This demo needs an invite code to register. Ask whoever shared the link.",
+        )
     try:
         user = AuthService(client).register(req.username, req.password)
     except DuplicateUsernameError:
