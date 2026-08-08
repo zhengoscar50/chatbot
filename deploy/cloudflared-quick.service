@@ -1,0 +1,26 @@
+# /etc/systemd/system/cloudflared.service  (quick-tunnel variant)
+#
+# Opens a Cloudflare "quick tunnel" — an outbound connection that yields a
+# random https://<words>.trycloudflare.com URL with no Cloudflare account.
+# Because the connection is outbound, no inbound ports are opened.
+#
+# TRADE-OFF: the hostname changes every time this service restarts. Read the
+# current one with:
+#     journalctl -u cloudflared | grep -o 'https://.*trycloudflare.com' | tail -1
+#
+# For a stable hostname, create a named tunnel in the Cloudflare dashboard and
+# use cloudflared.service instead.
+[Unit]
+Description=Cloudflare Quick Tunnel
+After=network-online.target ragchat.service
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+ExecStart=/usr/local/bin/cloudflared tunnel --no-autoupdate --url http://localhost:8000
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

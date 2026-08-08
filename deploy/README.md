@@ -79,6 +79,32 @@ Powabase and exits if it can't reach it. `journalctl -u ragchat -n 50`.
 
 ## 5. The tunnel
 
+### Quick tunnel (no Cloudflare account)
+
+Fastest path, and what the demo currently runs:
+
+```bash
+curl -sL -o cloudflared.deb \
+  https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared.deb
+
+sudo cp ~/rag-chatbot/deploy/cloudflared-quick.service /etc/systemd/system/cloudflared.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now cloudflared
+```
+
+Read the URL it was given:
+
+```bash
+journalctl -u cloudflared | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1
+```
+
+**The hostname changes on every restart of this service**, including a reboot.
+Cloudflare offers no uptime guarantee for quick tunnels. Fine for a demo link
+you re-send; use a named tunnel below if you need it to stay put.
+
+### Named tunnel (stable hostname)
+
 In the Cloudflare dashboard: **Zero Trust → Networks → Tunnels → Create a
 tunnel** (Cloudflared). Copy the token it shows, then on the box:
 
