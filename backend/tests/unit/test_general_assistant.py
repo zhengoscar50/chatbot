@@ -8,10 +8,15 @@ from app.services.prompts import OPEN_CLAUSE, STRICT_CLAUSE
 class FakeClient:
     def __init__(self):
         self.agents = []
+        self.updated = []
         self.created = []
 
     def list_agents(self):
         return {"agents": self.agents}
+
+    def update_agent(self, agent_id, fields):
+        self.updated.append((agent_id, fields))
+        return {"id": agent_id}
 
     def create_agent(self, name, model, system_prompt, settings=None):
         self.created.append((name, model, system_prompt))
@@ -42,3 +47,14 @@ def test_uses_open_grounding():
     prompt = c.created[0][2]
     assert OPEN_CLAUSE in prompt
     assert STRICT_CLAUSE not in prompt
+
+
+def test_bootstrap_resyncs_the_prompt_on_an_existing_agent():
+    c = FakeClient()
+    c.agents.append({"id": "existing", "name": GENERAL_ASSISTANT_NAME})
+
+    assert ensure_general_assistant(c, "gpt-4o-mini") == "existing"
+
+    agent_id, fields = c.updated[0]
+    assert agent_id == "existing"
+    assert OPEN_CLAUSE in fields["system_prompt"]

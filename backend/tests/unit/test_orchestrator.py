@@ -18,6 +18,7 @@ class FakeClient:
         self.raises = raises
         self.calls = []
         self.agents = []
+        self.updated = []
 
     def run_agent_sync(self, agent_id, message, response_format=None):
         self.calls.append((agent_id, message, response_format))
@@ -27,6 +28,10 @@ class FakeClient:
 
     def list_agents(self):
         return {"agents": self.agents}
+
+    def update_agent(self, agent_id, fields):
+        self.updated.append((agent_id, fields))
+        return {"id": agent_id}
 
     def create_agent(self, name, model, system_prompt, settings=None):
         agent = {"id": f"a-{name}", "name": name}
@@ -114,3 +119,70 @@ def test_bootstrap_is_find_or_create():
     assert first == f"a-{ORCHESTRATOR_AGENT_NAME}"
     assert ensure_orchestrator_agent(c, "gpt-4o-mini") == first
     assert len(c.agents) == 1
+
+
+def test_a_fenced_json_reply_is_still_parsed():
+    # Even with a json_schema response format the model sometimes wraps output
+    # in ```json … ```. Without stripping it, json.loads raises and the
+    # fail-safe sends the message to the general assistant — routing appears to
+    # "prefer general" rather than failing visibly.
+    _, d = decision('```json\n{"agent_id": "ag-chem", "needs_kb": true}\n```')
+    assert d.agent_id == "ag-chem"
+    assert d.needs_kb is True
+
+
+def test_a_bare_fenced_reply_is_still_parsed():
+    _, d = decision('```\n{"agent_id": "ag-legal", "needs_kb": false}\n```')
+    assert d.agent_id == "ag-legal"
+    assert d.needs_kb is False
+
+
+def test_fenced_reply_with_surrounding_whitespace():
+    _, d = decision('\n  ```json\n{"agent_id": "ag-chem", "needs_kb": true}\n```  \n')
+    assert d.agent_id == "ag-chem"
+
+
+def test_the_prompt_asks_for_a_specialist_when_plausibly_related():
+    # Descriptions rarely use the user's exact wording; without this nudge the
+    # router falls back to general for anything not literally named.
+    from app.services.orchestrator import ORCHESTRATOR_SYSTEM_PROMPT
+    assert "plausibly relates" in ORCHESTRATOR_SYSTEM_PROMPT
+
+
+def test_bootstrap_resyncs_the_prompt_on_an_existing_agent():
+    # Otherwise editing ORCHESTRATOR_SYSTEM_PROMPT changes nothing wherever the
+    # agent already exists, and routing quietly runs the prompt that shipped
+    # first — a silent, very hard-to-spot drift.
+    c = FakeClient()
+    c.agents.append({"id": "existing", "name": ORCHESTRATOR_AGENT_NAME})
+
+    assert ensure_orchestrator_agent(c, "gpt-4o-mini") == "existing"
+
+    agent_id, fields = c.updated[0]
+    assert agent_id == "existing"
+    assert "plausibly relates" in fields["system_prompt"]
+    assert fields["model"] == "gpt-4o-mini"
+
+
+def test_the_reason_is_captured_for_debugging():
+    # Stating a reason before choosing measurably improves borderline picks and
+    # makes a surprising route explainable after the fact.
+    _, d = decision(json.dumps({
+        "reason": "The handbook covers lab safety.",
+        "agent_id": "ag-chem", "needs_kb": True,
+    }))
+    assert d.reason == "The handbook covers lab safety."
+
+
+def test_reason_is_required_by_the_schema_and_comes_first():
+    from app.services.orchestrator import ROUTE_RESPONSE_FORMAT
+    schema = ROUTE_RESPONSE_FORMAT["json_schema"]["schema"]
+    assert "reason" in schema["required"]
+    # Order matters: the model must articulate before it commits.
+    assert list(schema["properties"])[0] == "reason"
+
+
+def test_a_missing_reason_is_tolerated():
+    _, d = decision(json.dumps({"agent_id": "ag-chem", "needs_kb": True}))
+    assert d.agent_id == "ag-chem"
+    assert d.reason == ""

@@ -22,14 +22,16 @@ def ensure_general_assistant(client, model: str) -> str:
     Open grounding, not strict: it exists to answer what no specialist covers,
     so refusing whenever there is no retrieved context would make it useless.
     """
+    prompt = compose_system_prompt(GENERAL_ASSISTANT_INSTRUCTIONS, "open")
     existing = client.list_agents().get("agents", [])
     agent = _find_by_name(existing, GENERAL_ASSISTANT_NAME)
     if agent is None:
-        agent = client.create_agent(
-            GENERAL_ASSISTANT_NAME,
-            model=model,
-            system_prompt=compose_system_prompt(GENERAL_ASSISTANT_INSTRUCTIONS, "open"),
-        )
+        return client.create_agent(
+            GENERAL_ASSISTANT_NAME, model=model, system_prompt=prompt
+        )["id"]
+    # Re-sync, so editing the instructions in code actually takes effect on a
+    # project where this agent already exists.
+    client.update_agent(agent["id"], {"system_prompt": prompt, "model": model})
     return agent["id"]
 
 
