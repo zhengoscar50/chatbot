@@ -26,7 +26,7 @@ class FakeClient:
         return self.events
 
 
-def test_ask_returns_answer_and_session_id():
+def test_ask_returns_the_answer():
     # Real Powabase "complete" events carry the final text under "content",
     # not "answer" (see references/streaming-sse.md).
     client = FakeClient(
@@ -44,7 +44,6 @@ def test_ask_returns_answer_and_session_id():
 
     assert result == {
         "answer": "42",
-        "session_id": "sess-1",
         "citations": [{"source_id": "src-1"}],
     }
     assert client.calls[0]["agent_id"] == "agent-1"
@@ -170,7 +169,7 @@ def test_ask_retrieves_when_the_decision_says_to():
     ])
     service = ChatService(client, "agent-1", ["kb-s", "gkb-1"], top_k=4, max_context_tokens=2000)
 
-    result = service.ask("what does the doc say?", session_id="ps-1", retrieve=True)
+    result = service.ask("what does the doc say?", retrieve=True)
 
     assert result["answer"] == "grounded"
     assert client.handler_calls[0]["knowledge_bases"] == [{"id": "kb-s", "top_k": 4}, {"id": "gkb-1", "top_k": 4}]
@@ -218,3 +217,37 @@ def test_ask_skips_retrieval_when_every_kb_id_is_falsy():
     service.ask("hello", retrieve=True)
 
     assert client.handler_calls == []
+
+
+def test_retrieval_searches_the_question_not_the_conversation():
+    # History is inlined into the agent's message since Powabase threads are
+    # single-agent. If that whole blob is also used as the retrieval query, the
+    # question gets drowned in transcript and retrieval degrades as the
+    # conversation grows — which is exactly how a follow-up started missing
+    # documents an identical fresh question found.
+    client = FakeClient(events=[
+        {"event": "complete", "data": {"content": "ok", "citations": []}},
+    ])
+    service = ChatService(client, "agent-1", ["kb-1"], top_k=4, max_context_tokens=2000)
+
+    service.ask(
+        "What is the mascot?",
+        message="Recent conversation:\nuser: hi\nassistant: hello\n\nCurrent message: What is the mascot?",
+        retrieve=True,
+    )
+
+    assert client.handler_calls[0]["query"] == "What is the mascot?"
+    # ...while the agent still sees the history it needs for a follow-up.
+    assert "assistant: hello" in client.calls[0]["message"]
+
+
+def test_message_defaults_to_the_query():
+    client = FakeClient(events=[
+        {"event": "complete", "data": {"content": "ok", "citations": []}},
+    ])
+    service = ChatService(client, "agent-1", ["kb-1"], top_k=4, max_context_tokens=2000)
+
+    service.ask("plain question")
+
+    assert client.handler_calls[0]["query"] == "plain question"
+    assert client.calls[0]["message"] == "plain question"

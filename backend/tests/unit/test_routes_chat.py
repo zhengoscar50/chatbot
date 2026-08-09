@@ -67,9 +67,10 @@ class FakeChatService:
         LAST_CHAT_ARGS["agent_id"] = agent_id
         LAST_CHAT_ARGS["kb_ids"] = retrieval_kb_ids
 
-    def ask(self, query, retrieve=True):
+    def ask(self, query, message=None, retrieve=True):
         LAST_CHAT_ARGS["retrieve"] = retrieve
-        LAST_CHAT_ARGS["query"] = query
+        LAST_CHAT_ARGS["query"] = query        # what gets SEARCHED
+        LAST_CHAT_ARGS["message"] = message    # what the agent SEES
         return {"answer": "42", "citations": []}
 
 
@@ -143,9 +144,11 @@ def test_chat_carries_recent_turns_into_the_agents_message(monkeypatch):
 
     post(TestClient(app), {"session_id": "s1", "query": "say that again"})
 
-    sent = LAST_CHAT_ARGS["query"]
-    assert "Corridor Seven." in sent
-    assert sent.rstrip().endswith("Current message: say that again")
+    # The agent sees the history...
+    assert "Corridor Seven." in LAST_CHAT_ARGS["message"]
+    assert LAST_CHAT_ARGS["message"].rstrip().endswith("Current message: say that again")
+    # ...but retrieval searches only the question, or the transcript drowns it.
+    assert LAST_CHAT_ARGS["query"] == "say that again"
 
 
 def test_chat_404_for_missing_session(monkeypatch):
@@ -175,7 +178,7 @@ def test_chat_requires_session_id(monkeypatch):
 
 def test_chat_returns_402_on_insufficient_credits(monkeypatch):
     class Insufficient(FakeChatService):
-        def ask(self, query, retrieve=True):
+        def ask(self, query, message=None, retrieve=True):
             raise chat_route.InsufficientCreditsError("no credits left")
 
     monkeypatch.setattr(chat_route, "ChatService", Insufficient)
@@ -188,7 +191,7 @@ def test_chat_returns_402_on_insufficient_credits(monkeypatch):
 
 def test_chat_returns_503_when_model_busy(monkeypatch):
     class Busy(FakeChatService):
-        def ask(self, query, retrieve=True):
+        def ask(self, query, message=None, retrieve=True):
             raise chat_route.ModelBusyError("The model is busy right now. Please wait a few seconds and try again.")
 
     monkeypatch.setattr(chat_route, "ChatService", Busy)
@@ -201,7 +204,7 @@ def test_chat_returns_503_when_model_busy(monkeypatch):
 
 def test_chat_returns_424_on_provider_key_error(monkeypatch):
     class ProviderError(FakeChatService):
-        def ask(self, query, retrieve=True):
+        def ask(self, query, message=None, retrieve=True):
             raise chat_route.ProviderKeyError("bad key")
 
     monkeypatch.setattr(chat_route, "ChatService", ProviderError)
@@ -216,7 +219,7 @@ def test_chat_returns_424_on_provider_key_error(monkeypatch):
 
 def test_chat_returns_502_when_agent_run_fails(monkeypatch):
     class FailedRun(FakeChatService):
-        def ask(self, query, retrieve=True):
+        def ask(self, query, message=None, retrieve=True):
             raise RuntimeError("litellm.APIError: insufficient OpenRouter credits")
 
     monkeypatch.setattr(chat_route, "ChatService", FailedRun)

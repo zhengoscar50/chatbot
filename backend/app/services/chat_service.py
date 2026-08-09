@@ -57,7 +57,16 @@ class ChatService:
         self.top_k = top_k
         self.max_context_tokens = max_context_tokens
 
-    def ask(self, query: str, session_id: str | None = None, retrieve: bool = True) -> dict:
+    def ask(self, query: str, message: str | None = None, retrieve: bool = True) -> dict:
+        """Answer `query`, showing the agent `message` (defaults to the query).
+
+        The two are separate on purpose. Conversation history is inlined into
+        the agent's message — Powabase threads are single-agent, so they cannot
+        carry a chat several agents take turns in — but searching with that
+        whole blob drowns the question in transcript and degrades retrieval as
+        the conversation grows. Retrieval gets the question; the agent gets the
+        context.
+        """
         context_handler_id = None
         knowledge_bases = [
             {"id": kb_id, "top_k": self.top_k}
@@ -74,19 +83,16 @@ class ChatService:
             context_handler_id = handler["id"]
 
         events = self.client.run_agent(
-            self.agent_id, query, session_id=session_id,
+            self.agent_id, message if message is not None else query,
             citations_enabled=True, context_handler_id=context_handler_id,
         )
         answer = None
         citations: list = []
-        result_session_id = session_id
 
         for event in events:
             name = event["event"]
             data = event["data"]
-            if name == "start":
-                result_session_id = data.get("session_id", result_session_id)
-            elif name == "error":
+            if name == "error":
                 # Standalone error events carry the text under "message" or
                 # (as seen live) "error"; fall back to the raw dict only if
                 # neither is present, so users never see a Python dict repr.
@@ -107,7 +113,7 @@ class ChatService:
         if not answer:
             raise RuntimeError("Agent run completed without a final answer")
 
-        return {"answer": answer, "session_id": result_session_id, "citations": citations}
+        return {"answer": answer, "citations": citations}
 
     def _raise_for_error(self, code: str, message: str) -> None:
         if code == "insufficient_credits":

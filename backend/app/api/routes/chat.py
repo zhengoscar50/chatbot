@@ -81,7 +81,9 @@ def chat(
     # so a chat several agents take turns in cannot use one. History travels in
     # the message instead.
     try:
-        result = service.ask(conversation_message(history, req.query))
+        result = service.ask(
+            req.query, message=conversation_message(history, req.query)
+        )
     except ModelBusyError as e:
         raise HTTPException(status_code=503, detail=e.message)
     except InsufficientCreditsError as e:
