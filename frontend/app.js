@@ -333,7 +333,8 @@ function startRename(li, session) {
 }
 
 async function createSession() {
-  if (!authToken) return;
+  if (!authToken || newSessionButton.disabled) return;
+  newSessionButton.disabled = true;
   try {
     const response = await authFetch("/sessions", {
       method: "POST",
@@ -349,6 +350,8 @@ async function createSession() {
     openSession(body.id, body.name);
   } catch (err) {
     setSidebarStatus(err.message, "error");
+  } finally {
+    newSessionButton.disabled = false;
   }
 }
 

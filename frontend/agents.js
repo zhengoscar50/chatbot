@@ -27,6 +27,7 @@ const agentTrainStatus = document.getElementById("agent-train-status");
 const agentError = document.getElementById("agent-error");
 const agentDeleteButton = document.getElementById("agent-delete");
 const agentModalTitle = document.getElementById("agent-modal-title");
+const agentSaveButton = document.getElementById("agent-save");
 const agentDescriptionInput = document.getElementById("agent-description");
 const agentListModal = document.getElementById("agent-list-modal");
 const agentList = document.getElementById("agent-list");
@@ -207,6 +208,10 @@ async function loadAgentDetail(agentId) {
 
 async function saveAgent(event) {
   event.preventDefault();
+  return withBusy(agentSaveButton, "Saving…", () => saveAgentRequest());
+}
+
+async function saveAgentRequest() {
   agentError.textContent = "";
   const payload = {
     name: agentNameInput.value.trim(),
@@ -308,9 +313,13 @@ async function untrainDocument(agentId, sourceId) {
   }
 }
 
+let training = false;
+
 async function trainAgent() {
   const file = agentTrainFile.files[0];
-  if (!file || !editingAgentId) return;
+  if (!file || !editingAgentId || training) return;
+  training = true;
+  agentTrainFile.disabled = true;
   agentTrainStatus.textContent = `Training on ${file.name}…`;
   const data = new FormData();
   data.append("file", file);
@@ -335,6 +344,8 @@ async function trainAgent() {
   } catch (err) {
     agentTrainStatus.textContent = err.message;
   } finally {
+    training = false;
+    agentTrainFile.disabled = false;
     agentTrainFile.value = "";
   }
 }
