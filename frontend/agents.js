@@ -81,6 +81,26 @@ async function loadAgents() {
   if (!agentListModal.hidden) renderAgentList();
 }
 
+// Guards a button against double submission. Creating an agent takes a couple
+// of seconds (it probes the model against the provider), and with nothing
+// visibly happening an impatient user clicks again — which used to create one
+// agent per click. Duplicates are not just clutter: identical descriptions
+// give the orchestrator indistinguishable options to route between, and every
+// one of them lengthens the routing prompt on every message.
+async function withBusy(button, busyLabel, fn) {
+  if (button.disabled) return;          // already in flight
+  const original = button.textContent;
+  button.disabled = true;
+  if (busyLabel) button.textContent = busyLabel;
+  try {
+    return await fn();
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+
 function openAgentList() {
   agentListModal.hidden = false;
   renderAgentList();
