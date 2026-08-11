@@ -3,5 +3,9 @@
 __pycache__/
 *.pyc
 .env
+# Backups made before editing config (.env.bak-<timestamp>) hold the service
+# role key just like .env does. The bare `.env` rule does not match them.
+.env.bak*
+.env.local
 .superpowers/
 .DS_Store
