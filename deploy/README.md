@@ -63,6 +63,27 @@ Set:
 | `AUTH_JWT_SECRET` | a long random string; `openssl rand -hex 32` |
 | `ADMIN_PASSWORD` | enables `/admin`; leave unset to disable it |
 | `SIGNUP_INVITE_CODE` | **set this.** Registration requires it. Without it, anyone with the URL can register and spend your LLM credits |
+| `ORCHESTRATOR_MODEL` | the model that makes **routing** decisions. Default `gpt-4o-mini` |
+| `DEFAULT_AGENT_MODEL` | model for new agents whose creator picks none. Default `gpt-4o-mini`. Applies at creation only — changing it never touches agents that already exist |
+| `GENERAL_ASSISTANT_MODEL` | the no-agent fallback. Default `gpt-4o-mini` |
+
+`POWABASE_AGENT_MODEL` is **not** in that list on purpose: nothing but the
+optional bootstrap script reads it. Setting it changes no behaviour. This
+deployment ran for two days advertising `claude-sonnet-5` while routing, new
+agents and the general assistant were all still on `gpt-4o-mini`, because that
+was the only model variable set.
+
+> ### ⚠️ Local development and the deployment share one orchestrator
+>
+> The orchestrator and general assistant are **single shared Powabase agents**,
+> and `ensure_orchestrator_agent` re-syncs their prompt *and model* on every
+> startup. Both this box and your laptop point at the same Powabase project, so
+> **starting a local server rewrites the deployment's router.** If your local
+> `.env` and the box's disagree on `ORCHESTRATOR_MODEL`, whichever started last
+> wins, and the demo silently changes model.
+>
+> Keep the model variables identical in both `.env` files, or point local
+> development at a separate Powabase project.
 
 ## 4. Run it as a service
 
