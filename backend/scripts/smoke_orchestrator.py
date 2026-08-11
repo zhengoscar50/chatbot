@@ -13,13 +13,19 @@ Deterministic properties (attribution, isolation, persistence) are still
 asserted strictly, because those genuinely must not vary.
 """
 import io
+import os
 import re
+import secrets
 import sys
 import time
 
 import httpx
 
-C = httpx.Client(base_url="http://127.0.0.1:8000", timeout=240.0)
+# Overridable so the smoke can run against a server on another port without
+# disturbing whatever is already on 8000.
+C = httpx.Client(
+    base_url=os.environ.get("SMOKE_BASE_URL", "http://127.0.0.1:8000"), timeout=240.0
+)
 ROUTE_SAMPLES = 5
 ROUTE_THRESHOLD = 4          # >= 4 of 5
 
@@ -38,8 +44,14 @@ def says(answer, *alternatives):
 
 
 stamp = str(int(time.time()))
+USERNAME = "gate-" + stamp
+# Random, never committed. A fixed password here left a working login behind on
+# every run: the account outlives the smoke (nothing deleted it), SIGNUP_INVITE_
+# CODE gates registration but not login, and the deployment shares this users
+# table — so a hardcoded password was a live credential on the public demo.
+PASSWORD = secrets.token_urlsafe(24)
 H = {"Authorization": "Bearer " + C.post(
-    "/auth/register", json={"username": "gate-" + stamp, "password": "probe-pw-12345"}
+    "/auth/register", json={"username": USERNAME, "password": PASSWORD}
 ).json()["token"]}
 
 
@@ -171,6 +183,38 @@ check("...and turns the deleted agent answered keep their attribution",
       [m.get("answered_by") for m in kept if m["role"] == "assistant"][:5])
 
 C.delete("/agents/" + chem, headers=H)
+
+
+def remove_smoke_user():
+    """Delete the account this run created, along with its chats and KBs.
+
+    The smoke used to delete its two agents and stop there, leaving a user and
+    every chat it made in the project — which for this app is the same project
+    the deployment serves. Needs ADMIN_PASSWORD because there is no self-delete
+    endpoint; without it, say so loudly rather than leaving silent litter.
+    """
+    admin_pw = os.environ.get("ADMIN_PASSWORD")
+    if not admin_pw:
+        print("\nWARNING: ADMIN_PASSWORD not set, so %s and its chats remain in "
+              "the project. Delete it via /admin, or re-run with ADMIN_PASSWORD "
+              "set." % USERNAME)
+        return
+    admin = {"X-Admin-Password": admin_pw}
+    users = C.get("/admin/users", headers=admin)
+    if users.status_code != 200:
+        print("\nWARNING: could not list users (%d); %s remains."
+              % (users.status_code, USERNAME))
+        return
+    for u in users.json():
+        if u.get("username") == USERNAME:
+            r = C.delete("/admin/users/" + u["id"], headers=admin)
+            print("\ncleanup: deleted %s -> %d" % (USERNAME, r.status_code))
+            return
+    print("\ncleanup: %s not found, nothing to delete" % USERNAME)
+
+
+remove_smoke_user()
+
 passed = sum(1 for _, ok in RESULTS if ok)
 print("\n%d/%d passed" % (passed, len(RESULTS)))
 sys.exit(0 if passed == len(RESULTS) else 1)
