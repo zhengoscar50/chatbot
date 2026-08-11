@@ -1,6 +1,8 @@
+import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.api.routes.admin import router as admin_router
@@ -51,8 +53,53 @@ async def lifespan(app: FastAPI):
         client.close()
 
 
+logger = logging.getLogger(__name__)
+
+# Upstream statuses worth retrying. Everything else means Powabase understood
+# the request and refused it, so a retry sends the same request to the same
+# answer.
+RETRYABLE_UPSTREAM = frozenset({429, 500, 502, 503, 504})
+RETRY_AFTER_SECONDS = "5"
+
+
+def register_exception_handlers(app: FastAPI) -> None:
+    """Turn an upstream failure into an honest status instead of a 500.
+
+    Individual routes catch PowabaseAPIError where they have something useful
+    to do with it. This is the net under everything else — most importantly
+    `get_current_user`, which calls Powabase on every authenticated request and
+    caught nothing. A single upstream blip there 500'd the entire API, login
+    included, and logged a traceback pointing at this codebase for an outage
+    somewhere else.
+    """
+
+    @app.exception_handler(PowabaseAPIError)
+    async def powabase_upstream_failure(request: Request, exc: PowabaseAPIError):
+        retryable = exc.status_code in RETRYABLE_UPSTREAM
+        # Log the upstream detail; never return it. Bodies here are whatever the
+        # gateway emitted — HTML, hostnames, internal messages.
+        logger.warning(
+            "Powabase %s on %s %s -> responding %d",
+            exc.status_code,
+            request.method,
+            request.url.path,
+            503 if retryable else 502,
+        )
+        if retryable:
+            return JSONResponse(
+                status_code=503,
+                content={"detail": "Upstream service unavailable, please retry."},
+                headers={"Retry-After": RETRY_AFTER_SECONDS},
+            )
+        return JSONResponse(
+            status_code=502,
+            content={"detail": "Upstream service rejected the request."},
+        )
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="RAG Chatbot on Powabase", version="1.0.0", lifespan=lifespan)
+    register_exception_handlers(app)
     app.include_router(health_router)
     app.include_router(ingest_router)
     app.include_router(chat_router)
