@@ -57,3 +57,55 @@ def test_general_assistant_with_no_chat_uploads():
 
 def test_general_assistant_with_no_general_kb():
     assert kb_ids_for(None, {"kb_id": "sc"}, None) == ["sc"]
+
+
+# --- shared scratch KB, scoped per chat by source_ids -----------------------
+
+def test_a_chats_uploads_are_scoped_to_its_own_sources():
+    """One shared scratch KB serves every chat; source_ids is the isolation."""
+    row = {"source_ids": ["src-1", "src-2"]}
+
+    assert kb_ids_for(AGENT, row, "gen", scratch_kb_id="scratch") == [
+        "ag-chunk", "ag-full", {"id": "scratch", "source_ids": ["src-1", "src-2"]}
+    ]
+
+
+def test_a_chat_with_no_uploads_gets_no_scratch_scope():
+    """Never emit the shared KB unscoped — that would expose every chat's
+    uploads to a chat that has uploaded nothing."""
+    assert kb_ids_for(AGENT, {"source_ids": []}, "gen", scratch_kb_id="scratch") == [
+        "ag-chunk", "ag-full"
+    ]
+    assert kb_ids_for(AGENT, {}, "gen", scratch_kb_id="scratch") == [
+        "ag-chunk", "ag-full"
+    ]
+    assert kb_ids_for(AGENT, None, "gen", scratch_kb_id="scratch") == [
+        "ag-chunk", "ag-full"
+    ]
+
+
+def test_legacy_per_chat_kb_still_works():
+    """Chats created before the shared KB keep their own KB; migrating live
+    user data is not worth it when both can be searched."""
+    row = {"kb_id": "old-chat-kb", "source_ids": []}
+
+    assert kb_ids_for(AGENT, row, "gen", scratch_kb_id="scratch") == [
+        "ag-chunk", "ag-full", "old-chat-kb"
+    ]
+
+
+def test_legacy_kb_and_new_sources_can_coexist():
+    row = {"kb_id": "old-chat-kb", "source_ids": ["src-1"]}
+
+    assert kb_ids_for(AGENT, row, "gen", scratch_kb_id="scratch") == [
+        "ag-chunk", "ag-full", "old-chat-kb",
+        {"id": "scratch", "source_ids": ["src-1"]},
+    ]
+
+
+def test_the_general_assistant_sees_scratch_but_no_specialist_kbs():
+    row = {"source_ids": ["src-1"]}
+
+    assert kb_ids_for(None, row, "gen", scratch_kb_id="scratch") == [
+        {"id": "scratch", "source_ids": ["src-1"]}, "gen"
+    ]

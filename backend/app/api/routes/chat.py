@@ -17,6 +17,7 @@ from app.services.message_store import MessageStore, get_message_store
 from app.services.general_kb import get_general_kb_id
 from app.services.orchestrator import OrchestratorService, get_orchestrator_agent_id
 from app.services.retrieval_scope import kb_ids_for
+from app.services.scratch_kb import get_scratch_kb_id
 from app.services.session_service import DEFAULT_NAME, SessionService, get_session_service
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -45,6 +46,7 @@ def chat(
     agents: AgentService = Depends(get_agent_service),
     messages: MessageStore = Depends(get_message_store),
     general_kb_id: str = Depends(get_general_kb_id),
+    scratch_kb_id: str = Depends(get_scratch_kb_id),
     orchestrator_agent_id: str = Depends(get_orchestrator_agent_id),
     general_assistant_id: str = Depends(get_general_assistant_id),
     settings=Depends(get_settings),
@@ -74,7 +76,7 @@ def chat(
 
     service = ChatService(
         client, answering_agent_id,
-        kb_ids_for(agent_row, row, general_kb_id),
+        kb_ids_for(agent_row, row, general_kb_id, scratch_kb_id),
         settings.retrieval_top_k, settings.retrieval_max_context_tokens,
     )
     # Agents run statelessly: a Powabase thread is bound to exactly one agent,

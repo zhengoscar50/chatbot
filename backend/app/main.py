@@ -20,6 +20,7 @@ from app.services.general_assistant import ensure_general_assistant
 from app.services.general_kb import ensure_general_kb
 from app.services.orchestrator import ensure_orchestrator_agent
 from app.services.retrieval import reranker_retrieval_config
+from app.services.scratch_kb import ensure_scratch_kb
 from app.services.session_service import SessionService
 
 
@@ -34,6 +35,7 @@ async def lifespan(app: FastAPI):
                 settings.reranker_model, settings.reranker_candidate_count
             )
             general_kb_id = ensure_general_kb(client, reranker_config)
+            scratch_kb_id = ensure_scratch_kb(client, reranker_config)
             orchestrator_agent_id = ensure_orchestrator_agent(
                 client, settings.orchestrator_model
             )
@@ -44,10 +46,13 @@ async def lifespan(app: FastAPI):
             raise RuntimeError(f"Powabase is not reachable: {e}") from e
         app.state.powabase_client = client
         app.state.general_kb_id = general_kb_id
+        app.state.scratch_kb_id = scratch_kb_id
         app.state.orchestrator_agent_id = orchestrator_agent_id
         app.state.general_assistant_id = general_assistant_id
         app.state.agent_service = AgentService(client, reranker_config)
-        app.state.session_service = SessionService(client, reranker_config)
+        app.state.session_service = SessionService(
+            client, reranker_config, scratch_kb_id
+        )
         yield
     finally:
         client.close()

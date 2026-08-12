@@ -67,6 +67,12 @@ drops/recreates `public.sessions`, discarding any existing chats. That is
 deliberate — `sessions.agent_id` changed meaning from a Powabase agent id to a
 foreign key into `public.agents`.
 
+`007_shared_scratch_kb.sql` adds `sessions.source_ids` and must be applied
+**before** deploying the code that uses it: without the column, a chat upload
+indexes but cannot be recorded, so it silently never becomes answerable. It is
+non-destructive and safe to apply while the old code is still running — the
+column defaults to an empty list, which the previous release ignores.
+
 ## 6. Agents and chats
 
 Click **+** in the sidebar to create an agent. You give it:
@@ -88,8 +94,16 @@ documents: a PDF you attach inside a chat is answerable there and nowhere else,
 so you can drop in a one-off document without permanently teaching the agent.
 
 Retrieval for one question spans up to four knowledge bases: the agent's two
-permanent ones (chunked and full-document), this chat's scratch KB, and the
-shared general KB if the agent opted in.
+permanent ones (chunked and full-document), this chat's scratch documents, and
+the shared general KB if the agent opted in.
+
+Those knowledge bases are attached **to the run itself** rather than searched
+up front: the agent gets a `knowledge_search` tool over exactly the bases in
+scope for that one question and decides what to look up. Chat uploads all live
+in a single shared scratch KB, and a chat sees only its own because retrieval
+names that chat's `source_ids`. A chat that has uploaded nothing contributes no
+scratch scope at all — the shared KB is never searched unscoped, which is what
+keeps one chat's uploads out of another's answers.
 
 The model list is hand-maintained in `AGENT_MODELS` (see `app/core/config.py`),
 because Powabase publishes no model catalog. Every id in the default list

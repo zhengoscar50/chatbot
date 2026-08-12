@@ -19,6 +19,7 @@ def test_app_starts_when_powabase_reachable(monkeypatch):
         main_module.PowabaseClient, "list_agents", lambda self: {"agents": []}
     )
     monkeypatch.setattr(main_module, "ensure_general_kb", lambda client, reranker_config=None: "gkb-1")
+    monkeypatch.setattr(main_module, "ensure_scratch_kb", lambda client, reranker_config=None: "scratch-1")
     monkeypatch.setattr(main_module, "ensure_orchestrator_agent", lambda client, model: "orch-1")
     monkeypatch.setattr(main_module, "ensure_general_assistant", lambda client, model: "general-1")
 
@@ -28,6 +29,9 @@ def test_app_starts_when_powabase_reachable(monkeypatch):
         assert isinstance(app.state.session_service, main_module.SessionService)
         assert isinstance(app.state.powabase_client, main_module.PowabaseClient)
         assert app.state.general_kb_id == "gkb-1"
+        # The one KB every chat's uploads share; retrieval scopes it per chat.
+        assert app.state.scratch_kb_id == "scratch-1"
+        assert app.state.session_service.scratch_kb_id == "scratch-1"
         assert isinstance(app.state.agent_service, main_module.AgentService)
         assert app.state.orchestrator_agent_id == "orch-1"
         assert app.state.general_assistant_id == "general-1"

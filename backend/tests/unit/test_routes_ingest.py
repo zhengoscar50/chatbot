@@ -8,6 +8,7 @@ from app.api.deps import get_current_user
 from app.api.routes import ingest as ingest_route
 from app.clients.powabase_client import get_powabase_client
 from app.core.config import get_settings
+from app.services.scratch_kb import get_scratch_kb_id
 from app.services.session_service import get_session_service
 
 
@@ -23,6 +24,12 @@ class FakeSessionService:
 
     def ensure_kb(self, row, full_document=False):
         return row["kb_id"]
+
+    def __init__(self):
+        self.recorded = []
+
+    def record_source(self, session_id, source_id):
+        self.recorded.append((session_id, source_id))
 
 
 class FakeIngestService:
@@ -40,7 +47,10 @@ class FakeIngestService:
     def char_count(self, source_id):
         return type(self).char_count_value
 
+    indexed_into = None
+
     def index_into(self, kb_id, source_id):
+        type(self).indexed_into = kb_id
         return "indexed"
 
 
@@ -50,6 +60,7 @@ def build_app():
     app.dependency_overrides[get_powabase_client] = lambda: object()
     app.dependency_overrides[get_session_service] = lambda: FakeSessionService()
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
+    app.dependency_overrides[get_scratch_kb_id] = lambda: "scratch-kb"
     return app
 
 
@@ -107,6 +118,7 @@ def test_ingest_404_for_non_owned_session(monkeypatch):
     app.dependency_overrides[get_powabase_client] = lambda: object()
     app.dependency_overrides[get_session_service] = lambda: NonOwnerService()
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
+    app.dependency_overrides[get_scratch_kb_id] = lambda: "scratch-kb"
 
     response = upload(TestClient(app), session_id="not-mine")
 
@@ -116,14 +128,13 @@ def test_ingest_404_for_non_owned_session(monkeypatch):
 class RoutingSessionService:
     def __init__(self):
         self.calls = []
+        self.recorded = []
 
     def get_owned_session(self, session_id, owner_id):
         return {"id": session_id, "kb_id": ""}
 
-    def ensure_kb(self, row):
-        # No full_document parameter: the chat scratch KB is chunk-only.
-        self.calls.append(row["id"])
-        return "kb-scratch"
+    def record_source(self, session_id, source_id):
+        self.recorded.append((session_id, source_id))
 
 
 def build_routing_app(svc):
@@ -132,14 +143,14 @@ def build_routing_app(svc):
     app.dependency_overrides[get_powabase_client] = lambda: object()
     app.dependency_overrides[get_session_service] = lambda: svc
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
+    app.dependency_overrides[get_scratch_kb_id] = lambda: "scratch-kb"
     return app
 
 
-def test_chat_upload_always_uses_the_chunk_only_scratch_kb(monkeypatch):
-    # Content-aware routing moved to the agent's permanent tier
-    # (POST /agents/{id}/train). Scratch uploads are throwaway context for one
-    # conversation, so a small document is no longer routed to a full_document
-    # KB here — ensure_kb takes no full_document argument at all.
+def test_chat_upload_goes_to_the_shared_kb_and_is_recorded_on_the_chat(monkeypatch):
+    # No per-chat KB is created any more. The upload is indexed into the one
+    # shared scratch KB, and the chat records the source id — which is the only
+    # thing that scopes retrieval back to this chat.
     set_env(monkeypatch)
     monkeypatch.setattr(ingest_route, "IngestService", FakeIngestService)
     FakeIngestService.char_count_value = 100  # small: would once have gone full_document
@@ -152,7 +163,8 @@ def test_chat_upload_always_uses_the_chunk_only_scratch_kb(monkeypatch):
     )
 
     assert response.status_code == 202
-    assert svc.calls == ["s1"]
+    assert svc.recorded == [("s1", "src-1")]
+    assert FakeIngestService.indexed_into == "scratch-kb"
 
 
 def test_status_reports_indexed(monkeypatch):
@@ -168,6 +180,7 @@ def test_status_reports_indexed(monkeypatch):
     app.dependency_overrides[get_powabase_client] = lambda: object()
     app.dependency_overrides[get_session_service] = lambda: SS()
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
+    app.dependency_overrides[get_scratch_kb_id] = lambda: "scratch-kb"
 
     r = TestClient(app).get("/ingest/status/src-1?session_id=s1")
 
@@ -187,6 +200,7 @@ def test_status_404_for_non_owner(monkeypatch):
     app.dependency_overrides[get_powabase_client] = lambda: object()
     app.dependency_overrides[get_session_service] = lambda: SS()
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
+    app.dependency_overrides[get_scratch_kb_id] = lambda: "scratch-kb"
 
     response = TestClient(app).get("/ingest/status/src-1?session_id=s1")
 
