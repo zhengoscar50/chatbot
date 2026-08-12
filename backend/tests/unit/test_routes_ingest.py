@@ -205,3 +205,65 @@ def test_status_404_for_non_owner(monkeypatch):
     response = TestClient(app).get("/ingest/status/src-1?session_id=s1")
 
     assert response.status_code == 404
+
+
+def _status_app(row, monkeypatch, kb_status="indexed"):
+    monkeypatch.setattr(ingest_route, "source_status",
+                        lambda client, sid, kb_ids: (kb_status, None))
+
+    class SS:
+        def get_owned_session(self, session_id, owner_id):
+            return row
+
+    app = FastAPI()
+    app.include_router(ingest_route.router)
+    app.dependency_overrides[get_powabase_client] = lambda: object()
+    app.dependency_overrides[get_session_service] = lambda: SS()
+    app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
+    app.dependency_overrides[get_scratch_kb_id] = lambda: "scratch-kb"
+    return app
+
+
+def test_status_is_processing_until_the_chat_records_the_source(monkeypatch):
+    """Indexed in the shared KB is NOT the same as answerable here.
+
+    The upload is indexed first and recorded on the chat second, and only the
+    recording puts it in retrieval scope. Reporting "indexed" in between tells
+    the UI a document is ready while it still answers "I don't know" — and if
+    the recording fails, that lie is permanent.
+    """
+    set_env(monkeypatch)
+    app = _status_app({"id": "s1", "source_ids": []}, monkeypatch)
+
+    r = TestClient(app).get("/ingest/status/src-1?session_id=s1")
+
+    assert r.json()["status"] == "processing"
+
+
+def test_status_is_indexed_once_the_chat_records_the_source(monkeypatch):
+    set_env(monkeypatch)
+    app = _status_app({"id": "s1", "source_ids": ["src-1"]}, monkeypatch)
+
+    r = TestClient(app).get("/ingest/status/src-1?session_id=s1")
+
+    assert r.json()["status"] == "indexed"
+
+
+def test_status_for_a_legacy_chat_needs_no_recording(monkeypatch):
+    """Chats predating the shared KB keep documents in their own KB and have
+    no source_ids; they must not be stuck on "processing" forever."""
+    set_env(monkeypatch)
+    app = _status_app({"id": "s1", "kb_id": "old-kb", "source_ids": []}, monkeypatch)
+
+    r = TestClient(app).get("/ingest/status/src-1?session_id=s1")
+
+    assert r.json()["status"] == "indexed"
+
+
+def test_status_failure_is_not_masked_by_the_recording_check(monkeypatch):
+    set_env(monkeypatch)
+    app = _status_app({"id": "s1", "source_ids": []}, monkeypatch, kb_status="failed")
+
+    r = TestClient(app).get("/ingest/status/src-1?session_id=s1")
+
+    assert r.json()["status"] == "failed"

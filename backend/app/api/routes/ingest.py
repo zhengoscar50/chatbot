@@ -102,4 +102,16 @@ async def ingest_status(
         status, detail = await run_in_threadpool(source_status, client, source_id, kb_ids)
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
+
+    # Indexed in the shared KB is not yet answerable HERE. The upload is
+    # indexed first and recorded on the chat second, and only the recording
+    # puts it in retrieval scope, so "indexed" in between would tell the UI a
+    # document is ready while it still answers "I don't know" — and if the
+    # recording never happens, that lie is permanent rather than momentary.
+    # Legacy chats keep their documents in their own KB and have no
+    # source_ids, so they are exempt rather than stuck on "processing".
+    if status == "indexed" and not row.get("kb_id"):
+        if source_id not in (row.get("source_ids") or []):
+            status, detail = "processing", None
+
     return IngestStatusResponse(source_id=source_id, status=status, detail=detail)
