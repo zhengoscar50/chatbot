@@ -7,6 +7,16 @@ pipeline for ingestion, retrieval, and generation. Users create their own
 base they train — and hold many chats with each agent. Training persists across
 chats; documents uploaded inside a chat stay in that chat.
 
+An **orchestrator** picks which agent answers each individual message, so one
+conversation can move between specialists and every turn records who answered
+it. Retrieval is attached per question rather than configured on the agent.
+
+**Status:** a working demo, not a hardened product. Single-worker by design,
+the admin gate is demo-grade (see §7), and agents are private to their creator
+with no sharing. Read the scope notes before running it for anyone else.
+
+Requires Python 3.9+. Licensed under the [MIT License](LICENSE).
+
 ## 1. Create a Powabase project (one-time, human step)
 
 1. Sign up / log in at https://app.powabase.ai and create a project.
@@ -14,17 +24,27 @@ chats; documents uploaded inside a chat stay in that chat.
    **Service Role (Secret) Key**.
 3. Copy `backend/.env.example` to `backend/.env` and fill in
    `POWABASE_BASE_URL` and `POWABASE_SERVICE_ROLE_KEY`.
-4. Decide on a model provider. Set `POWABASE_AGENT_MODEL` to any LiteLLM
-   model ID (e.g. `gpt-4o-mini`, `groq/llama-3.1-70b-versatile`,
-   `openrouter/<org>/<model>`). Then either:
-   - add the provider's key by hand in Studio → **Settings → LLM Provider
-     Keys**, or
-   - set `POWABASE_PROVIDER_NAME` / `POWABASE_PROVIDER_KEY` in `.env` (the
-     bootstrap script in step 3 below registers it for you).
+4. Decide on a model provider, and register its key either by hand in
+   Studio → **Settings → LLM Provider Keys**, or by setting
+   `POWABASE_PROVIDER_NAME` / `POWABASE_PROVIDER_KEY` in `.env` (the bootstrap
+   script in step 3 below registers it for you).
+5. Choose models. Any LiteLLM model ID works (e.g. `gpt-4o-mini`,
+   `claude-sonnet-5`, `groq/llama-3.1-70b-versatile`). Three settings matter,
+   each defaulting to `gpt-4o-mini`:
+
+   | Variable | Decides |
+   |---|---|
+   | `ORCHESTRATOR_MODEL` | which agent answers each message |
+   | `DEFAULT_AGENT_MODEL` | the model for new agents whose creator picks none |
+   | `GENERAL_ASSISTANT_MODEL` | the fallback when no agent fits |
+
+   `POWABASE_AGENT_MODEL` is **not** one of them. Nothing but the optional
+   bootstrap script reads it — setting it changes no behaviour. `GET /health`
+   reports the three above, so you can always see what a deployment is really
+   running.
 
 You do **not** need `POWABASE_KB_ID` / `POWABASE_AGENT_ID` — each agent
-creates and manages its own Knowledge Bases automatically. `DEFAULT_AGENT_MODEL`
-(default `gpt-4o-mini`) is used for agents whose creator doesn't pick a model.
+creates and manages its own Knowledge Bases automatically.
 
 ## 2. Install dependencies
 

@@ -5,18 +5,24 @@ attribution badges on reload, and copy left stale by a model change. Neither
 was reachable from the API.
 
     pip install playwright && playwright install chromium
-    python scripts/ui_smoke.py
+    UI_SMOKE_URL=https://your-deployment UI_SMOKE_INVITE=<code> \\
+        python -m scripts.ui_smoke
 
-Set URL/INVITE below for the deployment under test.
+Configured by environment, never by literals in this file. A previous version
+hardcoded the deployment URL and its SIGNUP_INVITE_CODE, which put the live
+signup gate — the only thing stopping strangers registering and spending the
+owner's LLM credits — into the repository.
 """
+import os
+import tempfile
 import time
 
 from playwright.sync_api import sync_playwright
 
-URL = "https://resolution-october-kevin-cities.trycloudflare.com"
-INVITE = "rag-iOChsleYQZGV"
-SHOTS = "/private/tmp/claude-501/-Users-oscar/4512c8da-fd97-4b9a-b3a7-cb89bee117e9/scratchpad/"
-PDF = SHOTS + "board2.pdf"
+URL = os.environ.get("UI_SMOKE_URL", "http://127.0.0.1:8000")
+INVITE = os.environ.get("UI_SMOKE_INVITE", "")
+SHOTS = os.environ.get("UI_SMOKE_SHOTS", tempfile.mkdtemp(prefix="ui-smoke-")) + "/"
+PDF = os.environ.get("UI_SMOKE_PDF", "")
 stamp = str(int(time.time()))
 
 RESULTS = []
@@ -90,6 +96,8 @@ with sync_playwright() as p:
     page.click("#agent-list li button")   # Edit
     page.wait_for_timeout(900)
     check("edit reopens the form with the description", "board meeting" in page.input_value("#agent-description").lower())
+    if not PDF:
+        raise SystemExit("set UI_SMOKE_PDF to a PDF to exercise training")
     page.set_input_files("#agent-train-file", PDF)
     for _ in range(30):
         page.wait_for_timeout(2000)
