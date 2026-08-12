@@ -72,6 +72,14 @@ class ChatService:
             {"id": kb_id, "top_k": self.top_k}
             for kb_id in self.retrieval_kb_ids if kb_id
         ]
+        # Why a context handler rather than passing `knowledge_bases` inline to
+        # the run endpoint (which would be one API call instead of two):
+        # POST /api/context-handlers takes its own `query`, so retrieval can
+        # search a different string than the agent is shown. The inline form has
+        # no query field — it retrieves on `message`, which carries the inlined
+        # history — so switching would re-break the split this method exists to
+        # maintain. Verified against the API reference 2026-08-11. Do not
+        # "simplify" this without re-reading the docstring above.
         # `retrieve` comes from the orchestrator, which decided routing and
         # retrieval in one call. An empty scope still skips retrieval: an agent
         # with nothing to search answers from the model, and Powabase rejects an
