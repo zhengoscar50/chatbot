@@ -245,3 +245,36 @@ def test_delete_agent_row_deletes_by_id():
     assert "id=eq.ag-1" in str(route.calls[0].request.url)
 
 
+
+
+@respx.mock
+def test_run_agent_sends_runtime_knowledge_bases():
+    """Query-specific KB attachment: the KBs ride along with the run itself."""
+    route = respx.post(f"{BASE_URL}/api/agents/agent-1/run/stream").mock(
+        return_value=httpx.Response(200, text='data: {"event": "complete", "content": "ok"}\n\n',
+                                    headers={"content-type": "text/event-stream"})
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    client.run_agent(
+        "agent-1", "hi",
+        runtime_knowledge_bases=[{"id": "kb-1", "top_k": 4, "source_ids": ["src-1"]}],
+    )
+    sent = json.loads(route.calls[0].request.content)
+    assert sent["runtime_knowledge_bases"] == [
+        {"id": "kb-1", "top_k": 4, "source_ids": ["src-1"]}
+    ]
+    # Mutually exclusive with the other context sources — sending both is a 400.
+    assert "context_handler_id" not in sent
+
+
+@respx.mock
+def test_run_agent_omits_runtime_knowledge_bases_when_empty():
+    """An empty list must not be sent; Powabase rejects an empty context source."""
+    route = respx.post(f"{BASE_URL}/api/agents/agent-1/run/stream").mock(
+        return_value=httpx.Response(200, text='data: {"event": "complete", "content": "ok"}\n\n',
+                                    headers={"content-type": "text/event-stream"})
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    client.run_agent("agent-1", "hi", runtime_knowledge_bases=[])
+    sent = json.loads(route.calls[0].request.content)
+    assert "runtime_knowledge_bases" not in sent

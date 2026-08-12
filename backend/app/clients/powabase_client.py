@@ -134,11 +134,26 @@ class PowabaseClient:
         session_id: str | None = None,
         citations_enabled: bool = True,
         context_handler_id: str | None = None,
+        runtime_knowledge_bases: list | None = None,
     ) -> list[dict]:
+        """Run an agent, streaming.
+
+        `runtime_knowledge_bases` attaches knowledge bases for this one request:
+        the agent gets a `knowledge_search` tool over them and decides what to
+        search. Entries take `source_ids`, which restricts retrieval to named
+        documents inside that KB — the mechanism behind per-chat scratch
+        scoping. Streaming only; `/run` rejects the field with 400.
+
+        The context sources are mutually exclusive, so never send both this and
+        `context_handler_id`. An empty list is omitted rather than sent, because
+        an empty context source is a 400.
+        """
         payload: dict = {"message": message, "citations_enabled": citations_enabled}
         if session_id:
             payload["session_id"] = session_id
-        if context_handler_id:
+        if runtime_knowledge_bases:
+            payload["runtime_knowledge_bases"] = runtime_knowledge_bases
+        elif context_handler_id:
             payload["context_handler_id"] = context_handler_id
 
         response = self._client.post(
@@ -165,6 +180,14 @@ class PowabaseClient:
     def create_context_handler(
         self, query: str, knowledge_bases: list, max_context_tokens: int | None = None
     ) -> dict:
+        """Standalone retrieval with its own `query`, separate from any run.
+
+        No longer used by the chat path, which attaches knowledge bases to the
+        run itself (see run_agent's runtime_knowledge_bases). Kept because it is
+        the only way to search a string OTHER than the agent's message — if
+        agent-formulated search terms ever prove worse than searching the
+        question directly, this is the way back.
+        """
         body: dict = {"query": query, "knowledge_bases": knowledge_bases}
         if max_context_tokens is not None:
             body["max_context_tokens"] = max_context_tokens

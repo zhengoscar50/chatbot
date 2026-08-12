@@ -20,9 +20,11 @@ class FakeClient:
                                    "max_context_tokens": max_context_tokens})
         return {"id": self.handler_id}
 
-    def run_agent(self, agent_id, message, session_id=None, citations_enabled=True, context_handler_id=None):
+    def run_agent(self, agent_id, message, session_id=None, citations_enabled=True,
+                  context_handler_id=None, runtime_knowledge_bases=None):
         self.calls.append({"agent_id": agent_id, "message": message, "session_id": session_id,
-                           "context_handler_id": context_handler_id})
+                           "context_handler_id": context_handler_id,
+                           "runtime_knowledge_bases": runtime_knowledge_bases})
         return self.events
 
 
@@ -172,8 +174,12 @@ def test_ask_retrieves_when_the_decision_says_to():
     result = service.ask("what does the doc say?", retrieve=True)
 
     assert result["answer"] == "grounded"
-    assert client.handler_calls[0]["knowledge_bases"] == [{"id": "kb-s", "top_k": 4}, {"id": "gkb-1", "top_k": 4}]
-    assert client.calls[0]["context_handler_id"] == "handler-1"
+    # Attached to the run itself rather than pre-built into a context handler.
+    assert client.calls[0]["runtime_knowledge_bases"] == [
+        {"id": "kb-s", "top_k": 4}, {"id": "gkb-1", "top_k": 4}
+    ]
+    assert client.calls[0]["context_handler_id"] is None
+    assert client.handler_calls == []
 
 
 def test_ask_skips_retrieval_when_the_decision_says_not_to():
@@ -186,8 +192,8 @@ def test_ask_skips_retrieval_when_the_decision_says_not_to():
     result = service.ask("hello", retrieve=False)
 
     assert result["answer"] == "hi there"
-    assert client.handler_calls == []                      # no retrieval
-    assert client.calls[0]["context_handler_id"] is None   # no injection
+    assert client.handler_calls == []                          # no retrieval
+    assert client.calls[0]["runtime_knowledge_bases"] is None  # no search tool
 
 
 def test_ask_skips_retrieval_when_the_agent_has_no_knowledge_bases():
@@ -205,7 +211,7 @@ def test_ask_skips_retrieval_when_the_agent_has_no_knowledge_bases():
 
     assert result["answer"] == "I'm an assistant."
     assert client.handler_calls == []
-    assert client.calls[0]["context_handler_id"] is None
+    assert client.calls[0]["runtime_knowledge_bases"] is None
 
 
 def test_ask_skips_retrieval_when_every_kb_id_is_falsy():
@@ -236,7 +242,14 @@ def test_retrieval_searches_the_question_not_the_conversation():
         retrieve=True,
     )
 
-    assert client.handler_calls[0]["query"] == "What is the mascot?"
+    # There is no separate retrieval query any more. The agent gets a
+    # knowledge_search tool and formulates its own search terms from the
+    # message, so history is context it reads rather than a string blindly
+    # searched. This is the property 29a62fc protected, now delegated to the
+    # model instead of enforced here — see the live check in
+    # scripts/check_history_retrieval.py.
+    assert client.handler_calls == []
+    assert client.calls[0]["runtime_knowledge_bases"] == [{"id": "kb-1", "top_k": 4}]
     # ...while the agent still sees the history it needs for a follow-up.
     assert "assistant: hello" in client.calls[0]["message"]
 
@@ -249,5 +262,46 @@ def test_message_defaults_to_the_query():
 
     service.ask("plain question")
 
-    assert client.handler_calls[0]["query"] == "plain question"
     assert client.calls[0]["message"] == "plain question"
+
+
+def test_ask_scopes_a_kb_to_named_sources():
+    """Per-chat scratch isolation rides on source_ids.
+
+    With one shared scratch KB, isolation stops being structural (a KB per
+    chat) and becomes a filter parameter. If a scope entry ever loses its
+    source_ids, one chat's uploads become answerable in another — so the
+    scoping must survive verbatim into the run.
+    """
+    client = FakeClient(events=[
+        {"event": "complete", "data": {"content": "ok", "citations": []}},
+    ])
+    service = ChatService(
+        client, "agent-1",
+        [{"id": "scratch-shared", "source_ids": ["src-a"]}, "kb-perm"],
+        top_k=4, max_context_tokens=2000,
+    )
+
+    service.ask("what does my upload say?", retrieve=True)
+
+    assert client.calls[0]["runtime_knowledge_bases"] == [
+        {"id": "scratch-shared", "top_k": 4, "source_ids": ["src-a"]},
+        {"id": "kb-perm", "top_k": 4},
+    ]
+
+
+def test_ask_drops_a_scope_entry_with_no_sources():
+    """An empty source list would widen scope to the WHOLE shared KB — every
+    other chat's uploads. Drop the entry instead."""
+    client = FakeClient(events=[
+        {"event": "complete", "data": {"content": "ok", "citations": []}},
+    ])
+    service = ChatService(
+        client, "agent-1",
+        [{"id": "scratch-shared", "source_ids": []}, "kb-perm"],
+        top_k=4, max_context_tokens=2000,
+    )
+
+    service.ask("anything?", retrieve=True)
+
+    assert client.calls[0]["runtime_knowledge_bases"] == [{"id": "kb-perm", "top_k": 4}]

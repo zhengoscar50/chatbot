@@ -57,6 +57,34 @@ class ChatService:
         self.top_k = top_k
         self.max_context_tokens = max_context_tokens
 
+    def _scope_entries(self) -> list:
+        """Build the runtime_knowledge_bases entries for one question.
+
+        An entry is either a bare KB id (search all of it) or a dict carrying
+        `source_ids` (search only those documents — how one shared scratch KB
+        serves every chat without any chat seeing another's uploads).
+
+        A dict whose source_ids is empty is DROPPED, never widened. Sending
+        `{"id": shared_kb}` with no source_ids would search the whole shared
+        KB, making every other chat's uploads answerable here. Dropping it
+        costs an answer; widening it leaks data.
+        """
+        entries = []
+        for scope in self.retrieval_kb_ids:
+            if not scope:
+                continue
+            if isinstance(scope, dict):
+                kb_id = scope.get("id")
+                source_ids = scope.get("source_ids")
+                if not kb_id or not source_ids:
+                    continue
+                entries.append(
+                    {"id": kb_id, "top_k": self.top_k, "source_ids": list(source_ids)}
+                )
+            else:
+                entries.append({"id": scope, "top_k": self.top_k})
+        return entries
+
     def ask(self, query: str, message: str | None = None, retrieve: bool = True) -> dict:
         """Answer `query`, showing the agent `message` (defaults to the query).
 
@@ -67,32 +95,16 @@ class ChatService:
         the conversation grows. Retrieval gets the question; the agent gets the
         context.
         """
-        context_handler_id = None
-        knowledge_bases = [
-            {"id": kb_id, "top_k": self.top_k}
-            for kb_id in self.retrieval_kb_ids if kb_id
-        ]
-        # Why a context handler rather than passing `knowledge_bases` inline to
-        # the run endpoint (which would be one API call instead of two):
-        # POST /api/context-handlers takes its own `query`, so retrieval can
-        # search a different string than the agent is shown. The inline form has
-        # no query field — it retrieves on `message`, which carries the inlined
-        # history — so switching would re-break the split this method exists to
-        # maintain. Verified against the API reference 2026-08-11. Do not
-        # "simplify" this without re-reading the docstring above.
+        knowledge_bases = self._scope_entries()
         # `retrieve` comes from the orchestrator, which decided routing and
         # retrieval in one call. An empty scope still skips retrieval: an agent
         # with nothing to search answers from the model, and Powabase rejects an
-        # empty knowledge_bases list with a 400.
-        if retrieve and knowledge_bases:
-            handler = self.client.create_context_handler(
-                query, knowledge_bases, self.max_context_tokens
-            )
-            context_handler_id = handler["id"]
+        # empty context source with a 400.
+        runtime_kbs = knowledge_bases if (retrieve and knowledge_bases) else None
 
         events = self.client.run_agent(
             self.agent_id, message if message is not None else query,
-            citations_enabled=True, context_handler_id=context_handler_id,
+            citations_enabled=True, runtime_knowledge_bases=runtime_kbs,
         )
         answer = None
         citations: list = []
