@@ -36,6 +36,9 @@ class FakeClient:
     def get_session_row(self, session_id):
         return next((r for r in self.rows if r["id"] == session_id), None)
 
+    def list_all_sessions(self):
+        return list(self.rows)
+
     def update_session(self, session_id, fields):
         self.updated.append((session_id, fields))
         for r in self.rows:
@@ -198,3 +201,43 @@ def test_deleting_a_legacy_chat_still_drops_its_own_kb():
 
     assert c.deleted_kbs == ["old-kb"]
     assert c.unlinked == []
+
+
+def test_deleting_a_chat_keeps_a_source_another_chat_still_uses():
+    """upload_source deduplicates identical content.
+
+    Upload the same file into two chats and BOTH rows hold the same source id,
+    backed by ONE indexed entry in the shared KB. Unlinking it on behalf of the
+    chat being deleted removes the document from the survivor too — and every
+    later question there names a source the KB no longer has, which Powabase
+    rejects outright ("source id(s) not in knowledge base"). The chat is then
+    permanently broken, not degraded.
+    """
+    FakeClient.kb_items = [
+        {"id": "idx-shared", "source_id": "src-shared"},
+        {"id": "idx-only-mine", "source_id": "src-only-mine"},
+    ]
+    c = FakeClient(rows=[
+        {"id": "s1", "source_ids": ["src-shared", "src-only-mine"]},
+        {"id": "s2", "source_ids": ["src-shared"]},          # the survivor
+    ])
+
+    SessionService(c, scratch_kb_id="scratch").delete("s1")
+
+    # Only the source nobody else references may be unlinked.
+    assert c.unlinked == [("scratch", "idx-only-mine")]
+    FakeClient.kb_items = []
+
+
+def test_deleting_the_last_chat_holding_a_source_does_unlink_it():
+    """The converse: once no chat references it, it should not linger."""
+    FakeClient.kb_items = [{"id": "idx-1", "source_id": "src-shared"}]
+    c = FakeClient(rows=[
+        {"id": "s1", "source_ids": ["src-shared"]},
+        {"id": "s2", "source_ids": []},
+    ])
+
+    SessionService(c, scratch_kb_id="scratch").delete("s1")
+
+    assert c.unlinked == [("scratch", "idx-1")]
+    FakeClient.kb_items = []

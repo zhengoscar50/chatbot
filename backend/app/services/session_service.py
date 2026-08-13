@@ -104,10 +104,20 @@ class SessionService:
     def _unlink_scratch_sources(self, row: dict) -> None:
         """Remove this chat's uploads from the SHARED scratch KB.
 
-        Deleting the chat used to delete its KB outright. The shared KB holds
-        every other chat's uploads too, so unlink only this chat's sources —
-        and never delete the Source itself, since upload_source reuses
-        duplicates and another chat may point at the same one.
+        Only the ones no other chat still references. upload_source
+        deduplicates identical content, so the same file uploaded into two
+        chats gives both rows the SAME source id, backed by ONE indexed entry
+        in the shared KB. Unlinking it for the chat being deleted would remove
+        the document from the survivor as well — and because its row still
+        names the id, every later question there asks for a source the KB no
+        longer holds, which Powabase rejects with
+        "source id(s) not in knowledge base". That chat is then permanently
+        broken rather than merely missing a document.
+
+        The old design gave each chat its own KB, where unlinking could not
+        affect anyone else. One shared KB makes it shared state.
+
+        Never delete the Source itself, for the same dedup reason.
 
         Best-effort: a missing source must not block deleting the chat.
         """
@@ -115,12 +125,24 @@ class SessionService:
         if not source_ids or not self.scratch_kb_id:
             return
         try:
+            others = self.client.list_all_sessions()
+        except PowabaseAPIError:
+            return  # cannot prove a source is unused, so leave it linked
+        still_referenced = set()
+        for other in others:
+            if other.get("id") == row.get("id"):
+                continue
+            still_referenced.update(other.get("source_ids") or [])
+        droppable = {s for s in source_ids if s not in still_referenced}
+        if not droppable:
+            return
+        try:
             items = self.client.list_kb_sources(self.scratch_kb_id).get("items", [])
         except PowabaseAPIError:
             return
         # The unlink takes the indexed-source id (item["id"]), not source_id.
         for item in items:
-            if item.get("source_id") in source_ids:
+            if item.get("source_id") in droppable:
                 try:
                     self.client.remove_source_from_kb(self.scratch_kb_id, item["id"])
                 except PowabaseAPIError:
