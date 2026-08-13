@@ -297,6 +297,7 @@ async function deleteAgent() {
 
 async function loadAgentDocuments(agentId) {
   agentDocList.innerHTML = "";
+  if (!agentId) return;   // the dialog closed while a request was in flight
   const res = await authFetch(`/agents/${encodeURIComponent(agentId)}/documents`);
   if (!res.ok) return;
   const docs = await res.json();
@@ -335,16 +336,42 @@ async function untrainDocument(agentId, sourceId) {
 
 let training = false;
 
+// Training is accepted immediately and finishes in the background, so the UI
+// polls. A large PDF takes minutes to extract; the old blocking request timed
+// out long before that and reported a failure for work that was fine.
+const TRAIN_POLL_MS = 3000;
+const TRAIN_POLL_LIMIT = 200; // ~10 minutes, matching the server's budget
+
+async function pollTrainingStatus(agentId, sourceId, filename) {
+  for (let i = 0; i < TRAIN_POLL_LIMIT; i += 1) {
+    await new Promise((r) => setTimeout(r, TRAIN_POLL_MS));
+    const res = await authFetch(
+      `/agents/${encodeURIComponent(agentId)}/documents/${encodeURIComponent(sourceId)}/status`
+    );
+    if (!res.ok) continue; // a blip mid-poll is not a failed upload
+    const body = await res.json();
+    if (body.status === "indexed") return { ok: true };
+    if (body.status === "failed") {
+      return { ok: false, detail: body.detail || `Could not read ${filename}.` };
+    }
+  }
+  return { ok: false, detail: `${filename} is taking longer than expected.` };
+}
+
 async function trainAgent() {
   const file = agentTrainFile.files[0];
-  if (!file || !editingAgentId || training) return;
+  // Capture the id now: the dialog may be closed while this runs, which sets
+  // editingAgentId back to null and made the refresh below request
+  // /agents/null/documents.
+  const agentId = editingAgentId;
+  if (!file || !agentId || training) return;
   training = true;
   agentTrainFile.disabled = true;
-  agentTrainStatus.textContent = `Training on ${file.name}…`;
+  agentTrainStatus.textContent = `Reading ${file.name}… this can take a few minutes for a large document.`;
   const data = new FormData();
   data.append("file", file);
   try {
-    const res = await authFetch(`/agents/${encodeURIComponent(editingAgentId)}/train`, {
+    const res = await authFetch(`/agents/${encodeURIComponent(agentId)}/train`, {
       method: "POST",
       body: data,
     });
@@ -354,11 +381,16 @@ async function trainAgent() {
     } catch (parseErr) {
       body = { detail: `${res.status} ${res.statusText}` };
     }
-    agentTrainStatus.textContent = res.ok
+    if (!res.ok) {
+      agentTrainStatus.textContent = errorText(body, res);
+      return;
+    }
+    const result = await pollTrainingStatus(agentId, body.source_id, file.name);
+    agentTrainStatus.textContent = result.ok
       ? `Trained on ${file.name}.`
-      : errorText(body, res);
-    if (res.ok) {
-      await loadAgentDocuments(editingAgentId);
+      : result.detail;
+    if (result.ok) {
+      await loadAgentDocuments(agentId);
       await loadAgents();
     }
   } catch (err) {

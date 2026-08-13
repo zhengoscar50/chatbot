@@ -1,5 +1,7 @@
 import pytest
 
+from app.clients.powabase_client import PowabaseAPIError
+
 from app.services.ingest_service import (
     AttentionRequiredError,
     ExtractionFailedError,
@@ -191,3 +193,63 @@ def test_await_extraction_ok_and_finish_still_works():
     svc = IngestService(client, "kb-1", poll_interval=0, max_wait=1)
     svc.await_extraction("src-1")  # no raise
     assert svc.finish("src-1") == "indexed"  # admin path intact
+
+
+# --- transient upstream failures while polling ------------------------------
+
+class BlippingClient:
+    """Upstream fails for the first `blips` polls, then behaves.
+
+    Powabase's gateway intermittently 502s while it is busy extracting a large
+    document — exactly when polling runs longest.
+    """
+
+    def __init__(self, blips, final="extracted", index_final="indexed"):
+        self.blips = blips
+        self.final = final
+        self.index_final = index_final
+        self.source_polls = 0
+        self.index_polls = 0
+
+    def get_source(self, source_id):
+        self.source_polls += 1
+        if self.source_polls <= self.blips:
+            raise PowabaseAPIError(502, "<html>502 Bad Gateway</html>")
+        return {"extraction_status": self.final, "error_message": ""}
+
+    def add_source_to_kb(self, kb_id, source_id):
+        return {"id": "indexed-1"}
+
+    def list_kb_sources(self, kb_id):
+        self.index_polls += 1
+        if self.index_polls <= self.blips:
+            raise PowabaseAPIError(502, "<html>502 Bad Gateway</html>")
+        return {"items": [{"source_id": "src-1", "index_status": self.index_final}]}
+
+
+def test_extraction_polling_survives_a_transient_upstream_failure():
+    """A one-second gateway wobble during a four-minute extraction must not
+    abort the whole ingest. This is the 502 users actually hit."""
+    client = BlippingClient(blips=2)
+    service = IngestService(client, "kb-1", poll_interval=0, max_wait=5)
+
+    service.await_extraction("src-1")   # must not raise
+
+    assert client.source_polls == 3     # two failures, then success
+
+
+def test_indexing_polling_survives_a_transient_upstream_failure():
+    client = BlippingClient(blips=2)
+    service = IngestService(client, "kb-1", poll_interval=0, max_wait=5)
+
+    assert service.index_into("kb-1", "src-1") == "indexed"
+
+
+def test_polling_still_gives_up_when_upstream_stays_broken():
+    """Tolerance is not infinite patience: a genuinely dead upstream must still
+    surface rather than spin until the deadline with no explanation."""
+    client = BlippingClient(blips=10_000)
+    service = IngestService(client, "kb-1", poll_interval=0, max_wait=5)
+
+    with pytest.raises(PowabaseAPIError):
+        service.await_extraction("src-1")

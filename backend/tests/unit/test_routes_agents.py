@@ -74,6 +74,7 @@ def build_app(service=None, client=None):
         default_agent_model="gpt-4o-mini",
         poll_interval_seconds=0.01,
         ingest_max_wait_seconds=1,
+        ingest_background_max_wait_seconds=600,
         full_document_max_chars=120000,
     )
     return app
@@ -193,6 +194,84 @@ def test_train_404_for_another_users_agent():
         "/agents/ag-1/train", files={"file": ("d.pdf", b"%PDF-1.4", "application/pdf")}
     )
     assert r.status_code == 404
+
+
+class FakeTrainIngest:
+    """Stands in for IngestService during a training request."""
+    started = []
+    indexed = []
+    char_count_value = 500
+
+    def __init__(self, client, kb_id=None, poll_interval=0, max_wait=0):
+        self.max_wait = max_wait
+
+    def start(self, filename, content):
+        type(self).started.append((filename, self.max_wait))
+        return "src-1"
+
+    def await_extraction(self, source_id):
+        pass
+
+    def char_count(self, source_id):
+        return type(self).char_count_value
+
+    def index_into(self, kb_id, source_id):
+        type(self).indexed.append((kb_id, source_id))
+        return "indexed"
+
+
+def test_training_returns_202_immediately(monkeypatch):
+    """Training is backgrounded like a chat upload.
+
+    It used to block the request while extracting, capped at 60s, so a large
+    document could not be trained at all: extraction takes minutes, and the
+    request 504'd (or died on a transient upstream blip) first.
+    """
+    monkeypatch.setattr(agents_route, "IngestService", FakeTrainIngest)
+    FakeTrainIngest.started, FakeTrainIngest.indexed = [], []
+    svc = FakeAgentService()
+    svc.create("o1", "T", "", "", "m", "strict", False)
+    app = build_app(svc)
+
+    r = TestClient(app).post(
+        "/agents/ag-1/train", files={"file": ("big.pdf", b"%PDF-1.4", "application/pdf")}
+    )
+
+    assert r.status_code == 202
+    assert r.json() == {"source_id": "src-1", "status": "processing"}
+    # The long budget, not the 60s foreground one.
+    assert FakeTrainIngest.started[0][1] == 600
+
+
+def test_training_routes_a_small_document_to_the_whole_document_tier(monkeypatch):
+    monkeypatch.setattr(agents_route, "IngestService", FakeTrainIngest)
+    FakeTrainIngest.started, FakeTrainIngest.indexed = [], []
+    FakeTrainIngest.char_count_value = 500          # small
+    svc = FakeAgentService()
+    svc.create("o1", "T", "", "", "m", "strict", False)
+
+    TestClient(build_app(svc)).post(
+        "/agents/ag-1/train", files={"file": ("s.pdf", b"%PDF-1.4", "application/pdf")}
+    )
+
+    assert svc.trained_full == [True]
+    assert FakeTrainIngest.indexed == [("kb-kb_full_id", "src-1")]
+
+
+def test_training_routes_a_large_document_to_the_chunked_tier(monkeypatch):
+    monkeypatch.setattr(agents_route, "IngestService", FakeTrainIngest)
+    FakeTrainIngest.started, FakeTrainIngest.indexed = [], []
+    FakeTrainIngest.char_count_value = 500_000      # past full_document_max_chars
+    svc = FakeAgentService()
+    svc.create("o1", "T", "", "", "m", "strict", False)
+
+    TestClient(build_app(svc)).post(
+        "/agents/ag-1/train", files={"file": ("l.pdf", b"%PDF-1.4", "application/pdf")}
+    )
+
+    assert svc.trained_full == [False]
+    assert FakeTrainIngest.indexed == [("kb-kb_id", "src-1")]
+    FakeTrainIngest.char_count_value = 500
 
 
 def test_documents_lists_both_permanent_kbs():

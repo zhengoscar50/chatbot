@@ -1,5 +1,7 @@
 import time
 
+from app.clients.powabase_client import PowabaseAPIError
+
 
 class AttentionRequiredError(Exception):
     def __init__(self, source_id: str):
@@ -56,10 +58,41 @@ class IngestService:
         source_id = self.start(filename, content)
         return {"source_id": source_id, "status": self.finish(source_id)}
 
+    # Powabase's gateway intermittently returns 502/503 while it is busy
+    # processing a large document — precisely when polling runs longest. One
+    # such blip used to abort a whole ingest. Tolerate a few in a row, but not
+    # indefinitely: a genuinely dead upstream must still surface.
+    TRANSIENT_UPSTREAM = frozenset({429, 500, 502, 503, 504})
+    MAX_CONSECUTIVE_UPSTREAM_FAILURES = 5
+
+    def _poll(self, call, failures: int):
+        """Run a polling call, returning (result, failures) or (None, failures).
+
+        Returns None for a tolerated transient failure, so the caller sleeps
+        and tries again. Re-raises once the run of failures is too long, or if
+        the error is not the transient kind.
+        """
+        try:
+            return call(), 0
+        except PowabaseAPIError as e:
+            failures += 1
+            if (e.status_code not in self.TRANSIENT_UPSTREAM
+                    or failures > self.MAX_CONSECUTIVE_UPSTREAM_FAILURES):
+                raise
+            return None, failures
+
     def _wait_for_extraction(self, source_id: str) -> None:
         deadline = time.monotonic() + self.max_wait
+        failures = 0
         while True:
-            source = self.client.get_source(source_id)
+            source, failures = self._poll(
+                lambda: self.client.get_source(source_id), failures
+            )
+            if source is None:
+                if time.monotonic() >= deadline:
+                    raise IngestTimeoutError(source_id, "upstream unavailable")
+                time.sleep(self.poll_interval)
+                continue
             status = source["extraction_status"]
             if status == "extracted":
                 return
@@ -73,8 +106,16 @@ class IngestService:
 
     def _wait_for_indexing(self, kb_id: str, source_id: str) -> str:
         deadline = time.monotonic() + self.max_wait
+        failures = 0
         while True:
-            sources = self.client.list_kb_sources(kb_id)
+            sources, failures = self._poll(
+                lambda: self.client.list_kb_sources(kb_id), failures
+            )
+            if sources is None:
+                if time.monotonic() >= deadline:
+                    raise IngestTimeoutError(source_id, "upstream unavailable")
+                time.sleep(self.poll_interval)
+                continue
             entry = next(
                 (item for item in sources["items"] if item.get("source_id") == source_id),
                 None,

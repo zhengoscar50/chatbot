@@ -1,4 +1,14 @@
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+import logging
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    UploadFile,
+)
+from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from app.api.deps import get_current_user
@@ -11,6 +21,7 @@ from app.models.schemas import (
     AgentSummary,
     AgentUpdateRequest,
     IngestResponse,
+    IngestStatusResponse,
 )
 from app.services.agent_service import AgentService, ModelRejectedError, get_agent_service
 from app.services.ingest_service import (
@@ -19,9 +30,37 @@ from app.services.ingest_service import (
     IndexingFailedError,
     IngestService,
     IngestTimeoutError,
+    source_status,
 )
 
 router = APIRouter(prefix="/agents", tags=["agents"])
+logger = logging.getLogger(__name__)
+
+
+def _finish_training(service, agents, row, source_id, full_document_max_chars) -> None:
+    """Extract, classify and index one training document, after the response.
+
+    Content-aware routing lives here, on the curated tier: a small document
+    stays whole, a large one is chunked.
+
+    Failures are logged, not swallowed. The equivalent chat-upload task passes
+    silently, which means a document can fail to arrive with nothing anywhere
+    saying why; progress is visible through the status endpoint, but a cause
+    is not.
+    """
+    try:
+        service.await_extraction(source_id)
+        full_document = 0 < service.char_count(source_id) <= full_document_max_chars
+        kb_id = agents.ensure_kb(row, full_document)
+        service.index_into(kb_id, source_id)
+    except AttentionRequiredError:
+        logger.warning("training %s: needs OCR re-extraction", source_id)
+    except (ExtractionFailedError, IndexingFailedError) as e:
+        logger.warning("training %s failed: %s", source_id, e.message)
+    except IngestTimeoutError as e:
+        logger.warning("training %s timed out while %s", source_id, e.status)
+    except PowabaseAPIError as e:
+        logger.warning("training %s: upstream %s", source_id, e.status_code)
 
 
 def _trained(row: dict) -> bool:
@@ -144,6 +183,7 @@ async def delete_agent(
 
 @router.post("/{agent_id}/train", response_model=IngestResponse)
 async def train_agent(
+    background_tasks: BackgroundTasks,
     agent_id: str,
     file: UploadFile = File(...),
     user: dict = Depends(get_current_user),
@@ -156,34 +196,50 @@ async def train_agent(
         raise HTTPException(status_code=404, detail="Agent not found")
 
     content = await file.read()
+    # Backgrounded, with the long budget, exactly like a chat upload. Training
+    # used to block the request and wait only `ingest_max_wait_seconds` (60s),
+    # so a large document could not be trained at all: a 350k-character PDF
+    # takes minutes to extract, and the request 504'd — or died on a transient
+    # upstream blip — long before it finished. Progress is reported by
+    # GET /agents/{id}/documents/{source_id}/status.
     service = IngestService(
         client, None,
         poll_interval=settings.poll_interval_seconds,
-        max_wait=settings.ingest_max_wait_seconds,
+        max_wait=settings.ingest_background_max_wait_seconds,
     )
 
-    def _run() -> dict:
-        # Content-aware routing lives here, on the curated tier: a small document
-        # stays whole, a large one is chunked.
-        source_id = service.start(file.filename, content)
-        service.await_extraction(source_id)
-        full_document = 0 < service.char_count(source_id) <= settings.full_document_max_chars
-        kb_id = agents.ensure_kb(row, full_document)
-        return {"source_id": source_id, "status": service.index_into(kb_id, source_id)}
-
     try:
-        result = await run_in_threadpool(_run)
-    except AttentionRequiredError:
-        raise HTTPException(
-            status_code=422, detail=f"Could not read {file.filename}; it may need OCR."
-        )
-    except (ExtractionFailedError, IndexingFailedError) as e:
-        raise HTTPException(status_code=422, detail=e.message)
-    except IngestTimeoutError as e:
-        raise HTTPException(status_code=504, detail=f"Still {e.status} after the maximum wait.")
+        source_id = await run_in_threadpool(service.start, file.filename, content)
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
-    return IngestResponse(**result)
+
+    background_tasks.add_task(
+        _finish_training, service, agents, row, source_id,
+        settings.full_document_max_chars,
+    )
+    return JSONResponse(
+        status_code=202,
+        content=IngestResponse(source_id=source_id, status="processing").model_dump(),
+    )
+
+
+@router.get("/{agent_id}/documents/{source_id}/status", response_model=IngestStatusResponse)
+async def agent_document_status(
+    agent_id: str,
+    source_id: str,
+    user: dict = Depends(get_current_user),
+    agents: AgentService = Depends(get_agent_service),
+    client: PowabaseClient = Depends(get_powabase_client),
+):
+    row = await run_in_threadpool(agents.get_owned, agent_id, user["id"])
+    if row is None:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    kb_ids = _permanent_kb_ids(row)
+    try:
+        status, detail = await run_in_threadpool(source_status, client, source_id, kb_ids)
+    except PowabaseAPIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return IngestStatusResponse(source_id=source_id, status=status, detail=detail)
 
 
 @router.get("/{agent_id}/documents", response_model=list)
