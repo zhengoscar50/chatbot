@@ -345,6 +345,12 @@ class PowabaseClient:
 
     def get_agent_row(self, agent_id: str):
         response = self._client.get("/rest/v1/agents", params={"id": f"eq.{agent_id}"})
+        # A malformed id (not a valid uuid) → PostgREST 400; it can't match any
+        # agent, so treat it as "not found" rather than a server error. The UI
+        # can send the literal string "null" when a dialog closes mid-request,
+        # which used to surface as a 502.
+        if response.status_code == 400:
+            return None
         self._raise_for_status(response)
         rows = response.json()
         return rows[0] if rows else None

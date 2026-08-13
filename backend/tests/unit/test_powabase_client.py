@@ -278,3 +278,21 @@ def test_run_agent_omits_runtime_knowledge_bases_when_empty():
     client.run_agent("agent-1", "hi", runtime_knowledge_bases=[])
     sent = json.loads(route.calls[0].request.content)
     assert "runtime_knowledge_bases" not in sent
+
+
+@respx.mock
+def test_get_agent_row_treats_a_malformed_id_as_not_found():
+    """PostgREST 400s on an id that isn't a uuid.
+
+    The frontend can send the literal string "null" when a dialog closes
+    mid-request. That cannot match any agent, so it is "not found" — not a
+    server error, which is what filled the log with 502s.
+    """
+    respx.get(f"{BASE_URL}/rest/v1/agents").mock(
+        return_value=httpx.Response(
+            400, json={"code": "22P02", "message": 'invalid input syntax for type uuid: "null"'}
+        )
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+
+    assert client.get_agent_row("null") is None
