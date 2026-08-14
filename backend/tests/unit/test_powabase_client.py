@@ -296,3 +296,46 @@ def test_get_agent_row_treats_a_malformed_id_as_not_found():
     client = PowabaseClient(BASE_URL, "test-key")
 
     assert client.get_agent_row("null") is None
+
+
+@respx.mock
+def test_run_agent_retries_a_transient_upstream_failure():
+    """A bare nginx 502 from Powabase's gateway used to surface to the user as
+    a failed message, for a request that succeeds a second later."""
+    route = respx.post(f"{BASE_URL}/api/agents/agent-1/run/stream").mock(
+        side_effect=[
+            httpx.Response(502, text="<html>502 Bad Gateway</html>"),
+            httpx.Response(200, text='data: {"event": "complete", "content": "ok"}\n\n',
+                           headers={"content-type": "text/event-stream"}),
+        ]
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+
+    events = client.run_agent("agent-1", "hi")
+
+    assert route.call_count == 2
+    assert events[0]["event"] == "complete"
+
+
+@respx.mock
+def test_run_agent_gives_up_after_repeated_upstream_failures():
+    respx.post(f"{BASE_URL}/api/agents/agent-1/run/stream").mock(
+        return_value=httpx.Response(502, text="<html>502 Bad Gateway</html>")
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+
+    with pytest.raises(PowabaseAPIError):
+        client.run_agent("agent-1", "hi")
+
+
+@respx.mock
+def test_run_agent_does_not_retry_a_rejected_request():
+    """A 400 means the request itself is wrong; retrying sends it again."""
+    route = respx.post(f"{BASE_URL}/api/agents/agent-1/run/stream").mock(
+        return_value=httpx.Response(400, json={"error": "source id(s) not in knowledge base"})
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+
+    with pytest.raises(PowabaseAPIError):
+        client.run_agent("agent-1", "hi")
+    assert route.call_count == 1

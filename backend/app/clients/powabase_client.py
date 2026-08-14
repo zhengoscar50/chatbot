@@ -156,14 +156,18 @@ class PowabaseClient:
         elif context_handler_id:
             payload["context_handler_id"] = context_handler_id
 
-        response = self._client.post(
-            f"/api/agents/{agent_id}/run/stream", json=payload, timeout=120.0
-        )
-        if response.status_code == 503:
-            time.sleep(1.0)
+        # Retry the whole transient family, not just 503. Powabase's gateway
+        # returns bare nginx 502s under load, and one of those used to surface
+        # to the user as a failed message for a request that would have
+        # succeeded a second later.
+        for attempt in range(3):
             response = self._client.post(
                 f"/api/agents/{agent_id}/run/stream", json=payload, timeout=120.0
             )
+            if response.status_code not in (429, 500, 502, 503, 504):
+                break
+            if attempt < 2:
+                time.sleep(1.0 * (attempt + 1))
         self._raise_for_status(response)
         return parse_sse(response.text)
 
@@ -339,6 +343,15 @@ class PowabaseClient:
         response = self._client.get(
             "/rest/v1/agents",
             params={"owner_id": f"eq.{owner_id}", "order": "updated_at.desc"},
+        )
+        self._raise_for_status(response)
+        return response.json()
+
+    def list_all_agent_rows(self) -> list:
+        """Every agent row in the project, across owners. Used at startup to
+        re-sync system prompts; ordinary reads are scoped by owner."""
+        response = self._client.get(
+            "/rest/v1/agents", params={"order": "created_at.desc"}
         )
         self._raise_for_status(response)
         return response.json()

@@ -36,3 +36,24 @@ def test_unknown_grounding_falls_back_to_strict():
 
 def test_none_instructions_are_tolerated():
     assert compose_system_prompt(None, "open") == OPEN_CLAUSE
+
+
+def test_clauses_tell_the_agent_to_search():
+    """Retrieval is a tool the model chooses to call, not injected context.
+
+    These clauses were written when context was pre-fetched and handed over
+    ("when context is provided..."). Under runtime_knowledge_bases nothing is
+    provided — the agent gets a knowledge_search tool — so a prompt that never
+    mentions searching leaves it to chance. Observed live: a chemistry agent
+    with its handbook indexed answered "which building are you in?" from model
+    priors, never calling the tool.
+    """
+    for clause in (STRICT_CLAUSE, OPEN_CLAUSE):
+        assert "search" in clause.lower()
+        assert "knowledge_search" in clause
+
+
+def test_strict_clause_forbids_answering_facts_from_memory():
+    lowered = STRICT_CLAUSE.lower()
+    assert "before answering" in lowered or "before you answer" in lowered
+    assert "memory" in lowered

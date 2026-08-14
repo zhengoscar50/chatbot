@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import Request
@@ -10,6 +11,8 @@ from app.services.prompts import compose_system_prompt
 # Changing any of these requires patching the remote agent, because they feed
 # its model or its system prompt. Everything else on an agent row is local-only.
 REMOTE_FIELDS = ("instructions", "grounding", "model")
+
+logger = logging.getLogger(__name__)
 
 
 class ModelRejectedError(Exception):
@@ -119,6 +122,39 @@ class AgentService:
             })
         self.client.update_agent_row(row["id"], fields)
         return merged
+
+    def resync_prompts(self) -> int:
+        """Push the current grounding clause onto every existing agent.
+
+        Prompts are otherwise only patched when a user edits instructions or
+        grounding, so editing a shared clause in code reaches nothing already
+        created — the same trap already recorded for the orchestrator. That
+        mattered when the clause was rewritten to tell agents to use their
+        knowledge_search tool: without this, existing agents kept the old
+        wording and kept answering from memory.
+
+        Model is deliberately not sent: a prompt re-sync must not re-point an
+        agent at a different model. Failures are per-agent, so one broken
+        record cannot stop the rest. Returns how many were updated.
+
+        Cost is one request per agent at startup. Fine at this scale; a project
+        with thousands of agents would want a stored prompt version instead.
+        """
+        updated = 0
+        for row in self.client.list_all_agent_rows():
+            remote = row.get("powabase_agent_id")
+            if not remote:
+                continue
+            try:
+                self.client.update_agent(remote, {
+                    "system_prompt": compose_system_prompt(
+                        row.get("instructions") or "", row.get("grounding") or "strict"
+                    ),
+                })
+                updated += 1
+            except PowabaseAPIError:
+                logger.warning("prompt re-sync skipped agent %s", row.get("id"))
+        return updated
 
     def ensure_kb(self, row: dict, full_document: bool = False) -> str:
         """Return the agent's permanent KB id for this document class, creating

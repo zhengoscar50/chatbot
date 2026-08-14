@@ -49,7 +49,16 @@ async def lifespan(app: FastAPI):
         app.state.scratch_kb_id = scratch_kb_id
         app.state.orchestrator_agent_id = orchestrator_agent_id
         app.state.general_assistant_id = general_assistant_id
-        app.state.agent_service = AgentService(client, reranker_config)
+        agent_service = AgentService(client, reranker_config)
+        # Push the current grounding clause onto agents that already exist.
+        # Prompts are otherwise only patched when a user edits an agent, so a
+        # change to the shared clause would reach nothing already created.
+        try:
+            resynced = agent_service.resync_prompts()
+            logger.info("re-synced system prompts on %d agent(s)", resynced)
+        except PowabaseAPIError as e:
+            logger.warning("prompt re-sync skipped: upstream %s", e.status_code)
+        app.state.agent_service = agent_service
         app.state.session_service = SessionService(
             client, reranker_config, scratch_kb_id
         )

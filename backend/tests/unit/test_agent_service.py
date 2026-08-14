@@ -17,6 +17,8 @@ class FakeClient:
         self.deleted_sessions = []
         self.probes = []
         self.probe_agents = []
+        self.agent_rows = []
+        self.fail_agent_update = None
         self.deleted_probes = []
         self._n = 0
 
@@ -34,8 +36,13 @@ class FakeClient:
         return {"content": "OK"}
 
     def update_agent(self, agent_id, fields):
+        if self.fail_agent_update and agent_id == self.fail_agent_update:
+            raise PowabaseAPIError(404, {"message": "agent not found"})
         self.updated_agents.append((agent_id, fields))
         return {"id": agent_id}
+
+    def list_all_agent_rows(self):
+        return list(self.agent_rows)
 
     def delete_agent(self, agent_id):
         if str(agent_id).startswith("probe-"):
@@ -327,3 +334,46 @@ def test_description_is_local_only_and_skips_the_remote_patch():
 
     assert c.updated_agents == []
     assert c.rows["ag-1"]["description"] == "new desc"
+
+
+# --- prompt re-sync ---------------------------------------------------------
+
+def test_resync_prompts_updates_every_agents_system_prompt():
+    """Editing a clause in code must actually reach agents that already exist.
+
+    Agent prompts are only patched when instructions or grounding change, so a
+    change to the shared grounding clause reached nothing — the same trap
+    already recorded for the orchestrator. It mattered when the clause was
+    rewritten to tell agents to use their search tool: without a re-sync, every
+    existing agent kept the old wording and kept answering from memory.
+    """
+    c = FakeClient()
+    c.agent_rows = [
+        {"id": "a1", "powabase_agent_id": "pa-1", "instructions": "Tutor.",
+         "grounding": "strict", "model": "m1"},
+        {"id": "a2", "powabase_agent_id": "pa-2", "instructions": "",
+         "grounding": "open", "model": "m2"},
+    ]
+
+    count = AgentService(c).resync_prompts()
+
+    assert count == 2
+    sent = dict(c.updated_agents)
+    assert "knowledge_search" in sent["pa-1"]["system_prompt"]
+    assert "knowledge_search" in sent["pa-2"]["system_prompt"]
+    # The model is not touched: a re-sync must not silently re-point an agent.
+    assert "model" not in sent["pa-1"]
+
+
+def test_resync_prompts_survives_one_broken_agent():
+    """A single agent whose remote record is gone must not stop the rest."""
+    c = FakeClient()
+    c.agent_rows = [
+        {"id": "a1", "powabase_agent_id": "boom", "instructions": "x",
+         "grounding": "strict", "model": "m"},
+        {"id": "a2", "powabase_agent_id": "pa-2", "instructions": "y",
+         "grounding": "strict", "model": "m"},
+    ]
+    c.fail_agent_update = "boom"
+
+    assert AgentService(c).resync_prompts() == 1
