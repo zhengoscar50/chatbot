@@ -592,9 +592,9 @@ function appendMessage(role, avatarText, text, citations, answeredBy) {
     row.appendChild(avatar);
     const content = document.createElement("div");
     content.className = "content";
-    const p = document.createElement("p");
-    p.textContent = text;
-    content.appendChild(p);
+    // Assistant answers only. A user's own message stays plain text — there is
+    // no reason to render markup someone typed at you.
+    renderMarkdown(content, text);
     if (citations && citations.length > 0) {
       content.appendChild(buildReferenceList(citations));
     }
@@ -613,24 +613,72 @@ function appendMessage(role, avatarText, text, citations, answeredBy) {
 
 // Handles two citation shapes: chat's {key, source_name/source_id, text_excerpt}
 // objects.
+// Renders tokens as elements. Nothing here builds an HTML string, so answers
+// — which summarise documents the user did not write — cannot introduce markup.
+function appendSpans(parent, spans) {
+  spans.forEach((span) => {
+    if (span.type === "text") {
+      parent.appendChild(document.createTextNode(span.text));
+      return;
+    }
+    const tag = span.type === "strong" ? "strong" : span.type === "em" ? "em" : "code";
+    const el = document.createElement(tag);
+    el.textContent = span.text;
+    parent.appendChild(el);
+  });
+}
+
+function renderMarkdown(container, text) {
+  const tokens = parseMarkdown(text);
+  if (tokens.length === 0) {
+    const p = document.createElement("p");
+    p.textContent = text || "";
+    container.appendChild(p);
+    return;
+  }
+  tokens.forEach((token) => {
+    if (token.type === "code") {
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      code.textContent = token.text;
+      pre.appendChild(code);
+      container.appendChild(pre);
+      return;
+    }
+    if (token.type === "list") {
+      const list = document.createElement(token.ordered ? "ol" : "ul");
+      list.className = "md-list";
+      token.items.forEach((spans) => {
+        const li = document.createElement("li");
+        appendSpans(li, spans);
+        list.appendChild(li);
+      });
+      container.appendChild(list);
+      return;
+    }
+    const el = document.createElement(
+      token.type === "heading" ? `h${Math.min(token.level + 2, 6)}` : "p"
+    );
+    if (token.type === "heading") el.className = "md-heading";
+    appendSpans(el, token.spans);
+    container.appendChild(el);
+  });
+}
+
 function buildReferenceList(citations) {
   const list = document.createElement("ul");
   list.className = "refs";
-  citations.forEach((citation, index) => {
+  // One row per document. Powabase returns a citation per retrieved chunk, so
+  // an answer drawing on six passages of one PDF used to name it six times.
+  dedupeCitations(citations).forEach((group) => {
     const item = document.createElement("li");
+    if (group.excerpt) item.title = group.excerpt;
     const tag = document.createElement("span");
     tag.className = "ref__tag";
-    let name;
-    if (typeof citation === "string") {
-      tag.textContent = `[${index + 1}]`;
-      name = citation;
-    } else {
-      if (citation.text_excerpt) item.title = citation.text_excerpt;
-      tag.textContent = `[${citation.key || index + 1}]`;
-      name = citation.source_name || citation.source_id || "source";
-    }
+    tag.textContent = group.markers.map((m) => `[${m}]`).join("");
     item.appendChild(tag);
-    item.appendChild(document.createTextNode(` ${name}`));
+    const suffix = group.count > 1 ? ` · ${group.count} passages` : "";
+    item.appendChild(document.createTextNode(` ${group.name}${suffix}`));
     list.appendChild(item);
   });
   return list;

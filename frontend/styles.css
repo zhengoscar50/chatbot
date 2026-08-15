@@ -1155,3 +1155,53 @@ body {
   font-size: 0.82rem;
   margin-top: 0.15rem;
 }
+
+/* Rendered markdown inside an assistant answer. The single flat <p> that used
+   to hold the whole reply is now a small tree of paragraphs, lists and code. */
+.content > * + * {
+  margin-top: 0.55rem;
+}
+
+.content .md-heading {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.content .md-list {
+  margin: 0;
+  padding-left: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.content .md-list li {
+  white-space: normal;      /* .content p uses pre-wrap; list items must not */
+  word-wrap: break-word;
+}
+
+.content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9em;
+  background: var(--accent-surface);
+  border: 1px solid var(--accent-border);
+  border-radius: 4px;
+  padding: 0.05em 0.3em;
+}
+
+.content pre {
+  margin: 0;
+  overflow-x: auto;         /* long lines scroll, never widening the thread */
+  background: var(--accent-surface);
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  padding: 0.6rem 0.75rem;
+}
+
+.content pre code {
+  background: none;
+  border: none;
+  padding: 0;
+}

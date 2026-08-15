@@ -161,6 +161,13 @@ cd backend
 pytest -v
 ```
 
+The frontend markdown parser and citation grouping are pure functions with
+their own tests (Node's built-in runner, no dependencies):
+
+```bash
+node --test frontend/
+```
+
 Manual proof (run the migrations in step 5 first), against a live Powabase
 project. Everything is scoped to the logged-in user, so pass a bearer token:
 
