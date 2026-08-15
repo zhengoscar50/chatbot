@@ -11,6 +11,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.chat import router as chat_router
 from app.api.routes.health import router as health_router
 from app.api.routes.ingest import router as ingest_router
+from app.api.routes.knowledge import router as knowledge_router
 from app.api.routes.models import router as models_router
 from app.api.routes.sessions import router as sessions_router
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient
@@ -22,6 +23,7 @@ from app.services.orchestrator import ensure_orchestrator_agent
 from app.services.retrieval import reranker_retrieval_config
 from app.services.scratch_kb import ensure_scratch_kb
 from app.services.session_service import SessionService
+from app.services.user_kb import UserKbService
 
 
 @asynccontextmanager
@@ -59,6 +61,7 @@ async def lifespan(app: FastAPI):
         except PowabaseAPIError as e:
             logger.warning("prompt re-sync skipped: upstream %s", e.status_code)
         app.state.agent_service = agent_service
+        app.state.user_kb_service = UserKbService(client, reranker_config)
         app.state.session_service = SessionService(
             client, reranker_config, scratch_kb_id
         )
@@ -121,6 +124,7 @@ def create_app() -> FastAPI:
     app.include_router(admin_router)
     app.include_router(auth_router)
     app.include_router(agents_router)
+    app.include_router(knowledge_router)
     app.include_router(models_router)
     # The StaticFiles mount at "/" swallows anything registered after it.
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")

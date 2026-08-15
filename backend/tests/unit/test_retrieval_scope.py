@@ -109,3 +109,45 @@ def test_the_general_assistant_sees_scratch_but_no_specialist_kbs():
     assert kb_ids_for(None, row, "gen", scratch_kb_id="scratch") == [
         {"id": "scratch", "source_ids": ["src-1"]}, "gen"
     ]
+
+
+# --- the user's personal knowledge base -------------------------------------
+
+def test_the_users_own_knowledge_is_searched_by_their_agents():
+    """Trained once by the user, visible to every agent they own — no opt-in."""
+    assert kb_ids_for(AGENT, None, "gen", user_kb_ids=["u-chunk", "u-full"]) == [
+        "ag-chunk", "ag-full", "u-chunk", "u-full"
+    ]
+
+
+def test_the_general_assistant_also_sees_the_users_knowledge():
+    """It is the USER's knowledge, not any agent's, so the fallback sees it too.
+
+    That is deliberately unlike a specialist's permanent KB, which the general
+    assistant is blocked from so one agent's documents cannot surface in an
+    answer the UI attributes to another.
+    """
+    assert kb_ids_for(None, None, "gen", user_kb_ids=["u-chunk"]) == ["u-chunk", "gen"]
+
+
+def test_an_untrained_user_contributes_nothing():
+    assert kb_ids_for(AGENT, None, None, user_kb_ids=[]) == ["ag-chunk", "ag-full"]
+    assert kb_ids_for(AGENT, None, None, user_kb_ids=None) == ["ag-chunk", "ag-full"]
+
+
+def test_full_scope_order_is_most_specific_first():
+    """Agent's own, then the user's, then this chat's, then shared general."""
+    opted_in = dict(AGENT, use_general_kb=True)
+    row = {"source_ids": ["src-1"]}
+
+    assert kb_ids_for(opted_in, row, "gen", scratch_kb_id="scratch",
+                      user_kb_ids=["u-chunk"]) == [
+        "ag-chunk", "ag-full", "u-chunk",
+        {"id": "scratch", "source_ids": ["src-1"]}, "gen",
+    ]
+
+
+def test_a_users_knowledge_is_not_duplicated_if_it_repeats():
+    assert kb_ids_for(AGENT, None, None, user_kb_ids=["ag-chunk", "u-full"]) == [
+        "ag-chunk", "ag-full", "u-full"
+    ]

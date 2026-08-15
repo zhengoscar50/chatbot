@@ -165,7 +165,7 @@ The frontend markdown parser and citation grouping are pure functions with
 their own tests (Node's built-in runner, no dependencies):
 
 ```bash
-node --test frontend/
+node --test frontend/*.test.js
 ```
 
 Manual proof (run the migrations in step 5 first), against a live Powabase

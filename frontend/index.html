@@ -38,6 +38,7 @@
           <button type="button" id="logout-btn" class="logout-btn">Log out</button>
         </div>
         <button type="button" id="manage-agents" class="new-session">⚙ Manage agents</button>
+        <button type="button" id="my-knowledge" class="new-session">📚 My knowledge</button>
         <button id="new-session" class="new-session" disabled>+ New chat</button>
         <ul class="session-list" id="session-list" aria-label="Chats"></ul>
         <p class="sidebar__status" id="sidebar-status"></p>
@@ -100,6 +101,21 @@
       </div>
     </div>
 
+    <div id="knowledge-modal" class="modal" hidden>
+      <div class="modal-card">
+        <h2>My knowledge</h2>
+        <p class="muted">Documents every one of your agents can draw on, including the general assistant. Train once here instead of teaching each agent separately.</p>
+        <ul id="knowledge-doc-list"></ul>
+        <label class="train-row">Add a document
+          <input type="file" id="knowledge-file" accept="application/pdf" />
+        </label>
+        <p id="knowledge-status" class="train-status"></p>
+        <div class="modal-actions">
+          <button type="button" id="knowledge-close">Close</button>
+        </div>
+      </div>
+    </div>
+
     <div id="agent-modal" class="modal" hidden>
       <form id="agent-form" class="modal-card">
         <h2 id="agent-modal-title">New agent</h2>
@@ -149,6 +165,7 @@
     <script src="/theme.js"></script>
     <script src="/markdown.js"></script>
     <script src="/agents.js"></script>
+    <script src="/knowledge.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 
-def kb_ids_for(agent_row, session_row, general_kb_id, scratch_kb_id=None) -> list:
+def kb_ids_for(agent_row, session_row, general_kb_id, scratch_kb_id=None,
+               user_kb_ids=None) -> list:
     """Knowledge bases in scope for one question, in retrieval order.
 
     Entries are either a bare KB id (search all of it) or a dict
@@ -34,6 +35,11 @@ def kb_ids_for(agent_row, session_row, general_kb_id, scratch_kb_id=None) -> lis
     ids: list = []
     if agent_row:
         ids.extend([agent_row.get("kb_id"), agent_row.get("kb_full_id")])
+    # The user's own knowledge, searched by every agent they own — including
+    # the general assistant, because this belongs to the user rather than to
+    # any one agent. That is deliberately unlike a specialist's permanent tier
+    # above, which the general assistant never sees.
+    ids.extend(user_kb_ids or [])
     if session_row:
         ids.append(session_row.get("kb_id"))          # legacy per-chat KB
         source_ids = session_row.get("source_ids") or []

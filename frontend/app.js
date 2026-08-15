@@ -47,6 +47,7 @@ function init() {
   wireAuthForm();
   loadSignupPolicy();
   wireAgents();
+  wireKnowledge();
   newSessionButton.addEventListener("click", createSession);
   sidebarToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
   document.getElementById("logout-btn").addEventListener("click", doLogout);
@@ -180,6 +181,7 @@ function doLogout() {
   attachmentChip.hidden = true;
   activeTitle.textContent = "RAG Chat";
   resetAgentState();
+  document.getElementById("knowledge-modal").hidden = true;
   authUsernameInput.value = "";
   authPasswordInput.value = "";
   setAuthError("");

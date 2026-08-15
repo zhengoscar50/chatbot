@@ -12,6 +12,7 @@ from app.services.agent_service import get_agent_service
 from app.services.general_assistant import get_general_assistant_id
 from app.services.general_kb import get_general_kb_id
 from app.services.scratch_kb import get_scratch_kb_id
+from app.services.user_kb import get_user_kb_service
 from app.services.orchestrator import Decision, OrchestratorService, get_orchestrator_agent_id
 from app.services.session_service import get_session_service
 
@@ -89,6 +90,10 @@ def build_app(session_service, agent_service=None):
     app.dependency_overrides[get_agent_service] = lambda: (agent_service or FakeAgentService())
     app.dependency_overrides[get_general_kb_id] = lambda: "gkb-1"
     app.dependency_overrides[get_scratch_kb_id] = lambda: "scratch-kb"
+    # An untrained user contributes no personal knowledge base.
+    app.dependency_overrides[get_user_kb_service] = lambda: SimpleNamespace(
+        kb_ids=lambda row: []
+    )
     app.dependency_overrides[get_orchestrator_agent_id] = lambda: "orch-1"
     app.dependency_overrides[get_general_assistant_id] = lambda: "general-1"
     app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
