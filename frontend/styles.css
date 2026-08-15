@@ -1205,3 +1205,12 @@ body {
   border: none;
   padding: 0;
 }
+
+/* The context-budget slider in the agent form. */
+.range-readout {
+  display: block;
+  margin-top: 0.25rem;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}

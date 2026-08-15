@@ -21,10 +21,12 @@ class FakeClient:
         return {"id": self.handler_id}
 
     def run_agent(self, agent_id, message, session_id=None, citations_enabled=True,
-                  context_handler_id=None, runtime_knowledge_bases=None):
+                  context_handler_id=None, runtime_knowledge_bases=None,
+                  max_context_tokens=None):
         self.calls.append({"agent_id": agent_id, "message": message, "session_id": session_id,
                            "context_handler_id": context_handler_id,
-                           "runtime_knowledge_bases": runtime_knowledge_bases})
+                           "runtime_knowledge_bases": runtime_knowledge_bases,
+                           "max_context_tokens": max_context_tokens})
         return self.events
 
 
@@ -305,3 +307,28 @@ def test_ask_drops_a_scope_entry_with_no_sources():
     service.ask("anything?", retrieve=True)
 
     assert client.calls[0]["runtime_knowledge_bases"] == [{"id": "kb-perm", "top_k": 4}]
+
+
+def test_ask_sends_the_context_budget_it_was_given():
+    """ChatService stored max_context_tokens and never used it, so no cap ever
+    reached Powabase and retrieved context was unbounded."""
+    client = FakeClient(events=[
+        {"event": "complete", "data": {"content": "ok", "citations": []}},
+    ])
+    service = ChatService(client, "agent-1", ["kb-1"], top_k=4, max_context_tokens=20000)
+
+    service.ask("what does the doc say?", retrieve=True)
+
+    assert client.calls[0]["max_context_tokens"] == 20000
+
+
+def test_no_budget_is_sent_when_retrieval_is_skipped():
+    """Nothing is retrieved, so there is nothing to cap."""
+    client = FakeClient(events=[
+        {"event": "complete", "data": {"content": "hi", "citations": []}},
+    ])
+    service = ChatService(client, "agent-1", [], top_k=4, max_context_tokens=20000)
+
+    service.ask("hello", retrieve=True)
+
+    assert client.calls[0]["max_context_tokens"] is None

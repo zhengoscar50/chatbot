@@ -6,6 +6,7 @@ import uuid
 from fastapi import Request
 
 from app.clients.powabase_client import PowabaseAPIError
+from app.services.context_budget import clamp_context_tokens
 from app.services.prompts import compose_system_prompt
 
 # Changing any of these requires patching the remote agent, because they feed
@@ -74,6 +75,7 @@ class AgentService:
         model: str,
         grounding: str,
         use_general_kb: bool,
+        max_context_tokens=None,
     ) -> dict:
         self.probe_model(model)
         prompt = compose_system_prompt(instructions, grounding)
@@ -91,6 +93,9 @@ class AgentService:
             "powabase_agent_id": agent["id"],
             "kb_id": None,
             "kb_full_id": None,
+            # Clamped here, never trusted from the caller: the slider is a
+            # convenience and a client can post anything.
+            "max_context_tokens": clamp_context_tokens(max_context_tokens, model),
         })
 
     def list(self, owner_id: str) -> list:
@@ -113,6 +118,15 @@ class AgentService:
         # Validate before patching, so a bad model can't break a working agent.
         if "model" in fields and fields["model"] != row.get("model"):
             self.probe_model(fields["model"])
+        # Re-clamp on every edit. A budget legal for a 200k model is illegal on
+        # a 128k one, so changing ONLY the model must still bring it down.
+        if "model" in fields or "max_context_tokens" in fields:
+            clamped = clamp_context_tokens(
+                merged.get("max_context_tokens"), merged["model"]
+            )
+            if clamped != row.get("max_context_tokens"):
+                fields = dict(fields, max_context_tokens=clamped)
+            merged["max_context_tokens"] = clamped
         if any(field in fields for field in REMOTE_FIELDS):
             self.client.update_agent(row["powabase_agent_id"], {
                 "model": merged["model"],

@@ -17,13 +17,15 @@ class FakeAgentService:
         self.trained_full = []
         self._n = 0
 
-    def create(self, owner_id, name, instructions, description, model, grounding, use_general_kb):
+    def create(self, owner_id, name, instructions, description, model, grounding,
+               use_general_kb, max_context_tokens=None):
         self._n += 1
         row = {
             "id": f"ag-{self._n}", "owner_id": owner_id, "name": name,
             "instructions": instructions, "description": description,
             "model": model, "grounding": grounding,
             "use_general_kb": use_general_kb, "powabase_agent_id": "pa-1",
+            "max_context_tokens": max_context_tokens,
             "kb_id": None, "kb_full_id": None, "updated_at": "2026-08-06T00:00:00Z",
         }
         self.rows[row["id"]] = row

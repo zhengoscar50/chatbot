@@ -16,6 +16,7 @@ from app.services.general_assistant import get_general_assistant_id
 from app.services.message_store import MessageStore, get_message_store
 from app.services.general_kb import get_general_kb_id
 from app.services.orchestrator import OrchestratorService, get_orchestrator_agent_id
+from app.services.context_budget import clamp_context_tokens
 from app.services.retrieval_scope import kb_ids_for
 from app.services.scratch_kb import get_scratch_kb_id
 from app.services.user_kb import UserKbService, get_user_kb_service
@@ -80,7 +81,14 @@ def chat(
         client, answering_agent_id,
         kb_ids_for(agent_row, row, general_kb_id, scratch_kb_id,
                    user_kb_ids=user_kb.kb_ids(user)),
-        settings.retrieval_top_k, settings.retrieval_max_context_tokens,
+        settings.retrieval_top_k,
+        # The answering agent's own budget, re-clamped at read time so a value
+        # stored before its model changed cannot exceed the new ceiling. The
+        # general assistant has no row, so it takes the default.
+        clamp_context_tokens(
+            (agent_row or {}).get("max_context_tokens"),
+            (agent_row or {}).get("model"),
+        ),
     )
     # Agents run statelessly: a Powabase thread is bound to exactly one agent,
     # so a chat several agents take turns in cannot use one. History travels in

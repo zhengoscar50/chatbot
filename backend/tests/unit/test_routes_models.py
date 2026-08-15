@@ -21,7 +21,11 @@ def test_returns_the_configured_choices_and_default():
 
     body = TestClient(app).get("/models").json()
 
-    assert body == {"models": ["a", "b"], "default": "a"}
+    assert body["models"] == ["a", "b"]
+    assert body["default"] == "a"
+    # The form bounds its slider from here rather than hardcoding limits in JS.
+    assert body["context_limits"]["a"]["max"] > 0
+    assert body["context_min"] > 0
 
 
 def test_default_is_prepended_when_missing_from_the_list():

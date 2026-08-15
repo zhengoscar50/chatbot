@@ -24,6 +24,7 @@ from app.models.schemas import (
     IngestStatusResponse,
 )
 from app.services.agent_service import AgentService, ModelRejectedError, get_agent_service
+from app.services.context_budget import clamp_context_tokens, max_context_for
 from app.services.ingest_service import (
     AttentionRequiredError,
     ExtractionFailedError,
@@ -81,6 +82,10 @@ def _to_response(row: dict) -> AgentResponse:
         grounding=row.get("grounding", "strict"),
         use_general_kb=bool(row.get("use_general_kb")),
         trained=_trained(row),
+        max_context_tokens=clamp_context_tokens(
+            row.get("max_context_tokens"), row.get("model")
+        ),
+        max_context_ceiling=max_context_for(row.get("model")),
     )
 
 
@@ -95,6 +100,7 @@ async def create_agent(
         row = await run_in_threadpool(
             agents.create, user["id"], req.name, req.instructions, req.description,
             req.model or settings.default_agent_model, req.grounding, req.use_general_kb,
+            req.max_context_tokens,
         )
     except ModelRejectedError as e:
         raise HTTPException(

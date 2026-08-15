@@ -18,6 +18,12 @@ const agentModelCustomRow = document.getElementById("agent-model-custom-row");
 const OTHER_MODEL = "__other__";
 let modelChoices = [];
 let defaultModel = "";
+// Per-model context ceilings, served by /models so the limits live in one
+// place. The server clamps whatever arrives regardless — this only stops the
+// form offering a value that would be silently reduced.
+let contextLimits = {};
+let contextDefault = 32000;
+let contextMin = 1000;
 const agentGroundingInput = document.getElementById("agent-grounding");
 const agentGeneralKbInput = document.getElementById("agent-general-kb");
 const agentDocsSection = document.getElementById("agent-docs");
@@ -29,6 +35,8 @@ const agentDeleteButton = document.getElementById("agent-delete");
 const agentModalTitle = document.getElementById("agent-modal-title");
 const agentSaveButton = document.getElementById("agent-save");
 const agentDescriptionInput = document.getElementById("agent-description");
+const agentContextInput = document.getElementById("agent-context");
+const agentContextReadout = document.getElementById("agent-context-readout");
 const agentListModal = document.getElementById("agent-list-modal");
 const agentList = document.getElementById("agent-list");
 
@@ -49,7 +57,12 @@ function wireAgents() {
     const custom = agentModelSelect.value === OTHER_MODEL;
     agentModelCustomRow.hidden = !custom;
     if (custom) agentModelInput.focus();
+    // A smaller model means a lower ceiling; move the thumb down with it
+    // rather than showing a value the server would quietly reduce.
+    applyContextCeiling();
   });
+  agentModelInput.addEventListener("input", applyContextCeiling);
+  agentContextInput.addEventListener("input", renderContextReadout);
   agentModal.addEventListener("keydown", (event) => {
     if (event.key === "Escape") closeAgentModal();
   });
@@ -149,6 +162,9 @@ async function loadModelChoices() {
     const body = await res.json();
     modelChoices = body.models || [];
     defaultModel = body.default || "";
+    contextLimits = body.context_limits || {};
+    contextDefault = body.context_default || contextDefault;
+    contextMin = body.context_min || contextMin;
   } catch (err) {
     modelChoices = [];
   }
@@ -204,6 +220,7 @@ function openAgentModal(agentId) {
     agentGroundingInput.value = "strict";
     agentGeneralKbInput.checked = false;
     renderModelSelect(null);
+    applyContextCeiling(contextDefault);
   }
   agentModal.hidden = false;
   agentNameInput.focus();
@@ -224,6 +241,8 @@ async function loadAgentDetail(agentId) {
   agentGroundingInput.value = a.grounding;
   agentGeneralKbInput.checked = a.use_general_kb;
   renderModelSelect(a.model || "");
+  // The server sends the stored value already clamped to this model's ceiling.
+  applyContextCeiling(a.max_context_tokens);
 }
 
 async function saveAgent(event) {
@@ -239,6 +258,7 @@ async function saveAgentRequest() {
     instructions: agentInstructionsInput.value,
     grounding: agentGroundingInput.value,
     use_general_kb: agentGeneralKbInput.checked,
+    max_context_tokens: Number(agentContextInput.value),
   };
   const model = chosenModel();
   if (agentModelSelect.value === OTHER_MODEL && !model) {
@@ -408,4 +428,31 @@ function resetAgentState() {
   editingAgentId = null;
   agentModal.hidden = true;
   agentListModal.hidden = true;
+}
+
+
+// --- context budget ---------------------------------------------------------
+
+function ceilingFor(model) {
+  const known = contextLimits[model];
+  if (known && known.max) return known.max;
+  // An id the table has never seen — the "Other…" hatch makes that expected.
+  // Mirror the server's conservative guess rather than promising more.
+  return 16000;
+}
+
+function renderContextReadout() {
+  const value = Number(agentContextInput.value);
+  const max = Number(agentContextInput.max);
+  agentContextReadout.textContent =
+    `${value.toLocaleString()} tokens of retrieved text — up to ${max.toLocaleString()} for this model`;
+}
+
+function applyContextCeiling(preferred) {
+  const max = ceilingFor(chosenModel());
+  agentContextInput.min = contextMin;
+  agentContextInput.max = max;
+  const wanted = Number(preferred != null ? preferred : agentContextInput.value) || contextDefault;
+  agentContextInput.value = Math.max(contextMin, Math.min(wanted, max));
+  renderContextReadout();
 }

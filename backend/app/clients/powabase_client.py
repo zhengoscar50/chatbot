@@ -135,6 +135,7 @@ class PowabaseClient:
         citations_enabled: bool = True,
         context_handler_id: str | None = None,
         runtime_knowledge_bases: list | None = None,
+        max_context_tokens: int | None = None,
     ) -> list[dict]:
         """Run an agent, streaming.
 
@@ -147,6 +148,11 @@ class PowabaseClient:
         The context sources are mutually exclusive, so never send both this and
         `context_handler_id`. An empty list is omitted rather than sent, because
         an empty context source is a 400.
+
+        `max_context_tokens` caps the retrieved text. This is the TOP-LEVEL
+        field, which Powabase documents as always honored — unlike the
+        per-entry knob inside runtime_knowledge_bases, which applies only when
+        exactly one knowledge base is in scope.
         """
         payload: dict = {"message": message, "citations_enabled": citations_enabled}
         if session_id:
@@ -155,6 +161,8 @@ class PowabaseClient:
             payload["runtime_knowledge_bases"] = runtime_knowledge_bases
         elif context_handler_id:
             payload["context_handler_id"] = context_handler_id
+        if max_context_tokens:
+            payload["max_context_tokens"] = max_context_tokens
 
         # Retry the whole transient family, not just 503. Powabase's gateway
         # returns bare nginx 502s under load, and one of those used to surface

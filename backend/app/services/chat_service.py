@@ -105,6 +105,9 @@ class ChatService:
         events = self.client.run_agent(
             self.agent_id, message if message is not None else query,
             citations_enabled=True, runtime_knowledge_bases=runtime_kbs,
+            # Only meaningful alongside a context source; nothing is retrieved
+            # without one, so there is nothing to cap.
+            max_context_tokens=self.max_context_tokens if runtime_kbs else None,
         )
         answer = None
         citations: list = []

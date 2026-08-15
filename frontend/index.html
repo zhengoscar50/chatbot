@@ -145,6 +145,10 @@
         <label class="checkbox">
           <input type="checkbox" id="agent-general-kb" /> Also use shared general knowledge
         </label>
+        <label>Document context per question
+          <input type="range" id="agent-context" min="1000" step="1000" value="32000" />
+          <span class="range-readout" id="agent-context-readout"></span>
+        </label>
         <div id="agent-docs" hidden>
           <h3>Trained on</h3>
           <ul id="agent-doc-list"></ul>

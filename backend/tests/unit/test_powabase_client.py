@@ -339,3 +339,35 @@ def test_run_agent_does_not_retry_a_rejected_request():
     with pytest.raises(PowabaseAPIError):
         client.run_agent("agent-1", "hi")
     assert route.call_count == 1
+
+
+@respx.mock
+def test_run_agent_sends_the_context_budget():
+    """The cap the app intended was never actually sent.
+
+    settings.retrieval_max_context_tokens was passed into ChatService, stored,
+    and never reached the request — so retrieved context was unbounded. The
+    top-level field is the one Powabase documents as always honored (unlike the
+    per-entry knob, which only applies when exactly one KB is in scope).
+    """
+    route = respx.post(f"{BASE_URL}/api/agents/agent-1/run/stream").mock(
+        return_value=httpx.Response(200, text='data: {"event": "complete", "content": "ok"}\n\n',
+                                    headers={"content-type": "text/event-stream"})
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    client.run_agent("agent-1", "hi",
+                     runtime_knowledge_bases=[{"id": "kb-1", "top_k": 8}],
+                     max_context_tokens=20000)
+    sent = json.loads(route.calls[0].request.content)
+    assert sent["max_context_tokens"] == 20000
+
+
+@respx.mock
+def test_run_agent_omits_the_budget_when_unset():
+    route = respx.post(f"{BASE_URL}/api/agents/agent-1/run/stream").mock(
+        return_value=httpx.Response(200, text='data: {"event": "complete", "content": "ok"}\n\n',
+                                    headers={"content-type": "text/event-stream"})
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    client.run_agent("agent-1", "hi")
+    assert "max_context_tokens" not in json.loads(route.calls[0].request.content)

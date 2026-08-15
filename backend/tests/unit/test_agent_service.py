@@ -377,3 +377,46 @@ def test_resync_prompts_survives_one_broken_agent():
     c.fail_agent_update = "boom"
 
     assert AgentService(c).resync_prompts() == 1
+
+
+# --- context budget ---------------------------------------------------------
+
+def test_creating_an_agent_clamps_an_oversized_budget():
+    """The slider is a convenience; the server is the guard. A client can post
+    anything."""
+    c = FakeClient()
+    row = AgentService(c).create("o1", "T", "", "", "gpt-4o-mini", "strict", False,
+                                 max_context_tokens=999_999)
+    assert row["max_context_tokens"] == 64_000        # half of 128k
+
+
+def test_creating_an_agent_defaults_the_budget():
+    c = FakeClient()
+    row = AgentService(c).create("o1", "T", "", "", "gpt-4o-mini", "strict", False)
+    assert row["max_context_tokens"] == 32_000
+
+
+def test_moving_to_a_smaller_model_lowers_the_budget():
+    """100k is legal on a 200k model and illegal on a 128k one. Without this,
+    an edit that only changes the model leaves an out-of-range value behind."""
+    c = FakeClient()
+    svc = AgentService(c)
+    row = svc.create("o1", "T", "", "", "claude-sonnet-5", "strict", False,
+                     max_context_tokens=100_000)
+    assert row["max_context_tokens"] == 100_000
+
+    merged = svc.update(row, {"model": "gpt-4o-mini"})
+
+    assert merged["max_context_tokens"] == 64_000
+    # ...and persisted, not just returned.
+    assert c.rows[row["id"]]["max_context_tokens"] == 64_000
+
+
+def test_editing_only_the_budget_clamps_it():
+    c = FakeClient()
+    svc = AgentService(c)
+    row = svc.create("o1", "T", "", "", "gpt-4o-mini", "strict", False)
+
+    merged = svc.update(row, {"max_context_tokens": 999_999})
+
+    assert merged["max_context_tokens"] == 64_000
