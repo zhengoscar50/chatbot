@@ -177,8 +177,9 @@ def test_ask_retrieves_when_the_decision_says_to():
 
     assert result["answer"] == "grounded"
     # Attached to the run itself rather than pre-built into a context handler.
+    # top_k is derived: 2000 tokens over 2 sources at ~500 a passage -> 2 each.
     assert client.calls[0]["runtime_knowledge_bases"] == [
-        {"id": "kb-s", "top_k": 4}, {"id": "gkb-1", "top_k": 4}
+        {"id": "kb-s", "top_k": 2}, {"id": "gkb-1", "top_k": 2}
     ]
     assert client.calls[0]["context_handler_id"] is None
     assert client.handler_calls == []
@@ -287,8 +288,8 @@ def test_ask_scopes_a_kb_to_named_sources():
     service.ask("what does my upload say?", retrieve=True)
 
     assert client.calls[0]["runtime_knowledge_bases"] == [
-        {"id": "scratch-shared", "top_k": 4, "source_ids": ["src-a"]},
-        {"id": "kb-perm", "top_k": 4},
+        {"id": "scratch-shared", "source_ids": ["src-a"], "top_k": 2},
+        {"id": "kb-perm", "top_k": 2},
     ]
 
 
@@ -306,6 +307,7 @@ def test_ask_drops_a_scope_entry_with_no_sources():
 
     service.ask("anything?", retrieve=True)
 
+    # Only one entry survives, so it gets the whole budget: 2000 / 500 = 4.
     assert client.calls[0]["runtime_knowledge_bases"] == [{"id": "kb-perm", "top_k": 4}]
 
 
@@ -332,3 +334,37 @@ def test_no_budget_is_sent_when_retrieval_is_skipped():
     service.ask("hello", retrieve=True)
 
     assert client.calls[0]["max_context_tokens"] is None
+
+
+def test_top_k_is_derived_from_the_budget_not_fixed():
+    """The budget is spent by retrieving more or fewer passages. A fixed top_k
+    ignored the setting entirely — which is what made the slider inert."""
+    client = FakeClient(events=[
+        {"event": "complete", "data": {"content": "ok", "citations": []}},
+    ])
+    small = ChatService(client, "agent-1", ["kb-1"], max_context_tokens=2_000)
+    small.ask("q", retrieve=True)
+    lean = client.calls[0]["runtime_knowledge_bases"][0]["top_k"]
+
+    client.calls.clear()
+    big = ChatService(client, "agent-1", ["kb-1"], max_context_tokens=50_000)
+    big.ask("q", retrieve=True)
+    generous = client.calls[0]["runtime_knowledge_bases"][0]["top_k"]
+
+    assert generous > lean
+
+
+def test_the_budget_is_split_across_the_sources_in_scope():
+    """Two sources at the same budget each get half the depth of one source,
+    so the total retrieved stays inside what was asked for."""
+    client = FakeClient(events=[
+        {"event": "complete", "data": {"content": "ok", "citations": []}},
+    ])
+    ChatService(client, "agent-1", ["kb-1"], max_context_tokens=20_000).ask("q")
+    alone = client.calls[0]["runtime_knowledge_bases"][0]["top_k"]
+
+    client.calls.clear()
+    ChatService(client, "agent-1", ["kb-1", "kb-2"], max_context_tokens=20_000).ask("q")
+    shared = client.calls[0]["runtime_knowledge_bases"][0]["top_k"]
+
+    assert shared < alone

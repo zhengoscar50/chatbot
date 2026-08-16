@@ -57,11 +57,11 @@ def test_none_means_the_default():
 
 
 def test_the_default_never_exceeds_a_small_models_ceiling():
-    """An unknown model's ceiling (16k) is below the 32k default, so the
-    default must come down rather than be silently illegal."""
-    assert clamp_context_tokens(None, "some/experimental-model") == max_context_for(
-        "some/experimental-model"
-    )
+    """Whatever the default is, it must be legal on the smallest model we
+    assume — never returned above the ceiling."""
+    ceiling = max_context_for("some/experimental-model")
+    assert clamp_context_tokens(None, "some/experimental-model") <= ceiling
+    assert clamp_context_tokens(None, "gpt-4o-mini") == DEFAULT_CONTEXT_TOKENS
 
 
 def test_a_non_numeric_value_falls_back_to_the_default():
@@ -73,3 +73,51 @@ def test_moving_to_a_smaller_model_lowers_a_now_illegal_value():
     legal_on_claude = clamp_context_tokens(100_000, "claude-sonnet-5")
     assert legal_on_claude == 100_000
     assert clamp_context_tokens(legal_on_claude, "gpt-4o-mini") == 64_000
+
+
+# --- turning a token budget into a retrieval depth ---------------------------
+
+def test_top_k_divides_the_budget_across_the_sources_in_scope():
+    """A question can span several knowledge bases, and top_k is per entry, so
+    the budget has to be split — otherwise six sources each retrieve a full
+    budget's worth and the total is six times what was asked for."""
+    from app.services.context_budget import TOKENS_PER_PASSAGE, top_k_for
+
+    # 8000 tokens over 2 sources, at ~500 tokens a passage -> 8 each.
+    assert top_k_for(8_000, 2) == 8
+    assert TOKENS_PER_PASSAGE == 500
+
+
+def test_a_bigger_budget_retrieves_more():
+    from app.services.context_budget import top_k_for
+
+    assert top_k_for(4_000, 1) < top_k_for(40_000, 1)
+
+
+def test_more_sources_means_fewer_passages_each():
+    from app.services.context_budget import top_k_for
+
+    assert top_k_for(8_000, 1) > top_k_for(8_000, 4)
+
+
+def test_every_source_still_contributes_something():
+    """A floor, deliberately. Splitting a small budget across many sources can
+    round to nothing, and a source silently contributing zero passages is worse
+    than slightly exceeding the budget."""
+    from app.services.context_budget import MIN_TOP_K, top_k_for
+
+    assert top_k_for(1_000, 6) == MIN_TOP_K
+    assert top_k_for(0, 3) == MIN_TOP_K
+
+
+def test_top_k_is_capped_at_what_powabase_accepts():
+    from app.services.context_budget import MAX_TOP_K, top_k_for
+
+    assert top_k_for(10_000_000, 1) == MAX_TOP_K
+    assert MAX_TOP_K == 100
+
+
+def test_no_sources_is_handled():
+    from app.services.context_budget import MIN_TOP_K, top_k_for
+
+    assert top_k_for(8_000, 0) == MIN_TOP_K

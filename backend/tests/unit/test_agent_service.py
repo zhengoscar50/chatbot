@@ -391,9 +391,10 @@ def test_creating_an_agent_clamps_an_oversized_budget():
 
 
 def test_creating_an_agent_defaults_the_budget():
+    from app.services.context_budget import DEFAULT_CONTEXT_TOKENS
     c = FakeClient()
     row = AgentService(c).create("o1", "T", "", "", "gpt-4o-mini", "strict", False)
-    assert row["max_context_tokens"] == 32_000
+    assert row["max_context_tokens"] == DEFAULT_CONTEXT_TOKENS
 
 
 def test_moving_to_a_smaller_model_lowers_the_budget():

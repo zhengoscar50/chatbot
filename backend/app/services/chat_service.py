@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from app.services.context_budget import top_k_for
+
 # Substrings (checked case-insensitively) that mark a transient
 # rate-limit / provider-overload failure — the model is momentarily busy
 # rather than the request being wrong. Covers the shapes actually seen from
@@ -50,7 +52,7 @@ class ModelBusyError(Exception):
 
 
 class ChatService:
-    def __init__(self, client, agent_id, retrieval_kb_ids, top_k, max_context_tokens):
+    def __init__(self, client, agent_id, retrieval_kb_ids, top_k=None, max_context_tokens=None):
         self.client = client
         self.agent_id = agent_id
         self.retrieval_kb_ids = retrieval_kb_ids
@@ -78,11 +80,18 @@ class ChatService:
                 source_ids = scope.get("source_ids")
                 if not kb_id or not source_ids:
                     continue
-                entries.append(
-                    {"id": kb_id, "top_k": self.top_k, "source_ids": list(source_ids)}
-                )
+                entries.append({"id": kb_id, "source_ids": list(source_ids)})
             else:
-                entries.append({"id": scope, "top_k": self.top_k})
+                entries.append({"id": scope})
+
+        # How deep to search each source. Derived from the budget rather than
+        # fixed: top_k is the lever that measurably changes what comes back, so
+        # a fixed value made the context setting inert. Divided across the
+        # entries that SURVIVED — a dropped scope must not still consume a
+        # share of the budget.
+        depth = top_k_for(self.max_context_tokens, len(entries))
+        for entry in entries:
+            entry["top_k"] = depth
         return entries
 
     def ask(self, query: str, message: str | None = None, retrieve: bool = True) -> dict:

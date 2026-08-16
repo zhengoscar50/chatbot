@@ -81,7 +81,8 @@ def chat(
         client, answering_agent_id,
         kb_ids_for(agent_row, row, general_kb_id, scratch_kb_id,
                    user_kb_ids=user_kb.kb_ids(user)),
-        settings.retrieval_top_k,
+        # retrieval depth is derived from the budget below, not configured
+        None,
         # The answering agent's own budget, re-clamped at read time so a value
         # stored before its model changed cannot exceed the new ceiling. The
         # general assistant has no row, so it takes the default.
