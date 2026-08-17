@@ -65,7 +65,8 @@ LAST_CHAT_ARGS = {}
 
 
 class FakeChatService:
-    def __init__(self, client, agent_id, retrieval_kb_ids, top_k, max_context_tokens):
+    def __init__(self, client, agent_id, retrieval_kb_ids, top_k=None,
+                 max_context_tokens=None):
         LAST_CHAT_ARGS["agent_id"] = agent_id
         LAST_CHAT_ARGS["kb_ids"] = retrieval_kb_ids
 
@@ -304,3 +305,52 @@ def test_chat_always_retrieves_and_lets_the_scope_decide(monkeypatch):
     post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "hi"})
 
     assert LAST_CHAT_ARGS["retrieve"] is True
+
+
+def test_a_chat_can_exclude_an_agent_from_answering(monkeypatch):
+    """The orchestrator must never be offered an agent this chat excluded.
+
+    Filtering happens before routing rather than after: offering a choice and
+    then discarding it would waste the call and let the reason field describe
+    an agent that cannot answer.
+    """
+    seen = {}
+
+    def record(self, query, roster, history=None):
+        seen["roster"] = [a["id"] for a in roster]
+        return Decision(None)
+
+    monkeypatch.setattr(chat_route.OrchestratorService, "route", record)
+    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    svc = FakeSessionService()
+    svc.row = dict(svc.row, excluded_agent_ids=["ag-1"])
+    agents = FakeAgentService(row={"id": "ag-1", "name": "Chem", "powabase_agent_id": "pa-1",
+                                   "kb_id": "kb-1", "kb_full_id": None, "model": "gpt-4o-mini",
+                                   "use_general_kb": False})
+
+    TestClient(build_app(svc, agents)).post(
+        "/chat", json={"session_id": "s1", "query": "hi"}
+    )
+
+    assert seen["roster"] == []
+
+
+def test_a_chat_with_no_exclusions_sees_every_agent(monkeypatch):
+    seen = {}
+
+    def record(self, query, roster, history=None):
+        seen["roster"] = [a["id"] for a in roster]
+        return Decision(None)
+
+    monkeypatch.setattr(chat_route.OrchestratorService, "route", record)
+    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    svc = FakeSessionService()
+    agents = FakeAgentService(row={"id": "ag-1", "name": "Chem", "powabase_agent_id": "pa-1",
+                                   "kb_id": "kb-1", "kb_full_id": None, "model": "gpt-4o-mini",
+                                   "use_general_kb": False})
+
+    TestClient(build_app(svc, agents)).post(
+        "/chat", json={"session_id": "s1", "query": "hi"}
+    )
+
+    assert seen["roster"] == ["ag-1"]

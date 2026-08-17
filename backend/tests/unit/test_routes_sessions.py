@@ -1,9 +1,12 @@
+from types import SimpleNamespace
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_user
 from app.api.routes import sessions as sessions_route
 from app.clients.powabase_client import get_powabase_client
+from app.services.agent_service import get_agent_service
 from app.services.session_service import get_session_service
 
 
@@ -37,6 +40,10 @@ def build_app():
     app = FastAPI()
     app.include_router(sessions_route.router)
     app.dependency_overrides[get_session_service] = lambda: FakeSessionService()
+    # PATCH validates exclusions against the caller's roster.
+    app.dependency_overrides[get_agent_service] = lambda: SimpleNamespace(
+        list=lambda owner_id: []
+    )
     app.dependency_overrides[get_powabase_client] = lambda: FakeClient()
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
     return app
@@ -45,19 +52,21 @@ def build_app():
 def test_create_session_returns_id_and_name():
     r = TestClient(build_app()).post("/sessions", json={"name": "Taxes"})
     assert r.status_code == 200
-    assert r.json() == {"id": "s1", "name": "Taxes"}
+    assert r.json() == {"id": "s1", "name": "Taxes", "excluded_agent_ids": []}
 
 
 def test_create_session_defaults_name_when_omitted():
     r = TestClient(build_app()).post("/sessions", json={})
     assert r.status_code == 200
-    assert r.json() == {"id": "s1", "name": "New chat"}
+    assert r.json() == {"id": "s1", "name": "New chat", "excluded_agent_ids": []}
 
 
 def test_list_sessions_for_current_user():
     r = TestClient(build_app()).get("/sessions")
     assert r.status_code == 200
-    assert r.json() == [{"id": "s1", "name": "Taxes", "updated_at": "t1"}]
+    assert r.json() == [
+        {"id": "s1", "name": "Taxes", "updated_at": "t1", "excluded_agent_ids": []}
+    ]
 
 
 def test_messages_formats_roles_and_citations():
@@ -96,6 +105,10 @@ def test_messages_empty_for_a_brand_new_chat():
     app = FastAPI()
     app.include_router(sessions_route.router)
     app.dependency_overrides[get_session_service] = lambda: FakeSessionService()
+    # PATCH validates exclusions against the caller's roster.
+    app.dependency_overrides[get_agent_service] = lambda: SimpleNamespace(
+        list=lambda owner_id: []
+    )
     app.dependency_overrides[get_powabase_client] = lambda: EmptyClient()
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
 
@@ -115,12 +128,16 @@ def test_rename_session_updates_name():
     app = FastAPI()
     app.include_router(sessions_route.router)
     app.dependency_overrides[get_session_service] = lambda: RenamingService()
+    # PATCH validates exclusions against the caller's roster.
+    app.dependency_overrides[get_agent_service] = lambda: SimpleNamespace(
+        list=lambda owner_id: []
+    )
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
 
     r = TestClient(app).patch("/sessions/s1", json={"name": "My taxes"})
 
     assert r.status_code == 200
-    assert r.json() == {"id": "s1", "name": "My taxes"}
+    assert r.json() == {"id": "s1", "name": "My taxes", "excluded_agent_ids": []}
     assert renamed["args"] == ("s1", "My taxes")
 
 
@@ -150,6 +167,10 @@ def test_delete_session_returns_204():
     app = FastAPI()
     app.include_router(sessions_route.router)
     app.dependency_overrides[get_session_service] = lambda: DeletingService()
+    # PATCH validates exclusions against the caller's roster.
+    app.dependency_overrides[get_agent_service] = lambda: SimpleNamespace(
+        list=lambda owner_id: []
+    )
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
 
     r = TestClient(app).delete("/sessions/s1")

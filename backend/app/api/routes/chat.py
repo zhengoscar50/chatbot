@@ -16,6 +16,7 @@ from app.services.general_assistant import get_general_assistant_id
 from app.services.message_store import MessageStore, get_message_store
 from app.services.general_kb import get_general_kb_id
 from app.services.orchestrator import OrchestratorService, get_orchestrator_agent_id
+from app.services.agent_scope import roster_for
 from app.services.context_budget import clamp_context_tokens
 from app.services.retrieval_scope import kb_ids_for
 from app.services.scratch_kb import get_scratch_kb_id
@@ -64,7 +65,8 @@ def chat(
         history = []
 
     # One call decides both which agent answers and whether to retrieve.
-    roster = agents.list(user["id"])
+    # Every chat starts with the whole roster; this chat may exclude some.
+    roster = roster_for(agents.list(user["id"]), row.get("excluded_agent_ids"))
     decision = OrchestratorService(client, orchestrator_agent_id).route(
         req.query, roster, history
     )

@@ -7,11 +7,13 @@ from app.models.schemas import (
     ChatMessage,
     MessagesResponse,
     SessionCreateRequest,
-    SessionRenameRequest,
+    SessionUpdateRequest,
     SessionResponse,
     SessionSummary,
 )
 from app.services.message_store import MessageStore, get_message_store
+from app.services.agent_scope import sanitise_exclusions
+from app.services.agent_service import AgentService, get_agent_service
 from app.services.session_service import SessionService, get_session_service
 
 router = APIRouter(tags=["sessions"])
@@ -31,20 +33,37 @@ async def create_session(
 
 
 @router.patch("/sessions/{session_id}", response_model=SessionResponse)
-async def rename_session(
+async def update_session(
     session_id: str,
-    req: SessionRenameRequest,
+    req: SessionUpdateRequest,
     user: dict = Depends(get_current_user),
     sessions: SessionService = Depends(get_session_service),
+    agents: AgentService = Depends(get_agent_service),
 ):
     row = await run_in_threadpool(sessions.get_owned_session, session_id, user["id"])
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")
+
+    excluded = row.get("excluded_agent_ids") or []
     try:
-        await run_in_threadpool(sessions.rename, session_id, req.name)
+        if req.name is not None:
+            await run_in_threadpool(sessions.rename, session_id, req.name)
+        if req.excluded_agent_ids is not None:
+            # Intersected with the caller's own roster, never trusted: a client
+            # can post any id, including another user's agent.
+            roster = await run_in_threadpool(agents.list, user["id"])
+            excluded = sanitise_exclusions(req.excluded_agent_ids, roster)
+            await run_in_threadpool(
+                sessions.set_excluded_agents, session_id, excluded
+            )
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
-    return SessionResponse(id=session_id, name=req.name)
+
+    return SessionResponse(
+        id=session_id,
+        name=req.name if req.name is not None else row.get("name", ""),
+        excluded_agent_ids=excluded,
+    )
 
 
 @router.delete("/sessions/{session_id}", status_code=204)

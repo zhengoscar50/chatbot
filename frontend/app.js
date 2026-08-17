@@ -35,6 +35,9 @@ let authMode = "login"; // or "register"
 // development leaves it unset and the field never appears.
 let inviteRequired = false;
 let currentSessionId = null;
+// The last loaded chat list, so opening one can read its agent scope without
+// a second request.
+let loadedSessions = [];
 let isAsking = false;
 let uploadPollToken = 0;
 
@@ -48,6 +51,7 @@ function init() {
   loadSignupPolicy();
   wireAgents();
   wireKnowledge();
+  wireScope();
   newSessionButton.addEventListener("click", createSession);
   sidebarToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
   document.getElementById("logout-btn").addEventListener("click", doLogout);
@@ -177,6 +181,7 @@ function doLogout() {
   authToken = null;
   currentUsername = null;
   currentSessionId = null;
+  setChatScope([]);
   sessionList.innerHTML = "";
   attachmentChip.hidden = true;
   activeTitle.textContent = "RAG Chat";
@@ -200,6 +205,7 @@ async function ensureSession() {
   const body = await response.json();
   if (!response.ok) throw new Error(errorText(body, response));
   currentSessionId = body.id;
+  setChatScope([]);   // a new chat starts with the whole roster
   activeTitle.textContent = body.name;
   await loadSessions();
   return currentSessionId;
@@ -222,6 +228,7 @@ async function loadSessions() {
 }
 
 function renderSessionList(sessions) {
+  loadedSessions = sessions;
   sessionList.innerHTML = "";
   sessions.forEach((s) => {
     const li = document.createElement("li");
@@ -359,6 +366,8 @@ async function createSession() {
 
 async function openSession(id, name) {
   currentSessionId = id;
+  const row = loadedSessions.find((s) => s.id === id);
+  setChatScope((row && row.excluded_agent_ids) || []);
   activeTitle.textContent = name;
   attachmentChip.hidden = true;
   sidebar.classList.remove("open");

@@ -51,16 +51,26 @@ class SessionCreateRequest(BaseModel):
 class SessionResponse(BaseModel):
     id: str
     name: str
+    excluded_agent_ids: list = []
 
 
-class SessionRenameRequest(BaseModel):
-    name: str = Field(..., min_length=1)
+class SessionUpdateRequest(BaseModel):
+    """Rename a chat, narrow which agents may answer in it, or both.
+
+    Both optional: the UI patches one or the other. Exclusions are validated
+    against the caller's own roster before storage.
+    """
+    name: Optional[str] = Field(default=None, min_length=1)
+    excluded_agent_ids: Optional[list] = None
 
 
 class SessionSummary(BaseModel):
     id: str
     name: str
     updated_at: Optional[str] = None
+    # Carried in the list so the topbar can show a chat's scope without a
+    # second request per chat.
+    excluded_agent_ids: list = []
 
 
 class ChatMessage(BaseModel):

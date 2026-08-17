@@ -50,6 +50,8 @@
           <button id="sidebar-toggle" class="icon-btn topbar__toggle" aria-label="Toggle sessions">☰</button>
           <span class="topbar__mark" aria-hidden="true"></span>
           <span class="topbar__title" id="active-title">RAG Chat</span>
+          <button type="button" id="scope-button" class="scope-button" hidden
+                  title="Choose which agents may answer in this chat">All agents</button>
           <button type="button" id="theme-toggle" class="icon-btn topbar__theme" aria-label="Toggle dark mode" title="Toggle theme">
             <svg class="theme-ico theme-ico--moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
             <svg class="theme-ico theme-ico--sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></svg>
@@ -97,6 +99,19 @@
         <div class="modal-actions">
           <button type="button" id="agent-list-close">Close</button>
           <button type="button" id="agent-list-new">New agent</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="scope-modal" class="modal" hidden>
+      <div class="modal-card">
+        <h2>Agents in this chat</h2>
+        <p class="muted">Unticked agents will not answer here. This changes routing from now on — turns they already answered keep their attribution.</p>
+        <ul id="scope-list"></ul>
+        <p id="scope-status" class="train-status"></p>
+        <div class="modal-actions">
+          <button type="button" id="scope-cancel">Cancel</button>
+          <button type="button" id="scope-save">Save</button>
         </div>
       </div>
     </div>
@@ -170,6 +185,7 @@
     <script src="/markdown.js"></script>
     <script src="/agents.js"></script>
     <script src="/knowledge.js"></script>
+    <script src="/scope.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

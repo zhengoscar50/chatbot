@@ -41,7 +41,8 @@ class SessionService:
     def list(self, owner_id: str) -> list:
         rows = self.client.list_sessions(owner_id)
         return [
-            {"id": r["id"], "name": r["name"], "updated_at": r.get("updated_at")}
+            {"id": r["id"], "name": r["name"], "updated_at": r.get("updated_at"),
+             "excluded_agent_ids": r.get("excluded_agent_ids") or []}
             for r in rows
         ]
 
@@ -57,6 +58,11 @@ class SessionService:
     def touch(self, session_id: str, **fields) -> None:
         fields["updated_at"] = _now_iso()
         self.client.update_session(session_id, fields)
+
+    def set_excluded_agents(self, session_id: str, excluded: list) -> None:
+        """Narrow which agents may answer in this chat. No updated_at bump —
+        changing a chat's scope should not reorder the sidebar."""
+        self.client.update_session(session_id, {"excluded_agent_ids": excluded})
 
     def rename(self, session_id: str, name: str) -> None:
         # Rename only — no updated_at bump, so renaming doesn't reorder the list.

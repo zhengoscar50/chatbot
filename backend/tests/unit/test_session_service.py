@@ -90,7 +90,9 @@ def test_list_filters_by_owner():
         {"id": "s1", "owner_id": "o1", "name": "A", "updated_at": "t1"},
         {"id": "s2", "owner_id": "o2", "name": "B", "updated_at": "t2"},
     ])
-    assert SessionService(c).list("o1") == [{"id": "s1", "name": "A", "updated_at": "t1"}]
+    assert SessionService(c).list("o1") == [
+        {"id": "s1", "name": "A", "updated_at": "t1", "excluded_agent_ids": []}
+    ]
 
 
 def test_get_owned_session_returns_only_for_owner():

@@ -219,8 +219,35 @@ class AgentService:
                 except PowabaseAPIError:
                     pass
 
+        self._prune_from_chat_scopes(agent_id)
         self.client.delete_agent_row(agent_id)
         return True
+
+    def _prune_from_chat_scopes(self, agent_id: str) -> None:
+        """Drop this agent from any chat that excluded it.
+
+        Filtering is a membership test, so a stale id is harmless at read time
+        — but without this, every deleted agent leaves a permanent entry behind
+        and the lists only grow.
+
+        Best-effort, like the resource cleanup above: a chat that cannot be
+        updated must not leave the agent undeletable.
+        """
+        try:
+            sessions = self.client.list_all_sessions()
+        except PowabaseAPIError:
+            return
+        for row in sessions:
+            excluded = row.get("excluded_agent_ids") or []
+            if agent_id not in excluded:
+                continue
+            try:
+                self.client.update_session(
+                    row["id"],
+                    {"excluded_agent_ids": [i for i in excluded if i != agent_id]},
+                )
+            except PowabaseAPIError:
+                pass
 
 
 def get_agent_service(request: Request) -> "AgentService":

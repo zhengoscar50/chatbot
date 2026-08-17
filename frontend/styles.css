@@ -1214,3 +1214,32 @@ body {
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
+
+/* Which agents may answer in the active chat. Shown in the topbar so a
+   narrowed chat is never a silent surprise. */
+.scope-button {
+  margin-left: 0.6rem;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: var(--accent-surface);
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.scope-button:hover { color: inherit; }
+
+#scope-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 15rem;
+  overflow-y: auto;
+}
+
+#scope-list li { display: flex; align-items: center; gap: 0.5rem; }

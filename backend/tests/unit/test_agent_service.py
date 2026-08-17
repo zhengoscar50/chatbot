@@ -19,6 +19,9 @@ class FakeClient:
         self.probe_agents = []
         self.agent_rows = []
         self.fail_agent_update = None
+        self.all_sessions = []
+        self.updated_sessions = []
+        self.fail_session_update = False
         self.deleted_probes = []
         self._n = 0
 
@@ -43,6 +46,14 @@ class FakeClient:
 
     def list_all_agent_rows(self):
         return list(self.agent_rows)
+
+    def list_all_sessions(self):
+        return list(self.all_sessions)
+
+    def update_session(self, session_id, fields):
+        if self.fail_session_update:
+            raise PowabaseAPIError(502, {"message": "upstream"})
+        self.updated_sessions.append((session_id, fields))
 
     def delete_agent(self, agent_id):
         if str(agent_id).startswith("probe-"):
@@ -421,3 +432,29 @@ def test_editing_only_the_budget_clamps_it():
     merged = svc.update(row, {"max_context_tokens": 999_999})
 
     assert merged["max_context_tokens"] == 64_000
+
+
+def test_deleting_an_agent_prunes_it_from_chat_exclusion_lists():
+    """A chat that excluded this agent would otherwise keep an id that can
+    never match again, accumulating junk on every delete."""
+    c = FakeClient()
+    row = AgentService(c).create("o1", "T", "", "", "gpt-4o-mini", "strict", False)
+    c.all_sessions = [
+        {"id": "s1", "excluded_agent_ids": [row["id"], "other"]},
+        {"id": "s2", "excluded_agent_ids": []},
+    ]
+
+    AgentService(c).delete(row["id"])
+
+    assert c.updated_sessions == [("s1", {"excluded_agent_ids": ["other"]})]
+
+
+def test_pruning_never_blocks_the_delete():
+    """Best-effort, like every other cleanup here: a chat that cannot be
+    updated must not leave the agent undeletable."""
+    c = FakeClient()
+    row = AgentService(c).create("o1", "T", "", "", "gpt-4o-mini", "strict", False)
+    c.all_sessions = [{"id": "s1", "excluded_agent_ids": [row["id"]]}]
+    c.fail_session_update = True
+
+    assert AgentService(c).delete(row["id"]) is True
