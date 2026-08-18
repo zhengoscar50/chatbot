@@ -332,6 +332,33 @@ def test_list_sessions_is_scoped_by_chatbot():
 
 
 @respx.mock
+def test_list_sessions_by_owner_filters_by_owner():
+    # Account deletion enumerates by owner, not by chatbot (list_sessions
+    # above) — if this filtered on the wrong column, or none at all, every
+    # other test would still pass and deletion would silently orphan chats.
+    route = respx.get(f"{BASE_URL}/rest/v1/sessions").mock(
+        return_value=httpx.Response(200, json=[{"id": "s-1"}])
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    rows = client.list_sessions_by_owner("o1")
+    assert rows == [{"id": "s-1"}]
+    assert route.calls[0].request.url.params["owner_id"] == "eq.o1"
+    assert route.calls[0].request.url.path == "/rest/v1/sessions"
+
+
+@respx.mock
+def test_list_agent_rows_by_owner_filters_by_owner():
+    route = respx.get(f"{BASE_URL}/rest/v1/agents").mock(
+        return_value=httpx.Response(200, json=[{"id": "ag-1"}])
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    rows = client.list_agent_rows_by_owner("o1")
+    assert rows == [{"id": "ag-1"}]
+    assert route.calls[0].request.url.params["owner_id"] == "eq.o1"
+    assert route.calls[0].request.url.path == "/rest/v1/agents"
+
+
+@respx.mock
 def test_run_agent_sends_runtime_knowledge_bases():
     """Query-specific KB attachment: the KBs ride along with the run itself."""
     route = respx.post(f"{BASE_URL}/api/agents/agent-1/run/stream").mock(
