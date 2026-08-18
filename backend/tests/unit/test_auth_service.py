@@ -1,4 +1,5 @@
 import pytest
+from app.clients.powabase_client import PowabaseAPIError
 from app.services.auth_service import (
     AuthService, DuplicateUsernameError, InvalidCredentialsError,
 )
@@ -18,6 +19,27 @@ class FakeClient:
         self.users.append(row)
         self.inserted.append(row)
         return row
+
+
+class RaisingClient(FakeClient):
+    """A client whose insert_user always fails, to test that no chatbot is
+    created when the user row never commits."""
+
+    def __init__(self, status_code, existing=None):
+        super().__init__(existing=existing)
+        self.status_code = status_code
+
+    def insert_user(self, row):
+        raise PowabaseAPIError(self.status_code, "boom")
+
+
+class Chatbots:
+    def __init__(self):
+        self.created = []
+
+    def create(self, owner_id, name, description=""):
+        self.created.append((owner_id, name))
+        return {"id": "cb-1"}
 
 
 def test_register_creates_lowercased_user():
@@ -58,17 +80,46 @@ def test_registering_creates_a_default_chatbot():
     it lazily on first list would race two parallel requests into two
     chatbots.
     """
-    class Chatbots:
-        def __init__(self):
-            self.created = []
-
-        def create(self, owner_id, name, description=""):
-            self.created.append((owner_id, name))
-            return {"id": "cb-1"}
-
     client = FakeClient()          # already defined in this file
     bots = Chatbots()
 
     user = AuthService(client, chatbots=bots).register("alice", "pw-12345678")
 
     assert bots.created == [(user["id"], "My chatbot")]
+
+
+def test_no_chatbot_when_insert_races_into_a_duplicate():
+    # A 409 from insert_user means another concurrent register won the
+    # username; this register must not have a user row, so it must not get
+    # a chatbot either.
+    client = RaisingClient(status_code=409)
+    bots = Chatbots()
+
+    with pytest.raises(DuplicateUsernameError):
+        AuthService(client, chatbots=bots).register("alice", "pw-12345678")
+
+    assert bots.created == []
+
+
+def test_no_chatbot_when_insert_fails_for_another_reason():
+    # Any other insert failure (e.g. the backend is down) must propagate
+    # untouched, and still must not create an orphan chatbot.
+    client = RaisingClient(status_code=502)
+    bots = Chatbots()
+
+    with pytest.raises(PowabaseAPIError):
+        AuthService(client, chatbots=bots).register("alice", "pw-12345678")
+
+    assert bots.created == []
+
+
+def test_no_chatbot_when_username_already_taken():
+    # get_user_by_username short-circuits before any insert is attempted, so
+    # there is never a user row to hang a chatbot off of.
+    client = FakeClient(existing=[{"id": "u-0", "username": "alice", "password_hash": "h"}])
+    bots = Chatbots()
+
+    with pytest.raises(DuplicateUsernameError):
+        AuthService(client, chatbots=bots).register("ALICE", "hunter2pass")
+
+    assert bots.created == []
