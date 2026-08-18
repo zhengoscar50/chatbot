@@ -219,10 +219,10 @@ class PowabaseClient:
         created = response.json()
         return created[0] if isinstance(created, list) else created
 
-    def list_sessions(self, owner_id: str) -> list:
+    def list_sessions(self, chatbot_id: str) -> list:
         response = self._client.get(
             "/rest/v1/sessions",
-            params={"owner_id": f"eq.{owner_id}", "order": "updated_at.desc"},
+            params={"chatbot_id": f"eq.{chatbot_id}", "order": "updated_at.desc"},
         )
         self._raise_for_status(response)
         return response.json()
@@ -347,10 +347,10 @@ class PowabaseClient:
         self._raise_for_status(response)
         return response.json()[0]
 
-    def list_agent_rows(self, owner_id: str) -> list:
+    def list_agent_rows(self, chatbot_id: str) -> list:
         response = self._client.get(
             "/rest/v1/agents",
-            params={"owner_id": f"eq.{owner_id}", "order": "updated_at.desc"},
+            params={"chatbot_id": f"eq.{chatbot_id}", "order": "updated_at.desc"},
         )
         self._raise_for_status(response)
         return response.json()
@@ -384,6 +384,47 @@ class PowabaseClient:
 
     def delete_agent_row(self, agent_id: str) -> None:
         response = self._client.delete("/rest/v1/agents", params={"id": f"eq.{agent_id}"})
+        self._raise_for_status(response)
+
+    # Chatbot rows (PostgREST) ------------------------------------------------
+
+    def insert_chatbot_row(self, row: dict) -> dict:
+        response = self._client.post(
+            "/rest/v1/chatbots", json=row, headers={"Prefer": "return=representation"}
+        )
+        self._raise_for_status(response)
+        return response.json()[0]
+
+    def list_chatbot_rows(self, owner_id: str) -> list:
+        response = self._client.get(
+            "/rest/v1/chatbots",
+            params={"owner_id": f"eq.{owner_id}", "order": "created_at.asc"},
+        )
+        self._raise_for_status(response)
+        return response.json()
+
+    def get_chatbot_row(self, chatbot_id: str):
+        response = self._client.get(
+            "/rest/v1/chatbots", params={"id": f"eq.{chatbot_id}"}
+        )
+        # A malformed id (not a valid uuid) -> PostgREST 400; it cannot match
+        # any chatbot, so treat it as "not found" rather than a server error.
+        if response.status_code == 400:
+            return None
+        self._raise_for_status(response)
+        rows = response.json()
+        return rows[0] if rows else None
+
+    def update_chatbot_row(self, chatbot_id: str, fields: dict) -> None:
+        response = self._client.patch(
+            "/rest/v1/chatbots", params={"id": f"eq.{chatbot_id}"}, json=fields
+        )
+        self._raise_for_status(response)
+
+    def delete_chatbot_row(self, chatbot_id: str) -> None:
+        response = self._client.delete(
+            "/rest/v1/chatbots", params={"id": f"eq.{chatbot_id}"}
+        )
         self._raise_for_status(response)
 
     # Message rows (PostgREST) ----------------------------------------------

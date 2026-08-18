@@ -215,13 +215,13 @@ def test_insert_agent_row_returns_the_created_row():
 
 
 @respx.mock
-def test_list_agent_rows_filters_by_owner():
+def test_list_agent_rows_filters_by_chatbot():
     route = respx.get(f"{BASE_URL}/rest/v1/agents").mock(
         return_value=httpx.Response(200, json=[{"id": "ag-1"}])
     )
-    rows = PowabaseClient(BASE_URL, "k").list_agent_rows("o1")
+    rows = PowabaseClient(BASE_URL, "k").list_agent_rows("cb-1")
     assert rows == [{"id": "ag-1"}]
-    assert "owner_id=eq.o1" in str(route.calls[0].request.url)
+    assert "chatbot_id=eq.cb-1" in str(route.calls[0].request.url)
 
 
 @respx.mock
@@ -245,6 +245,35 @@ def test_delete_agent_row_deletes_by_id():
     assert "id=eq.ag-1" in str(route.calls[0].request.url)
 
 
+@respx.mock
+def test_get_chatbot_row_treats_a_malformed_id_as_not_found():
+    """Same rule as agents and sessions: an id that cannot match anything is
+    "not found", not a server error."""
+    respx.get(f"{BASE_URL}/rest/v1/chatbots").mock(
+        return_value=httpx.Response(400, json={"code": "22P02"})
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    assert client.get_chatbot_row("null") is None
+
+
+@respx.mock
+def test_list_agent_rows_is_scoped_by_chatbot():
+    route = respx.get(f"{BASE_URL}/rest/v1/agents").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    client.list_agent_rows("cb-1")
+    assert route.calls[0].request.url.params["chatbot_id"] == "eq.cb-1"
+
+
+@respx.mock
+def test_list_sessions_is_scoped_by_chatbot():
+    route = respx.get(f"{BASE_URL}/rest/v1/sessions").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    client = PowabaseClient(BASE_URL, "test-key")
+    client.list_sessions("cb-1")
+    assert route.calls[0].request.url.params["chatbot_id"] == "eq.cb-1"
 
 
 @respx.mock
