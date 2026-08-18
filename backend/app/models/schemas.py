@@ -195,3 +195,18 @@ class AgentDocument(BaseModel):
     source_id: str
     filename: Optional[str] = None
     status: Optional[str] = None
+
+
+class ChatbotCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    description: str = Field(default="", max_length=500)
+
+
+class ChatbotUpdateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+
+
+class ChatbotResponse(BaseModel):
+    id: str
+    name: str
+    description: str = ""
