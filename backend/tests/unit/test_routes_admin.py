@@ -56,6 +56,14 @@ class FakeAdminClient:
         self.session_messages = {
             "psid-1": {"messages": [{"role": "user", "content": "hi"}]},
         }
+        # Owner-scoped, unlike list_sessions/list_agent_rows above which are
+        # chatbot-scoped: account deletion must find everything a user owns
+        # across every chatbot, not just one it already knows about.
+        self.sessions_by_owner = {"u1": [{"id": "s1"}, {"id": "s2"}]}
+        self.agents_by_owner = {"u1": [{"id": "ag-1"}]}
+        self.chatbots_by_owner = {}
+        self.failing_chatbot_deletes = set()
+        self.deleted_chatbots = []
         self.updated = []
         self.deleted_users = []
 
@@ -67,6 +75,21 @@ class FakeAdminClient:
 
     def list_sessions(self, owner_id):
         return [s for s in self.sessions if s["owner_id"] == owner_id]
+
+    def list_sessions_by_owner(self, owner_id):
+        return list(self.sessions_by_owner.get(owner_id, []))
+
+    def list_agent_rows_by_owner(self, owner_id):
+        return list(self.agents_by_owner.get(owner_id, []))
+
+    def list_chatbot_rows(self, owner_id):
+        return list(self.chatbots_by_owner.get(owner_id, []))
+
+    def delete_chatbot_row(self, chatbot_id):
+        if chatbot_id in self.failing_chatbot_deletes:
+            from app.clients.powabase_client import PowabaseAPIError
+            raise PowabaseAPIError(500, {"error": "boom"})
+        self.deleted_chatbots.append(chatbot_id)
 
     def get_user(self, uid):
         return next((u for u in self.users if u["id"] == uid), None)

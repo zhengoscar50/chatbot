@@ -2,6 +2,7 @@ import pytest
 from app.services import admin_users
 from app.services.admin_users import UsernameTakenError
 from app.core.security import verify_password
+from app.clients.powabase_client import PowabaseAPIError
 
 
 class FakeClient:
@@ -13,12 +14,31 @@ class FakeClient:
         self.sessions = [
             {"id": "s1", "owner_id": "u1"}, {"id": "s2", "owner_id": "u1"},
         ]
+        # Owner-scoped listings: separate from `sessions`/chatbot-scoped
+        # `list_sessions` because delete_user must find everything a user
+        # owns across every chatbot, not just one. Defaults mirror the
+        # `sessions` list above and the agents delete_user is expected to
+        # find, so tests that don't care about this still pass unchanged.
+        self.sessions_by_owner = {"u1": [{"id": "s1"}, {"id": "s2"}]}
+        self.agents_by_owner = {"u1": [{"id": "ag-1"}, {"id": "ag-2"}]}
+        self.chatbots_by_owner = {}
+        self.failing_chatbot_deletes = set()
         self.updated = []
         self.deleted_users = []
+        self.deleted_chatbots = []
 
     def list_users(self): return list(self.users)
     def list_all_sessions(self): return list(self.sessions)
-    def list_sessions(self, owner_id): return [s for s in self.sessions if s["owner_id"] == owner_id]
+    def list_sessions(self, chatbot_id): return [s for s in self.sessions if s.get("chatbot_id") == chatbot_id]
+    def list_sessions_by_owner(self, owner_id): return list(self.sessions_by_owner.get(owner_id, []))
+    def list_agent_rows_by_owner(self, owner_id): return list(self.agents_by_owner.get(owner_id, []))
+    def list_chatbot_rows(self, owner_id): return list(self.chatbots_by_owner.get(owner_id, []))
+
+    def delete_chatbot_row(self, chatbot_id):
+        if chatbot_id in self.failing_chatbot_deletes:
+            raise PowabaseAPIError(500, {"error": "boom"})
+        self.deleted_chatbots.append(chatbot_id)
+
     def get_user(self, uid): return next((u for u in self.users if u["id"] == uid), None)
     def get_user_by_username(self, name): return next((u for u in self.users if u["username"] == name), None)
     def update_user(self, uid, fields): self.updated.append((uid, fields))
@@ -72,9 +92,11 @@ def test_delete_user_also_deletes_their_agents():
 
 
 def test_delete_user_leaves_other_users_agents_alone():
-    client, ss = FakeClient(), FakeSessionService()
-    ags = FakeAgentService([{"id": "ag-1", "owner_id": "u1"},
-                            {"id": "ag-mine", "owner_id": "u2"}])
+    client, ss, ags = FakeClient(), FakeSessionService(), FakeAgentService()
+    client.agents_by_owner = {
+        "u1": [{"id": "ag-1"}],
+        "u2": [{"id": "ag-mine"}],
+    }
 
     admin_users.delete_user(client, ss, ags, "u1")
 
@@ -84,8 +106,6 @@ def test_delete_user_leaves_other_users_agents_alone():
 def test_delete_user_survives_a_failing_agent_delete():
     # The user row delete is authoritative; a stale remote resource must not
     # leave the account half-removed.
-    from app.clients.powabase_client import PowabaseAPIError
-
     class Failing(FakeAgentService):
         def delete(self, agent_id):
             raise PowabaseAPIError(404, {"error": "gone"})
@@ -100,6 +120,54 @@ def test_delete_user_missing_returns_false():
     assert admin_users.delete_user(client, ss, ags, "ghost") is False
     assert client.deleted_users == []
     assert ags.deleted == []
+
+
+def test_deleting_a_user_still_removes_agents_and_chats_in_every_chatbot():
+    """Enumeration is by OWNER, not by chatbot. Listing by chatbot would find
+    nothing for a user id and strand everything they own. The fake spreads
+    the user's sessions and agents across two different chatbot ids to prove
+    delete_user doesn't need to already know either chatbot to find them."""
+    client, ss, ags = FakeClient(), FakeSessionService(), FakeAgentService()
+    client.sessions_by_owner = {
+        "u1": [
+            {"id": "s-1", "chatbot_id": "cb-a"},
+            {"id": "s-2", "chatbot_id": "cb-b"},
+        ]
+    }
+    client.agents_by_owner = {
+        "u1": [
+            {"id": "ag-1", "chatbot_id": "cb-a"},
+            {"id": "ag-2", "chatbot_id": "cb-b"},
+        ]
+    }
+
+    assert admin_users.delete_user(client, ss, ags, "u1") is True
+
+    assert set(ss.deleted) == {"s-1", "s-2"}
+    assert set(ags.deleted) == {"ag-1", "ag-2"}
+
+
+def test_delete_user_also_deletes_their_chatbots():
+    client, ss, ags = FakeClient(), FakeSessionService(), FakeAgentService()
+    client.chatbots_by_owner = {"u1": [{"id": "cb-a"}, {"id": "cb-b"}]}
+
+    admin_users.delete_user(client, ss, ags, "u1")
+
+    assert set(client.deleted_chatbots) == {"cb-a", "cb-b"}
+
+
+def test_delete_user_survives_a_failing_chatbot_delete():
+    # Best-effort, same as sessions/agents: one stale chatbot row must not
+    # block the (authoritative) user row delete, and the other chatbot
+    # should still get cleaned up.
+    client, ss, ags = FakeClient(), FakeSessionService(), FakeAgentService()
+    client.chatbots_by_owner = {"u1": [{"id": "cb-a"}, {"id": "cb-b"}]}
+    client.failing_chatbot_deletes = {"cb-a"}
+
+    assert admin_users.delete_user(client, ss, ags, "u1") is True
+
+    assert client.deleted_chatbots == ["cb-b"]
+    assert client.deleted_users == ["u1"]
 
 
 def test_reset_password_hashes_and_updates():
