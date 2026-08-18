@@ -71,7 +71,7 @@ function wireAgents() {
 async function loadAgents() {
   if (modelChoices.length === 0) await loadModelChoices();
   try {
-    const res = await authFetch("/agents");
+    const res = await authFetch(`/agents?chatbot_id=${encodeURIComponent(currentChatbotId)}`);
     if (!res.ok) {
       // Say something. A silently blank picker leaves the user with no idea
       // whether they have no agents or the request failed.
@@ -266,6 +266,9 @@ async function saveAgentRequest() {
     return;
   }
   if (model) payload.model = model;
+  // Only creation needs the chatbot id — an existing agent already belongs to
+  // one, and PATCH has no field for it.
+  if (!editingAgentId) payload.chatbot_id = currentChatbotId;
 
   const url = editingAgentId ? `/agents/${encodeURIComponent(editingAgentId)}` : "/agents";
   try {
