@@ -67,19 +67,30 @@ class FakeIngestClient:
         self.removed.append((kb_id, source_id))
 
 
-def build_app(service=None, client=None):
+class FakeChatbots:
+    """Stands in for ChatbotService.get_owned.
+
+    owned=True (the default) reports every chatbot as belonging to whoever
+    asks — enough for tests that aren't exercising the ownership guard
+    itself. owned=False simulates a chatbot that is missing, or somebody
+    else's.
+    """
+
+    def __init__(self, owned=True):
+        self.owned = owned
+
+    def get_owned(self, chatbot_id, owner_id):
+        return {"id": chatbot_id, "owner_id": owner_id} if self.owned else None
+
+
+def build_app(service=None, client=None, chatbots=None):
     app = FastAPI()
     app.include_router(agents_route.router)
     svc = service or FakeAgentService()
     app.dependency_overrides[get_agent_service] = lambda: svc
     app.dependency_overrides[get_powabase_client] = lambda: (client or FakeIngestClient())
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
-    # No chatbot_id route parameter yet (a later task adds one); the fake
-    # stands in for "the caller's one chatbot" using the owner id itself,
-    # matching how these tests seed agents via svc.create(owner_id, owner_id, ...).
-    app.dependency_overrides[get_chatbot_service] = lambda: SimpleNamespace(
-        list=lambda owner_id: [{"id": owner_id}]
-    )
+    app.dependency_overrides[get_chatbot_service] = lambda: (chatbots or FakeChatbots())
     app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
         default_agent_model="gpt-4o-mini",
         poll_interval_seconds=0.01,
@@ -95,7 +106,7 @@ def build_app(service=None, client=None):
 def test_create_agent_returns_the_configured_agent():
     app = build_app()
     r = TestClient(app).post("/agents", json={
-        "name": "Tutor", "instructions": "Be terse.",
+        "chatbot_id": "cb-1", "name": "Tutor", "instructions": "Be terse.",
         "grounding": "open", "use_general_kb": True,
     })
     assert r.status_code == 201
@@ -108,36 +119,53 @@ def test_create_agent_returns_the_configured_agent():
 
 def test_create_agent_falls_back_to_the_default_model():
     app = build_app()
-    assert TestClient(app).post("/agents", json={"name": "T"}).json()["model"] == "gpt-4o-mini"
+    r = TestClient(app).post("/agents", json={"chatbot_id": "cb-1", "name": "T"})
+    assert r.json()["model"] == "gpt-4o-mini"
 
 
 def test_create_agent_rejects_unknown_grounding():
     app = build_app()
-    r = TestClient(app).post("/agents", json={"name": "T", "grounding": "sideways"})
+    r = TestClient(app).post(
+        "/agents", json={"chatbot_id": "cb-1", "name": "T", "grounding": "sideways"}
+    )
     assert r.status_code == 422
 
 
 def test_create_agent_rejects_empty_name():
     app = build_app()
-    assert TestClient(app).post("/agents", json={"name": ""}).status_code == 422
+    r = TestClient(app).post("/agents", json={"chatbot_id": "cb-1", "name": ""})
+    assert r.status_code == 422
+
+
+def test_create_agent_requires_a_chatbot_you_own():
+    app = build_app(chatbots=FakeChatbots(owned=False))
+    r = TestClient(app).post("/agents", json={"chatbot_id": "cb-OTHER", "name": "T"})
+    assert r.status_code == 404
 
 
 def test_list_agents_returns_only_mine():
     svc = FakeAgentService()
-    svc.create("o1", "o1", "Mine", "", "", "m", "strict", False)
-    svc.create("other", "other", "Theirs", "", "", "m", "strict", False)
+    svc.create("cb-1", "o1", "Mine", "", "", "m", "strict", False)
+    svc.create("cb-2", "other", "Theirs", "", "", "m", "strict", False)
     app = build_app(svc)
 
-    assert [a["name"] for a in TestClient(app).get("/agents").json()] == ["Mine"]
+    body = TestClient(app).get("/agents?chatbot_id=cb-1").json()
+    assert [a["name"] for a in body] == ["Mine"]
+
+
+def test_listing_agents_requires_a_chatbot_you_own():
+    svc = FakeAgentService()
+    app = build_app(svc, chatbots=FakeChatbots(owned=False))
+    assert TestClient(app).get("/agents?chatbot_id=cb-1").status_code == 404
 
 
 def test_trained_flag_is_true_once_a_kb_exists():
     svc = FakeAgentService()
-    row = svc.create("o1", "o1", "T", "", "", "m", "strict", False)
+    row = svc.create("cb-1", "o1", "T", "", "", "m", "strict", False)
     row["kb_id"] = "kb-1"
     app = build_app(svc)
 
-    assert TestClient(app).get("/agents").json()[0]["trained"] is True
+    assert TestClient(app).get("/agents?chatbot_id=cb-1").json()[0]["trained"] is True
 
 
 def test_get_agent_404_for_unknown_id():
@@ -362,11 +390,12 @@ def test_list_agents_502_when_powabase_is_unreachable():
     from app.clients.powabase_client import PowabaseAPIError
 
     class Failing(FakeAgentService):
-        def list(self, owner_id):
+        def list(self, chatbot_id):
             raise PowabaseAPIError(404, {"code": "PGRST205"})
 
     app = build_app(Failing())
-    assert TestClient(app, raise_server_exceptions=False).get("/agents").status_code == 502
+    r = TestClient(app, raise_server_exceptions=False).get("/agents?chatbot_id=cb-1")
+    assert r.status_code == 502
 
 
 def test_get_agent_502_when_powabase_is_unreachable():
@@ -389,7 +418,9 @@ def test_create_agent_400_for_a_model_the_provider_refuses():
             raise ModelRejectedError("not-a-real-model", "unknown model")
 
     app = build_app(Refusing())
-    r = TestClient(app).post("/agents", json={"name": "T", "model": "not-a-real-model"})
+    r = TestClient(app).post(
+        "/agents", json={"chatbot_id": "cb-1", "name": "T", "model": "not-a-real-model"}
+    )
 
     assert r.status_code == 400
     assert "not-a-real-model" in r.json()["detail"]
@@ -415,7 +446,8 @@ def test_patch_agent_400_for_a_model_the_provider_refuses():
 def test_create_agent_accepts_and_returns_a_description():
     app = build_app()
     r = TestClient(app).post("/agents", json={
-        "name": "Tutor", "description": "Answers AP Chemistry questions.",
+        "chatbot_id": "cb-1", "name": "Tutor",
+        "description": "Answers AP Chemistry questions.",
     })
     assert r.status_code == 201
     assert r.json()["description"] == "Answers AP Chemistry questions."
@@ -423,11 +455,13 @@ def test_create_agent_accepts_and_returns_a_description():
 
 def test_agent_description_defaults_to_empty():
     app = build_app()
-    assert TestClient(app).post("/agents", json={"name": "T"}).json()["description"] == ""
+    r = TestClient(app).post("/agents", json={"chatbot_id": "cb-1", "name": "T"})
+    assert r.json()["description"] == ""
 
 
 def test_list_agents_includes_descriptions_for_routing():
     svc = FakeAgentService()
-    svc.create("o1", "o1", "T", "", "Answers chemistry questions.", "m", "strict", False)
+    svc.create("cb-1", "o1", "T", "", "Answers chemistry questions.", "m", "strict", False)
     app = build_app(svc)
-    assert TestClient(app).get("/agents").json()[0]["description"] == "Answers chemistry questions."
+    body = TestClient(app).get("/agents?chatbot_id=cb-1").json()
+    assert body[0]["description"] == "Answers chemistry questions."

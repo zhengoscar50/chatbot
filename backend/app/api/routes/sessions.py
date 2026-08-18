@@ -20,13 +20,6 @@ from app.services.session_service import SessionService, get_session_service
 router = APIRouter(tags=["sessions"])
 
 
-def _default_chatbot_id(chatbots: ChatbotService, owner_id: str) -> str:
-    # This route has no chatbot_id parameter yet — a later task adds one and
-    # scopes it properly. Every account has at least one chatbot (created at
-    # registration), so the oldest one stands in until then.
-    return chatbots.list(owner_id)[0]["id"]
-
-
 @router.post("/sessions", response_model=SessionResponse)
 async def create_session(
     req: SessionCreateRequest,
@@ -34,10 +27,11 @@ async def create_session(
     sessions: SessionService = Depends(get_session_service),
     chatbots: ChatbotService = Depends(get_chatbot_service),
 ):
+    if await run_in_threadpool(chatbots.get_owned, req.chatbot_id, user["id"]) is None:
+        raise HTTPException(status_code=404, detail="Chatbot not found")
     try:
-        chatbot_id = await run_in_threadpool(_default_chatbot_id, chatbots, user["id"])
         row = await run_in_threadpool(
-            sessions.create_session, user["id"], chatbot_id, req.name
+            sessions.create_session, user["id"], req.chatbot_id, req.name
         )
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
@@ -98,12 +92,14 @@ async def delete_session(
 
 @router.get("/sessions", response_model=list[SessionSummary])
 async def list_sessions(
+    chatbot_id: str,
     user: dict = Depends(get_current_user),
     sessions: SessionService = Depends(get_session_service),
     chatbots: ChatbotService = Depends(get_chatbot_service),
 ):
+    if await run_in_threadpool(chatbots.get_owned, chatbot_id, user["id"]) is None:
+        raise HTTPException(status_code=404, detail="Chatbot not found")
     try:
-        chatbot_id = await run_in_threadpool(_default_chatbot_id, chatbots, user["id"])
         return await run_in_threadpool(sessions.list, chatbot_id)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

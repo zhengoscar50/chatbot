@@ -354,3 +354,32 @@ def test_a_chat_with_no_exclusions_sees_every_agent(monkeypatch):
     )
 
     assert seen["roster"] == ["ag-1"]
+
+
+def test_the_roster_comes_from_the_chats_chatbot(monkeypatch):
+    """Read from the chat row, never the request: otherwise a client could ask
+    one chatbot's question against another's roster."""
+    seen = {}
+
+    def record(self, query, roster, history=None):
+        seen["roster"] = [a["id"] for a in roster]
+        return Decision(None)
+
+    monkeypatch.setattr(chat_route.OrchestratorService, "route", record)
+    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    svc = FakeSessionService()
+    svc.row = dict(svc.row, chatbot_id="cb-1")
+
+    class ScopedAgents:
+        def list(self, chatbot_id):
+            seen["asked_for"] = chatbot_id
+            return [{"id": "ag-1", "name": "A", "powabase_agent_id": "pa-1",
+                     "kb_id": "kb-1", "kb_full_id": None, "model": "gpt-4o-mini",
+                     "use_general_kb": False}]
+
+    TestClient(build_app(svc, ScopedAgents())).post(
+        "/chat", json={"session_id": "s1", "query": "hi", "chatbot_id": "cb-OTHER"}
+    )
+
+    assert seen["asked_for"] == "cb-1"
+    assert seen["roster"] == ["ag-1"]
