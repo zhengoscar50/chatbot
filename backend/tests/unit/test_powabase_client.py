@@ -247,11 +247,14 @@ def test_delete_agent_row_deletes_by_id():
 
 @respx.mock
 def test_insert_chatbot_row_returns_the_created_row():
-    respx.post(f"{BASE_URL}/rest/v1/chatbots").mock(
-        return_value=httpx.Response(201, json=[{"id": "cb-1", "name": "Support Bot"}])
+    route = respx.post(f"{BASE_URL}/rest/v1/chatbots").mock(
+        return_value=httpx.Response(201, json=[{"id": "cb-1", "name": "Support Bot"}, {"id": "cb-2"}])
     )
     row = PowabaseClient(BASE_URL, "k").insert_chatbot_row({"name": "Support Bot"})
     assert row["id"] == "cb-1"
+    assert row["name"] == "Support Bot"
+    assert json.loads(route.calls[0].request.content) == {"name": "Support Bot"}
+    assert route.calls[0].request.headers["prefer"] == "return=representation"
 
 
 @respx.mock
