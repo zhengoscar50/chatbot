@@ -8,6 +8,7 @@ from app.api.routes import agents as agents_route
 from app.clients.powabase_client import get_powabase_client
 from app.core.config import get_settings
 from app.services.agent_service import get_agent_service
+from app.services.chatbot_service import get_chatbot_service
 
 
 class FakeAgentService:
@@ -17,11 +18,12 @@ class FakeAgentService:
         self.trained_full = []
         self._n = 0
 
-    def create(self, owner_id, name, instructions, description, model, grounding,
-               use_general_kb, max_context_tokens=None):
+    def create(self, chatbot_id, owner_id, name, instructions, description, model,
+               grounding, use_general_kb, max_context_tokens=None):
         self._n += 1
         row = {
-            "id": f"ag-{self._n}", "owner_id": owner_id, "name": name,
+            "id": f"ag-{self._n}", "chatbot_id": chatbot_id, "owner_id": owner_id,
+            "name": name,
             "instructions": instructions, "description": description,
             "model": model, "grounding": grounding,
             "use_general_kb": use_general_kb, "powabase_agent_id": "pa-1",
@@ -31,8 +33,8 @@ class FakeAgentService:
         self.rows[row["id"]] = row
         return row
 
-    def list(self, owner_id):
-        return [r for r in self.rows.values() if r["owner_id"] == owner_id]
+    def list(self, chatbot_id):
+        return [r for r in self.rows.values() if r["chatbot_id"] == chatbot_id]
 
     def get_owned(self, agent_id, owner_id):
         row = self.rows.get(agent_id)
@@ -72,6 +74,12 @@ def build_app(service=None, client=None):
     app.dependency_overrides[get_agent_service] = lambda: svc
     app.dependency_overrides[get_powabase_client] = lambda: (client or FakeIngestClient())
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
+    # No chatbot_id route parameter yet (a later task adds one); the fake
+    # stands in for "the caller's one chatbot" using the owner id itself,
+    # matching how these tests seed agents via svc.create(owner_id, owner_id, ...).
+    app.dependency_overrides[get_chatbot_service] = lambda: SimpleNamespace(
+        list=lambda owner_id: [{"id": owner_id}]
+    )
     app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
         default_agent_model="gpt-4o-mini",
         poll_interval_seconds=0.01,
@@ -116,8 +124,8 @@ def test_create_agent_rejects_empty_name():
 
 def test_list_agents_returns_only_mine():
     svc = FakeAgentService()
-    svc.create("o1", "Mine", "", "", "m", "strict", False)
-    svc.create("other", "Theirs", "", "", "m", "strict", False)
+    svc.create("o1", "o1", "Mine", "", "", "m", "strict", False)
+    svc.create("other", "other", "Theirs", "", "", "m", "strict", False)
     app = build_app(svc)
 
     assert [a["name"] for a in TestClient(app).get("/agents").json()] == ["Mine"]
@@ -125,7 +133,7 @@ def test_list_agents_returns_only_mine():
 
 def test_trained_flag_is_true_once_a_kb_exists():
     svc = FakeAgentService()
-    row = svc.create("o1", "T", "", "", "m", "strict", False)
+    row = svc.create("o1", "o1", "T", "", "", "m", "strict", False)
     row["kb_id"] = "kb-1"
     app = build_app(svc)
 
@@ -139,7 +147,7 @@ def test_get_agent_404_for_unknown_id():
 
 def test_patch_updates_fields():
     svc = FakeAgentService()
-    svc.create("o1", "Old", "", "", "m", "strict", False)
+    svc.create("o1", "o1", "Old", "", "", "m", "strict", False)
     app = build_app(svc)
 
     r = TestClient(app).patch("/agents/ag-1", json={"name": "New", "grounding": "open"})
@@ -151,7 +159,7 @@ def test_patch_updates_fields():
 
 def test_patch_ignores_unset_fields():
     svc = FakeAgentService()
-    svc.create("o1", "Keep", "Keep me.", "", "m", "strict", False)
+    svc.create("o1", "o1", "Keep", "Keep me.", "", "m", "strict", False)
     app = build_app(svc)
 
     TestClient(app).patch("/agents/ag-1", json={"name": "Renamed"})
@@ -161,7 +169,7 @@ def test_patch_ignores_unset_fields():
 
 def test_patch_404_for_another_users_agent():
     svc = FakeAgentService()
-    svc.create("someone-else", "Theirs", "", "", "m", "strict", False)
+    svc.create("someone-else", "someone-else", "Theirs", "", "", "m", "strict", False)
     app = build_app(svc)
 
     assert TestClient(app).patch("/agents/ag-1", json={"name": "x"}).status_code == 404
@@ -169,7 +177,7 @@ def test_patch_404_for_another_users_agent():
 
 def test_delete_agent_204_and_cascades():
     svc = FakeAgentService()
-    svc.create("o1", "T", "", "", "m", "strict", False)
+    svc.create("o1", "o1", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     assert TestClient(app).delete("/agents/ag-1").status_code == 204
@@ -178,7 +186,7 @@ def test_delete_agent_204_and_cascades():
 
 def test_delete_404_for_another_users_agent():
     svc = FakeAgentService()
-    svc.create("someone-else", "T", "", "", "m", "strict", False)
+    svc.create("someone-else", "someone-else", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     assert TestClient(app).delete("/agents/ag-1").status_code == 404
@@ -189,7 +197,7 @@ def test_delete_404_for_another_users_agent():
 
 def test_train_404_for_another_users_agent():
     svc = FakeAgentService()
-    svc.create("someone-else", "T", "", "", "m", "strict", False)
+    svc.create("someone-else", "someone-else", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     r = TestClient(app).post(
@@ -232,7 +240,7 @@ def test_training_returns_202_immediately(monkeypatch):
     monkeypatch.setattr(agents_route, "IngestService", FakeTrainIngest)
     FakeTrainIngest.started, FakeTrainIngest.indexed = [], []
     svc = FakeAgentService()
-    svc.create("o1", "T", "", "", "m", "strict", False)
+    svc.create("o1", "o1", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     r = TestClient(app).post(
@@ -250,7 +258,7 @@ def test_training_routes_a_small_document_to_the_whole_document_tier(monkeypatch
     FakeTrainIngest.started, FakeTrainIngest.indexed = [], []
     FakeTrainIngest.char_count_value = 500          # small
     svc = FakeAgentService()
-    svc.create("o1", "T", "", "", "m", "strict", False)
+    svc.create("o1", "o1", "T", "", "", "m", "strict", False)
 
     TestClient(build_app(svc)).post(
         "/agents/ag-1/train", files={"file": ("s.pdf", b"%PDF-1.4", "application/pdf")}
@@ -265,7 +273,7 @@ def test_training_routes_a_large_document_to_the_chunked_tier(monkeypatch):
     FakeTrainIngest.started, FakeTrainIngest.indexed = [], []
     FakeTrainIngest.char_count_value = 500_000      # past full_document_max_chars
     svc = FakeAgentService()
-    svc.create("o1", "T", "", "", "m", "strict", False)
+    svc.create("o1", "o1", "T", "", "", "m", "strict", False)
 
     TestClient(build_app(svc)).post(
         "/agents/ag-1/train", files={"file": ("l.pdf", b"%PDF-1.4", "application/pdf")}
@@ -278,7 +286,7 @@ def test_training_routes_a_large_document_to_the_chunked_tier(monkeypatch):
 
 def test_documents_lists_both_permanent_kbs():
     svc = FakeAgentService()
-    row = svc.create("o1", "T", "", "", "m", "strict", False)
+    row = svc.create("o1", "o1", "T", "", "", "m", "strict", False)
     row["kb_id"], row["kb_full_id"] = "kb-c", "kb-f"
     client = FakeIngestClient()
     # Real Powabase shape: id is the indexed-source link, and the fields are
@@ -300,7 +308,7 @@ def test_documents_lists_both_permanent_kbs():
 
 def test_documents_empty_for_untrained_agent():
     svc = FakeAgentService()
-    svc.create("o1", "T", "", "", "m", "strict", False)
+    svc.create("o1", "o1", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     assert TestClient(app).get("/agents/ag-1/documents").json() == []
@@ -308,7 +316,7 @@ def test_documents_empty_for_untrained_agent():
 
 def test_documents_404_for_another_users_agent():
     svc = FakeAgentService()
-    svc.create("someone-else", "T", "", "", "m", "strict", False)
+    svc.create("someone-else", "someone-else", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     assert TestClient(app).get("/agents/ag-1/documents").status_code == 404
@@ -316,7 +324,7 @@ def test_documents_404_for_another_users_agent():
 
 def test_untrain_unlinks_from_the_kb_that_holds_it():
     svc = FakeAgentService()
-    row = svc.create("o1", "T", "", "", "m", "strict", False)
+    row = svc.create("o1", "o1", "T", "", "", "m", "strict", False)
     row["kb_id"], row["kb_full_id"] = "kb-c", "kb-f"
     client = FakeIngestClient()
     client.kb_sources = {"kb-f": [{"id": "ix-2", "source_id": "s2"}]}
@@ -333,7 +341,7 @@ def test_untrain_unlinks_from_the_kb_that_holds_it():
 
 def test_untrain_404_when_the_agent_does_not_hold_that_document():
     svc = FakeAgentService()
-    row = svc.create("o1", "T", "", "", "m", "strict", False)
+    row = svc.create("o1", "o1", "T", "", "", "m", "strict", False)
     row["kb_id"] = "kb-c"
     app = build_app(svc, FakeIngestClient())
 
@@ -342,7 +350,7 @@ def test_untrain_404_when_the_agent_does_not_hold_that_document():
 
 def test_untrain_404_for_another_users_agent():
     svc = FakeAgentService()
-    svc.create("someone-else", "T", "", "", "m", "strict", False)
+    svc.create("someone-else", "someone-else", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     assert TestClient(app).delete("/agents/ag-1/documents/s1").status_code == 404
@@ -395,7 +403,7 @@ def test_patch_agent_400_for_a_model_the_provider_refuses():
             raise ModelRejectedError("bad", "unknown model")
 
     svc = Refusing()
-    svc.create("o1", "T", "", "", "m", "strict", False)
+    svc.create("o1", "o1", "T", "", "", "m", "strict", False)
     app = build_app(svc)
 
     r = TestClient(app).patch("/agents/ag-1", json={"model": "bad"})
@@ -420,6 +428,6 @@ def test_agent_description_defaults_to_empty():
 
 def test_list_agents_includes_descriptions_for_routing():
     svc = FakeAgentService()
-    svc.create("o1", "T", "", "Answers chemistry questions.", "m", "strict", False)
+    svc.create("o1", "o1", "T", "", "Answers chemistry questions.", "m", "strict", False)
     app = build_app(svc)
     assert TestClient(app).get("/agents").json()[0]["description"] == "Answers chemistry questions."

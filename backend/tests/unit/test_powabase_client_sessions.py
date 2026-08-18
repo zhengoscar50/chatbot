@@ -23,17 +23,19 @@ def test_insert_session_returns_created_row():
 
 
 @respx.mock
-def test_list_sessions_filters_by_owner_id():
+def test_list_sessions_filters_by_chatbot_id():
+    # Chats are scoped to a chatbot, not directly to an owner — see
+    # test_list_sessions_is_scoped_by_chatbot in test_powabase_client.py.
     route = respx.get(f"{BASE_URL}/rest/v1/sessions").mock(
         return_value=httpx.Response(200, json=[{"id": "s1", "name": "A", "updated_at": "t"}])
     )
     client = PowabaseClient(BASE_URL, "k")
 
-    rows = client.list_sessions("owner-1")
+    rows = client.list_sessions("cb-1")
 
     assert rows == [{"id": "s1", "name": "A", "updated_at": "t"}]
     request = route.calls.last.request
-    assert request.url.params["owner_id"] == "eq.owner-1"
+    assert request.url.params["chatbot_id"] == "eq.cb-1"
     assert request.url.params["order"] == "updated_at.desc"
 
 

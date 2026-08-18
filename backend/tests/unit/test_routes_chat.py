@@ -20,7 +20,7 @@ from app.services.session_service import get_session_service
 class FakeSessionService:
     def __init__(self):
         self.touched = []
-        self.row = {"id": "s1", "name": "New chat",
+        self.row = {"id": "s1", "name": "New chat", "chatbot_id": "cb-1",
                     "powabase_session_id": None, "kb_id": "kb-s"}
 
     def get_owned_session(self, session_id, owner_id):

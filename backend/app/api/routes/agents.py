@@ -24,6 +24,7 @@ from app.models.schemas import (
     IngestStatusResponse,
 )
 from app.services.agent_service import AgentService, ModelRejectedError, get_agent_service
+from app.services.chatbot_service import ChatbotService, get_chatbot_service
 from app.services.context_budget import clamp_context_tokens, max_context_for
 from app.services.ingest_service import (
     AttentionRequiredError,
@@ -64,6 +65,13 @@ def _finish_training(service, agents, row, source_id, full_document_max_chars) -
         logger.warning("training %s: upstream %s", source_id, e.status_code)
 
 
+def _default_chatbot_id(chatbots: ChatbotService, owner_id: str) -> str:
+    # This route has no chatbot_id parameter yet — a later task adds one and
+    # scopes it properly. Every account has at least one chatbot (created at
+    # registration), so the oldest one stands in until then.
+    return chatbots.list(owner_id)[0]["id"]
+
+
 def _trained(row: dict) -> bool:
     return bool(row.get("kb_id") or row.get("kb_full_id"))
 
@@ -94,11 +102,13 @@ async def create_agent(
     req: AgentCreateRequest,
     user: dict = Depends(get_current_user),
     agents: AgentService = Depends(get_agent_service),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
     settings=Depends(get_settings),
 ):
+    chatbot_id = await run_in_threadpool(_default_chatbot_id, chatbots, user["id"])
     try:
         row = await run_in_threadpool(
-            agents.create, user["id"], req.name, req.instructions, req.description,
+            agents.create, chatbot_id, user["id"], req.name, req.instructions, req.description,
             req.model or settings.default_agent_model, req.grounding, req.use_general_kb,
             req.max_context_tokens,
         )
@@ -116,9 +126,11 @@ async def create_agent(
 async def list_agents(
     user: dict = Depends(get_current_user),
     agents: AgentService = Depends(get_agent_service),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
 ):
     try:
-        rows = await run_in_threadpool(agents.list, user["id"])
+        chatbot_id = await run_in_threadpool(_default_chatbot_id, chatbots, user["id"])
+        rows = await run_in_threadpool(agents.list, chatbot_id)
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return [

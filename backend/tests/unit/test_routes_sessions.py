@@ -7,14 +7,15 @@ from app.api.deps import get_current_user
 from app.api.routes import sessions as sessions_route
 from app.clients.powabase_client import get_powabase_client
 from app.services.agent_service import get_agent_service
+from app.services.chatbot_service import get_chatbot_service
 from app.services.session_service import get_session_service
 
 
 class FakeSessionService:
-    def create_session(self, owner_id, name=None):
+    def create_session(self, owner_id, chatbot_id, name=None):
         return {"id": "s1", "name": name or "New chat"}
 
-    def list(self, owner_id):
+    def list(self, chatbot_id):
         return [{"id": "s1", "name": "Taxes", "updated_at": "t1"}]
 
     def get_owned_session(self, session_id, owner_id):
@@ -22,7 +23,7 @@ class FakeSessionService:
             return None
         if session_id == "not-mine":
             return None
-        return {"id": session_id, "powabase_session_id": "ps1"}
+        return {"id": session_id, "powabase_session_id": "ps1", "chatbot_id": "cb-1"}
 
 
 class FakeClient:
@@ -46,6 +47,11 @@ def build_app():
     )
     app.dependency_overrides[get_powabase_client] = lambda: FakeClient()
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
+    # No chatbot_id route parameter yet (a later task adds one); the fake
+    # stands in for "the caller's one chatbot".
+    app.dependency_overrides[get_chatbot_service] = lambda: SimpleNamespace(
+        list=lambda owner_id: [{"id": "cb-1"}]
+    )
     return app
 
 

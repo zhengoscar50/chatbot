@@ -17,6 +17,7 @@ from app.api.routes.sessions import router as sessions_router
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient
 from app.core.config import FRONTEND_DIR, get_settings
 from app.services.agent_service import AgentService
+from app.services.chatbot_service import ChatbotService
 from app.services.general_assistant import ensure_general_assistant
 from app.services.general_kb import ensure_general_kb
 from app.services.orchestrator import ensure_orchestrator_agent
@@ -51,6 +52,9 @@ async def lifespan(app: FastAPI):
         app.state.scratch_kb_id = scratch_kb_id
         app.state.orchestrator_agent_id = orchestrator_agent_id
         app.state.general_assistant_id = general_assistant_id
+        # Registration (auth.py) and the agent/session list & create routes all
+        # depend on this — without it they'd 500 on app.state.chatbot_service.
+        app.state.chatbot_service = ChatbotService(client)
         agent_service = AgentService(client, reranker_config)
         # Push the current grounding clause onto agents that already exist.
         # Prompts are otherwise only patched when a user edits an agent, so a
