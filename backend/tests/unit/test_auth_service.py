@@ -48,3 +48,27 @@ def test_authenticate_wrong_password_raises():
 def test_authenticate_unknown_user_raises():
     with pytest.raises(InvalidCredentialsError):
         AuthService(FakeClient()).authenticate("ghost", "whatever")
+
+
+def test_registering_creates_a_default_chatbot():
+    """The backfill only covers users who already own something, so without
+    this a newly registered account has nowhere to put its first agent.
+
+    Registration is also the only place this can happen exactly once — doing
+    it lazily on first list would race two parallel requests into two
+    chatbots.
+    """
+    class Chatbots:
+        def __init__(self):
+            self.created = []
+
+        def create(self, owner_id, name, description=""):
+            self.created.append((owner_id, name))
+            return {"id": "cb-1"}
+
+    client = FakeClient()          # already defined in this file
+    bots = Chatbots()
+
+    user = AuthService(client, chatbots=bots).register("alice", "pw-12345678")
+
+    assert bots.created == [(user["id"], "My chatbot")]
