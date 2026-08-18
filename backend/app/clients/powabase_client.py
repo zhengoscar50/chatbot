@@ -407,7 +407,7 @@ class PowabaseClient:
         response = self._client.get(
             "/rest/v1/chatbots", params={"id": f"eq.{chatbot_id}"}
         )
-        # A malformed id (not a valid uuid) -> PostgREST 400; it cannot match
+        # A malformed id (not a valid uuid) → PostgREST 400; it cannot match
         # any chatbot, so treat it as "not found" rather than a server error.
         if response.status_code == 400:
             return None

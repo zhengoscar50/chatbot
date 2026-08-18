@@ -246,6 +246,43 @@ def test_delete_agent_row_deletes_by_id():
 
 
 @respx.mock
+def test_insert_chatbot_row_returns_the_created_row():
+    respx.post(f"{BASE_URL}/rest/v1/chatbots").mock(
+        return_value=httpx.Response(201, json=[{"id": "cb-1", "name": "Support Bot"}])
+    )
+    row = PowabaseClient(BASE_URL, "k").insert_chatbot_row({"name": "Support Bot"})
+    assert row["id"] == "cb-1"
+
+
+@respx.mock
+def test_list_chatbot_rows_filters_by_owner():
+    route = respx.get(f"{BASE_URL}/rest/v1/chatbots").mock(
+        return_value=httpx.Response(200, json=[{"id": "cb-1"}])
+    )
+    rows = PowabaseClient(BASE_URL, "k").list_chatbot_rows("owner-1")
+    assert rows == [{"id": "cb-1"}]
+    assert route.calls[0].request.url.params["owner_id"] == "eq.owner-1"
+    assert route.calls[0].request.url.params["order"] == "created_at.asc"
+
+
+@respx.mock
+def test_get_chatbot_row_returns_the_row_when_present():
+    respx.get(f"{BASE_URL}/rest/v1/chatbots").mock(
+        return_value=httpx.Response(200, json=[{"id": "cb-1", "name": "Support Bot"}])
+    )
+    row = PowabaseClient(BASE_URL, "k").get_chatbot_row("cb-1")
+    assert row["id"] == "cb-1"
+
+
+@respx.mock
+def test_get_chatbot_row_returns_none_when_absent():
+    respx.get(f"{BASE_URL}/rest/v1/chatbots").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    assert PowabaseClient(BASE_URL, "k").get_chatbot_row("nope") is None
+
+
+@respx.mock
 def test_get_chatbot_row_treats_a_malformed_id_as_not_found():
     """Same rule as agents and sessions: an id that cannot match anything is
     "not found", not a server error."""
@@ -254,6 +291,21 @@ def test_get_chatbot_row_treats_a_malformed_id_as_not_found():
     )
     client = PowabaseClient(BASE_URL, "test-key")
     assert client.get_chatbot_row("null") is None
+
+
+@respx.mock
+def test_update_chatbot_row_patches_by_id():
+    route = respx.patch(f"{BASE_URL}/rest/v1/chatbots").mock(return_value=httpx.Response(204))
+    PowabaseClient(BASE_URL, "k").update_chatbot_row("cb-1", {"name": "New Name"})
+    assert "id=eq.cb-1" in str(route.calls[0].request.url)
+    assert json.loads(route.calls[0].request.content) == {"name": "New Name"}
+
+
+@respx.mock
+def test_delete_chatbot_row_deletes_by_id():
+    route = respx.delete(f"{BASE_URL}/rest/v1/chatbots").mock(return_value=httpx.Response(204))
+    PowabaseClient(BASE_URL, "k").delete_chatbot_row("cb-1")
+    assert "id=eq.cb-1" in str(route.calls[0].request.url)
 
 
 @respx.mock
