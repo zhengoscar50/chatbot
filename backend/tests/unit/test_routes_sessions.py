@@ -1,14 +1,17 @@
 from types import SimpleNamespace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_user
 from app.api.routes import sessions as sessions_route
 from app.clients.powabase_client import get_powabase_client
+from app.core.config import get_settings
 from app.services.agent_service import get_agent_service
-from app.services.chatbot_service import get_chatbot_service
-from app.services.session_service import get_session_service
+from app.services.chatbot_kb import ChatbotKbService, get_chatbot_kb_service
+from app.services.chatbot_service import ChatbotService, get_chatbot_service
+from app.services.session_service import SessionService, get_session_service
 
 
 class FakeSessionService:
@@ -218,3 +221,155 @@ def test_delete_404_for_missing_session():
 def test_delete_404_for_non_owner():
     r = TestClient(build_app()).delete("/sessions/not-mine")
     assert r.status_code == 404
+
+
+# --- promote: moving a chat upload into chatbot knowledge -----------------
+
+class PromoteFakeClient:
+    """Backs SessionService, ChatbotService and ChatbotKbService at once, so
+    a single fixture can drive the whole promote route through real service
+    objects rather than stubbing the route's own logic.
+
+    Instance attributes only — never shared class or module state.
+    """
+
+    def __init__(self):
+        self.sessions = {}
+        self.chatbots = {}
+        self.kb_items = {}
+        self.updated = []
+        self.indexed = []
+        self.char_counts = {}
+
+    # --- SessionService ---------------------------------------------------
+    def get_session_row(self, session_id):
+        return self.sessions.get(session_id)
+
+    def update_session(self, session_id, fields):
+        self.updated.append((session_id, fields))
+        if session_id in self.sessions:
+            self.sessions[session_id].update(fields)
+
+    # --- ChatbotService -----------------------------------------------
+    def get_chatbot_row(self, chatbot_id):
+        return self.chatbots.get(chatbot_id)
+
+    # --- ChatbotKbService ---------------------------------------------
+    def create_knowledge_base(self, name, description="", indexing_config=None,
+                               retrieval_config=None):
+        return {"id": f"kb-{name}"}
+
+    def update_chatbot_row(self, chatbot_id, fields):
+        if chatbot_id in self.chatbots:
+            self.chatbots[chatbot_id].update(fields)
+
+    def list_kb_sources(self, kb_id):
+        return {"items": self.kb_items.get(kb_id, [])}
+
+
+class FakePromoteIngestService:
+    """Stands in for IngestService, forwarding into the same fake client so
+    `fake.indexed` proves whether promotion re-indexed a document.
+
+    Well above full_document_max_chars by default, so ensure_kb lands on the
+    ordinary (chunked) tier rather than the whole-document one — matching
+    whichever tier a test pre-seeds on the chatbot row.
+    """
+
+    def __init__(self, client, kb_id=None, poll_interval=0, max_wait=0):
+        self.client = client
+
+    def char_count(self, source_id):
+        return self.client.char_counts.get(source_id, 500_000)
+
+    def index_into(self, kb_id, source_id):
+        self.client.indexed.append((kb_id, source_id))
+        return "indexed"
+
+
+@pytest.fixture
+def fake():
+    return PromoteFakeClient()
+
+
+@pytest.fixture
+def client(fake, monkeypatch):
+    monkeypatch.setattr(sessions_route, "IngestService", FakePromoteIngestService)
+    fake.sessions["s1"] = {
+        "id": "s1", "owner_id": "o1", "chatbot_id": "cb-1", "source_ids": [],
+    }
+    fake.chatbots["cb-1"] = {
+        "id": "cb-1", "owner_id": "o1", "kb_id": None, "kb_full_id": None,
+    }
+
+    app = FastAPI()
+    app.include_router(sessions_route.router)
+    app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
+    app.dependency_overrides[get_session_service] = lambda: SessionService(
+        fake, None, "scratch"
+    )
+    app.dependency_overrides[get_chatbot_service] = lambda: ChatbotService(fake)
+    app.dependency_overrides[get_chatbot_kb_service] = lambda: ChatbotKbService(fake)
+    app.dependency_overrides[get_powabase_client] = lambda: fake
+    app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
+        poll_interval_seconds=0.01,
+        ingest_background_max_wait_seconds=600,
+        full_document_max_chars=120000,
+    )
+    return TestClient(app)
+
+
+@pytest.fixture
+def auth():
+    return {"Authorization": "Bearer test-token"}
+
+
+@pytest.fixture
+def foreign_session(fake):
+    fake.sessions["s-foreign"] = {
+        "id": "s-foreign", "owner_id": "someone-else", "chatbot_id": "cb-1",
+        "source_ids": ["src-1"],
+    }
+    return "s-foreign"
+
+
+def test_promote_moves_the_document_into_chatbot_knowledge(client, auth, fake):
+    fake.sessions["s1"]["source_ids"] = ["src-1"]
+    res = client.post("/sessions/s1/documents/src-1/promote", headers=auth)
+    assert res.status_code == 202
+    assert "src-1" not in fake.sessions["s1"]["source_ids"]
+
+
+def test_promote_rejects_a_source_this_chat_never_uploaded(client, auth, fake):
+    fake.sessions["s1"]["source_ids"] = ["src-1"]
+    res = client.post("/sessions/s1/documents/other/promote", headers=auth)
+    assert res.status_code == 404
+
+
+def test_promote_on_another_users_chat_is_not_found(client, auth, foreign_session):
+    res = client.post(
+        f"/sessions/{foreign_session}/documents/src-1/promote", headers=auth
+    )
+    assert res.status_code == 404
+
+
+def test_re_promoting_after_the_move_reports_no_such_document(client, auth, fake):
+    # The move already happened, so the chat no longer names the source. This
+    # is the same 404 as any unknown document and needs no special case.
+    fake.sessions["s1"]["source_ids"] = ["src-1"]
+    client.post("/sessions/s1/documents/src-1/promote", headers=auth)
+    second = client.post("/sessions/s1/documents/src-1/promote", headers=auth)
+    assert second.status_code == 404
+
+
+def test_promoting_a_document_the_chatbot_already_holds_succeeds(client, auth, fake):
+    # Re-uploading the same file gives the SAME source id, because Powabase
+    # deduplicates identical content. Promoting it again must not re-index and
+    # must not fail — it moves out of the chat and stops there.
+    fake.chatbots["cb-1"]["kb_id"] = "cb-kb"
+    fake.kb_items["cb-kb"] = [{"id": "i1", "source_id": "src-1"}]
+    fake.sessions["s1"]["source_ids"] = ["src-1"]
+    res = client.post("/sessions/s1/documents/src-1/promote", headers=auth)
+    assert res.status_code == 202
+    assert "src-1" not in fake.sessions["s1"]["source_ids"]
+    assert fake.indexed == []   # nothing re-indexed

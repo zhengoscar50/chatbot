@@ -252,3 +252,37 @@ def test_a_chat_records_its_chatbot():
     row = SessionService(c).create_session("o1", "cb-1")
     assert row["chatbot_id"] == "cb-1"
     assert row["owner_id"] == "o1"
+
+
+# --- forget_source: the other half of promotion --------------------------
+
+def test_forget_source_removes_only_that_source():
+    c = FakeClient(rows=[{"id": "s1", "source_ids": ["a", "b", "c"]}])
+
+    SessionService(c, scratch_kb_id="scratch").forget_source("s1", "b")
+
+    assert c.get_session_row("s1")["source_ids"] == ["a", "c"]
+
+
+def test_forget_source_is_a_no_op_for_a_source_not_there():
+    c = FakeClient(rows=[{"id": "s1", "source_ids": ["a"]}])
+
+    SessionService(c, scratch_kb_id="scratch").forget_source("s1", "zzz")
+
+    assert c.get_session_row("s1")["source_ids"] == ["a"]
+    assert c.updated == []
+
+
+def test_forget_source_re_reads_rather_than_trusting_a_copy():
+    # Same reason record_source re-reads: promotion finishes in a background
+    # task, so a stale copy would write back a list missing a concurrent
+    # upload. Simulate that concurrent write landing directly in the "row"
+    # between construction and the call, and confirm forget_source reflects
+    # it rather than some cached view.
+    c = FakeClient(rows=[{"id": "s1", "source_ids": ["a", "b"]}])
+    service = SessionService(c, scratch_kb_id="scratch")
+    c.rows[0]["source_ids"] = ["a", "b", "late"]
+
+    service.forget_source("s1", "a")
+
+    assert c.get_session_row("s1")["source_ids"] == ["b", "late"]
