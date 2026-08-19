@@ -1,4 +1,5 @@
 from app.services.chatbot_service import ChatbotService, LastChatbotError
+from app.clients.powabase_client import PowabaseAPIError
 
 
 # Module-level list to track deletion order across fakes
@@ -10,6 +11,8 @@ class FakeClient:
         self.rows = list(rows or [])
         self.updated = []
         self.deleted = []
+        self.deleted_kbs = []
+        self.kb_delete_raises = set()
         self._n = 0
         self.deletion_order = deletion_order if deletion_order is not None else _deletion_order
 
@@ -32,6 +35,11 @@ class FakeClient:
         self.deleted.append(chatbot_id)
         self.deletion_order.append(("chatbot", chatbot_id))
         self.rows = [r for r in self.rows if r["id"] != chatbot_id]
+
+    def delete_knowledge_base(self, kb_id):
+        if kb_id in self.kb_delete_raises:
+            raise PowabaseAPIError(404, "gone")
+        self.deleted_kbs.append(kb_id)
 
 
 class FakeAgents:
@@ -145,3 +153,33 @@ def test_last_chatbot_count_is_owner_scoped_prevents_delete():
     except LastChatbotError:
         pass
     assert c.deleted == []
+
+
+def test_delete_removes_both_knowledge_tiers():
+    client = FakeClient([
+        {"id": "cb-1", "owner_id": "u1", "kb_id": "k1", "kb_full_id": "k2"},
+        {"id": "cb-2", "owner_id": "u1"},
+    ])
+    ChatbotService(client).delete("cb-1", "u1", FakeAgents(), FakeSessions())
+    assert set(client.deleted_kbs) == {"k1", "k2"}
+
+
+def test_delete_survives_a_knowledge_base_already_gone():
+    # Best-effort cleanup: a stale resource must never block the delete, and
+    # the row deletion is what is authoritative.
+    client = FakeClient([
+        {"id": "cb-1", "owner_id": "u1", "kb_id": "missing"},
+        {"id": "cb-2", "owner_id": "u1"},
+    ])
+    client.kb_delete_raises = {"missing"}
+    assert ChatbotService(client).delete("cb-1", "u1", FakeAgents(), FakeSessions()) is True
+    assert "cb-1" in client.deleted
+
+
+def test_delete_of_an_untrained_chatbot_touches_no_knowledge_base():
+    client = FakeClient([
+        {"id": "cb-1", "owner_id": "u1"},
+        {"id": "cb-2", "owner_id": "u1"},
+    ])
+    ChatbotService(client).delete("cb-1", "u1", FakeAgents(), FakeSessions())
+    assert client.deleted_kbs == []

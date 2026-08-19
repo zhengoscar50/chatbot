@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from fastapi import Request
 
+from app.clients.powabase_client import PowabaseAPIError
+
 DEFAULT_CHATBOT_NAME = "My chatbot"
 
 
@@ -42,6 +44,10 @@ class ChatbotService:
     def delete(self, chatbot_id: str, owner_id: str, agents, sessions) -> bool:
         """Delete a chatbot and everything inside it.
 
+        Deletes its agents, its chats and its own knowledge bases. Sources are
+        never deleted — only unlinked — because identical content is
+        deduplicated and may belong to another chatbot or user.
+
         Returns False if it does not exist or is not yours — the caller turns
         that into a 404. Raises LastChatbotError rather than leaving a user
         with nowhere to put an agent.
@@ -55,6 +61,15 @@ class ChatbotService:
             agents.delete(agent["id"])
         for session in sessions.list(chatbot_id):
             sessions.delete(session["id"])
+        # Best-effort, like the agent and chat cleanup above: a stale knowledge
+        # base must not block the delete. The row deletion is authoritative.
+        for kb_id in (row.get("kb_id"), row.get("kb_full_id")):
+            if not kb_id:
+                continue
+            try:
+                self.client.delete_knowledge_base(kb_id)
+            except PowabaseAPIError:
+                pass
         self.client.delete_chatbot_row(chatbot_id)
         return True
 
