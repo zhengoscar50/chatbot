@@ -1,6 +1,6 @@
-// The signed-in user's personal knowledge base: trained once, searched by
-// every agent they own. Kept out of agents.js, which already carries the
-// agent list, form, training and deletion.
+// The current chatbot's knowledge base: trained once, searched by every
+// agent it owns. Kept out of agents.js, which already carries the agent
+// list, form, training and deletion.
 //
 // Training is accepted immediately and finishes in the background, so this
 // polls for status — the same shape as agent training, because a large PDF
@@ -37,7 +37,9 @@ async function loadKnowledgeDocuments() {
   knowledgeDocList.innerHTML = "";
   let docs;
   try {
-    const res = await authFetch("/knowledge/documents");
+    const res = await authFetch(
+      `/knowledge/documents?chatbot_id=${encodeURIComponent(currentChatbotId)}`
+    );
     if (!res.ok) return;
     docs = await res.json();
   } catch (err) {
@@ -47,7 +49,7 @@ async function loadKnowledgeDocuments() {
   if (docs.length === 0) {
     const li = document.createElement("li");
     li.className = "muted";
-    li.textContent = "Nothing yet. Anything you add here is available to every agent you own.";
+    li.textContent = "Nothing yet. Anything you add here is available to every agent in this chatbot.";
     knowledgeDocList.appendChild(li);
     return;
   }
@@ -67,9 +69,11 @@ async function loadKnowledgeDocuments() {
 
 async function untrainKnowledge(sourceId) {
   try {
-    const res = await authFetch(`/knowledge/documents/${encodeURIComponent(sourceId)}`, {
-      method: "DELETE",
-    });
+    const res = await authFetch(
+      `/knowledge/documents/${encodeURIComponent(sourceId)}` +
+      `?chatbot_id=${encodeURIComponent(currentChatbotId)}`,
+      { method: "DELETE" }
+    );
     if (!res.ok) {
       let body;
       try {
@@ -86,11 +90,12 @@ async function untrainKnowledge(sourceId) {
   }
 }
 
-async function pollKnowledgeStatus(sourceId, filename) {
+async function pollKnowledgeStatus(sourceId, filename, chatbotId) {
   for (let i = 0; i < KNOWLEDGE_POLL_LIMIT; i += 1) {
     await new Promise((r) => setTimeout(r, KNOWLEDGE_POLL_MS));
     const res = await authFetch(
-      `/knowledge/documents/${encodeURIComponent(sourceId)}/status`
+      `/knowledge/documents/${encodeURIComponent(sourceId)}/status` +
+      `?chatbot_id=${encodeURIComponent(chatbotId)}`
     );
     if (!res.ok) continue; // a blip mid-poll is not a failed upload
     const body = await res.json();
@@ -105,11 +110,13 @@ async function pollKnowledgeStatus(sourceId, filename) {
 async function trainKnowledge() {
   const file = knowledgeFile.files[0];
   if (!file || knowledgeTraining) return;
+  const chatbotId = currentChatbotId;
   knowledgeTraining = true;
   knowledgeFile.disabled = true;
   knowledgeStatus.textContent = `Reading ${file.name}… this can take a few minutes for a large document.`;
   const data = new FormData();
   data.append("file", file);
+  data.append("chatbot_id", chatbotId);
   try {
     const res = await authFetch("/knowledge/train", { method: "POST", body: data });
     let body;
@@ -122,9 +129,9 @@ async function trainKnowledge() {
       knowledgeStatus.textContent = errorText(body, res);
       return;
     }
-    const result = await pollKnowledgeStatus(body.source_id, file.name);
+    const result = await pollKnowledgeStatus(body.source_id, file.name, chatbotId);
     knowledgeStatus.textContent = result.ok
-      ? `Added ${file.name}. Every agent you own can use it now.`
+      ? `Added ${file.name}. Every agent in this chatbot can use it now.`
       : result.detail;
     if (result.ok) await loadKnowledgeDocuments();
   } catch (err) {

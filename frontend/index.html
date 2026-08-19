@@ -38,11 +38,12 @@
           <button type="button" id="logout-btn" class="logout-btn">Log out</button>
         </div>
         <button type="button" id="manage-agents" class="new-session">⚙ Manage agents</button>
-        <button type="button" id="my-knowledge" class="new-session">📚 My knowledge</button>
+        <button type="button" id="my-knowledge" class="new-session">📚 Chatbot knowledge</button>
         <label class="chatbot-picker">
           <select id="chatbot-select"></select>
         </label>
         <button type="button" id="new-chatbot" class="new-session">+ New chatbot</button>
+        <button type="button" id="delete-chatbot" class="new-session">Delete chatbot</button>
         <button id="new-session" class="new-session" disabled>+ New chat</button>
         <ul class="session-list" id="session-list" aria-label="Chats"></ul>
         <p class="sidebar__status" id="sidebar-status"></p>
@@ -70,6 +71,9 @@
           <div class="attachment-chip" id="attachment-chip" hidden>
             <span id="attachment-name"></span>
             <span class="attachment-chip__status" id="attachment-status"></span>
+            <button type="button" id="attachment-promote" class="chip-action" hidden>
+              Save to chatbot knowledge
+            </button>
           </div>
           <form id="chat-form" class="composer">
             <button type="button" id="attach-button" class="icon-btn" aria-label="Attach a PDF" title="Attach a PDF">
@@ -122,8 +126,8 @@
 
     <div id="knowledge-modal" class="modal" hidden>
       <div class="modal-card">
-        <h2>My knowledge</h2>
-        <p class="muted">Documents every one of your agents can draw on, including the general assistant. Train once here instead of teaching each agent separately.</p>
+        <h2>Chatbot knowledge</h2>
+        <p class="muted">Documents every agent in this chatbot can draw on, including the general assistant. Train once here instead of teaching each agent separately.</p>
         <ul id="knowledge-doc-list"></ul>
         <label class="train-row">Add a document
           <input type="file" id="knowledge-file" accept="application/pdf" />
@@ -160,9 +164,6 @@
             <option value="strict">Only answer from my documents</option>
             <option value="open">Use my documents, but answer freely</option>
           </select>
-        </label>
-        <label class="checkbox">
-          <input type="checkbox" id="agent-general-kb" /> Also use shared general knowledge
         </label>
         <label>Document context per question
           <input type="range" id="agent-context" min="1000" step="1000" value="32000" />

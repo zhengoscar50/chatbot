@@ -435,9 +435,9 @@ git commit -m "feat: remove the deployment-wide general knowledge base"
 - Consumes: `chatbots.kb_id` / `chatbots.kb_full_id` from Task 1.
 - Produces: `ChatbotKbService(client, reranker_config=None)` with
   `kb_ids(chatbot_row) -> list`, `ensure_kb(chatbot_row, full_document=False) -> str`,
-  `documents(chatbot_row) -> list`, `untrain(chatbot_row, source_id) -> bool`;
-  and `get_chatbot_kb_service(request)` returning
-  `request.app.state.chatbot_kb_service`.
+  `documents(chatbot_row) -> list`, `untrain(chatbot_row, source_id) -> bool`,
+  `contains(kb_id, source_id) -> bool`; and `get_chatbot_kb_service(request)`
+  returning `request.app.state.chatbot_kb_service`.
 
 This is `user_kb.py` rekeyed from a user row to a chatbot row. The client call
 inside `ensure_kb` changes from `update_user` to `update_chatbot_row`, which
@@ -563,6 +563,18 @@ def test_untrain_reports_a_document_it_does_not_hold():
     client = FakeClient([row])
     client.kb_items["chunk"] = []
     assert ChatbotKbService(client).untrain(row, "nope") is False
+
+
+def test_contains_finds_a_document_already_indexed():
+    client = FakeClient()
+    client.kb_items["chunk"] = [{"id": "i1", "source_id": "s1"}]
+    assert ChatbotKbService(client).contains("chunk", "s1") is True
+
+
+def test_contains_is_false_for_a_document_not_there():
+    client = FakeClient()
+    client.kb_items["chunk"] = [{"id": "i1", "source_id": "s1"}]
+    assert ChatbotKbService(client).contains("chunk", "other") is False
 ```
 
 - [ ] **Step 2: Run them and watch them fail**
@@ -643,6 +655,17 @@ class ChatbotKbService:
                 })
         return out
 
+    def contains(self, kb_id: str, source_id: str) -> bool:
+        """Whether this knowledge base already holds that document.
+
+        Promotion needs it: re-indexing a source a knowledge base already has
+        is at best wasted work and at worst an upstream error, and promoting
+        the same file twice is a thing users do — upload_source deduplicates
+        identical content, so the second upload yields the same source id.
+        """
+        items = self.client.list_kb_sources(kb_id).get("items", [])
+        return any(item.get("source_id") == source_id for item in items)
+
     def untrain(self, chatbot_row: dict, source_id: str) -> bool:
         """Unlink one document from whichever tier holds it.
 
@@ -667,7 +690,7 @@ def get_chatbot_kb_service(request: Request) -> "ChatbotKbService":
 - [ ] **Step 4: Run the new tests**
 
 Run: `cd backend && python -m pytest tests/unit/test_chatbot_kb.py -q`
-Expected: PASS, 11 tests.
+Expected: PASS, 13 tests.
 
 - [ ] **Step 5: Wire it and remove the old service**
 
@@ -1090,7 +1113,8 @@ git commit -m "feat: answers retrieve from the chat's own chatbot knowledge"
 - Test: `backend/tests/unit/test_session_service.py`, `backend/tests/unit/test_routes_sessions.py`
 
 **Interfaces:**
-- Consumes: `ChatbotKbService.ensure_kb(chatbot_row, full_document)` from Task 3;
+- Consumes: `ChatbotKbService.ensure_kb(chatbot_row, full_document)` and
+  `ChatbotKbService.contains(kb_id, source_id) -> bool` from Task 3;
   `IngestService.char_count(source_id) -> int` and
   `IngestService.index_into(kb_id, source_id) -> str`, both existing.
 - Produces: `SessionService.forget_source(session_id, source_id) -> None` and
@@ -1208,18 +1232,30 @@ def test_promote_on_another_users_chat_is_not_found(client, auth, foreign_sessio
     assert res.status_code == 404
 
 
-def test_promote_twice_is_not_an_error(client, auth, fake):
-    # Powabase deduplicates identical content, so promoting the same file twice
-    # is a thing users will do. The second call finds nothing left to move.
+def test_re_promoting_after_the_move_reports_no_such_document(client, auth, fake):
+    # The move already happened, so the chat no longer names the source. This
+    # is the same 404 as any unknown document and needs no special case.
     fake.sessions["s1"]["source_ids"] = ["src-1"]
     client.post("/sessions/s1/documents/src-1/promote", headers=auth)
     second = client.post("/sessions/s1/documents/src-1/promote", headers=auth)
     assert second.status_code == 404
+
+
+def test_promoting_a_document_the_chatbot_already_holds_succeeds(client, auth, fake):
+    # Re-uploading the same file gives the SAME source id, because Powabase
+    # deduplicates identical content. Promoting it again must not re-index and
+    # must not fail — it moves out of the chat and stops there.
+    fake.chatbots["cb-1"]["kb_id"] = "cb-kb"
+    fake.kb_items["cb-kb"] = [{"id": "i1", "source_id": "src-1"}]
+    fake.sessions["s1"]["source_ids"] = ["src-1"]
+    res = client.post("/sessions/s1/documents/src-1/promote", headers=auth)
+    assert res.status_code == 202
+    assert "src-1" not in fake.sessions["s1"]["source_ids"]
+    assert fake.indexed == []   # nothing re-indexed
 ```
 
-The fourth test asserts the honest behaviour: once moved, the source is no
-longer in the chat, so a repeat promote is a 404 rather than a silent success.
-That is the same 404 as any unknown source and needs no special case.
+Give the fake an `indexed` **instance** list that `index_into` appends to, so
+the last assertion can prove no re-indexing happened.
 
 - [ ] **Step 6: Run and watch them fail**
 
@@ -1247,7 +1283,11 @@ def _finish_promotion(service, chatbot_kb, chatbot_row, sessions, session_id,
     try:
         full_document = 0 < service.char_count(source_id) <= full_document_max_chars
         kb_id = chatbot_kb.ensure_kb(chatbot_row, full_document)
-        service.index_into(kb_id, source_id)
+        # Re-uploading the same file yields the SAME source id, because
+        # upload_source deduplicates identical content. Promoting it again must
+        # not re-index: at best wasted work, at worst an upstream error.
+        if not chatbot_kb.contains(kb_id, source_id):
+            service.index_into(kb_id, source_id)
         sessions.forget_source(session_id, source_id)
     # No extraction errors are possible here: the source was already extracted
     # when it was ingested into the chat, so only indexing can fail.
@@ -1731,3 +1771,14 @@ Migrations are applied by hand in Powabase Studio; there is no SQL endpoint.
 6. Apply **`013`**. A failure here means step 1 was skipped.
 7. Delete the orphaned `general-knowledge-kb` in Studio by hand, once you have
    confirmed nothing misses it.
+
+**Consequence of `012`'s oldest-chatbot copy, worth knowing before relying on
+`users.kb_id`/`users.kb_full_id` for recovery:** after `012`, the oldest
+chatbot's `kb_id`/`kb_full_id` for each user **is** that user's old
+`users.kb_id`/`users.kb_full_id` — the same Powabase knowledge base, not a
+copy. Deleting that chatbot hard-deletes it (`chatbot_service.py`), which
+leaves `users.kb_id` pointing at a destroyed knowledge base. The `users`
+columns were kept in place, rather than dropped in `012`, precisely so a
+rollback would lose no data — but once a user deletes their original chatbot,
+that rollback guarantee no longer holds for them. No live impact today, since
+nothing still reads `users.kb_id`.

@@ -11,16 +11,16 @@ from app.services.chat_service import (
     ProviderKeyError,
 )
 from app.services.agent_service import AgentService, get_agent_service
+from app.services.chatbot_service import ChatbotService, get_chatbot_service
 from app.services.conversation import conversation_message
 from app.services.general_assistant import get_general_assistant_id
 from app.services.message_store import MessageStore, get_message_store
-from app.services.general_kb import get_general_kb_id
 from app.services.orchestrator import OrchestratorService, get_orchestrator_agent_id
 from app.services.agent_scope import roster_for
 from app.services.context_budget import clamp_context_tokens
 from app.services.retrieval_scope import kb_ids_for
 from app.services.scratch_kb import get_scratch_kb_id
-from app.services.user_kb import UserKbService, get_user_kb_service
+from app.services.chatbot_kb import ChatbotKbService, get_chatbot_kb_service
 from app.services.session_service import DEFAULT_NAME, SessionService, get_session_service
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -48,9 +48,9 @@ def chat(
     sessions: SessionService = Depends(get_session_service),
     agents: AgentService = Depends(get_agent_service),
     messages: MessageStore = Depends(get_message_store),
-    general_kb_id: str = Depends(get_general_kb_id),
     scratch_kb_id: str = Depends(get_scratch_kb_id),
-    user_kb: UserKbService = Depends(get_user_kb_service),
+    chatbot_kb: ChatbotKbService = Depends(get_chatbot_kb_service),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
     orchestrator_agent_id: str = Depends(get_orchestrator_agent_id),
     general_assistant_id: str = Depends(get_general_assistant_id),
     settings=Depends(get_settings),
@@ -64,11 +64,16 @@ def chat(
     except PowabaseAPIError:
         history = []
 
+    # The chatbot comes off the CHAT ROW, never the request body, for both the
+    # knowledge lookup below and the roster: a client must not be able to aim
+    # one chatbot's question at another chatbot's knowledge or roster. A
+    # legacy chat with no chatbot_id degrades to no chatbot knowledge rather
+    # than raising.
+    chatbot_id = row.get("chatbot_id")
+    chatbot = chatbots.get_owned(chatbot_id, user["id"]) if chatbot_id else None
+
     # One call decides both which agent answers and whether to retrieve.
     # Every chat starts with the whole roster; this chat may exclude some.
-    # The chatbot comes off the CHAT ROW, never the request body — a client
-    # must not be able to ask one chatbot's question against another
-    # chatbot's roster.
     roster = roster_for(agents.list(row.get("chatbot_id")), row.get("excluded_agent_ids"))
     decision = OrchestratorService(client, orchestrator_agent_id).route(
         req.query, roster, history
@@ -84,8 +89,7 @@ def chat(
 
     service = ChatService(
         client, answering_agent_id,
-        kb_ids_for(agent_row, row, general_kb_id, scratch_kb_id,
-                   user_kb_ids=user_kb.kb_ids(user)),
+        kb_ids_for(agent_row, row, chatbot_kb.kb_ids(chatbot), scratch_kb_id),
         # retrieval depth is derived from the budget below, not configured
         None,
         # The answering agent's own budget, re-clamped at read time so a value

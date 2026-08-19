@@ -97,7 +97,7 @@ class FakeClient:
 
 def test_create_makes_a_powabase_agent_with_the_composed_prompt():
     c = FakeClient()
-    row = AgentService(c).create("cb-1", "o1", "Tutor", "Be terse.", "", "gpt-4o-mini", "strict", False)
+    row = AgentService(c).create("cb-1", "o1", "Tutor", "Be terse.", "", "gpt-4o-mini", "strict")
 
     name, model, prompt = c.created_agents[0]
     assert model == "gpt-4o-mini"
@@ -109,7 +109,7 @@ def test_create_makes_a_powabase_agent_with_the_composed_prompt():
 def test_create_does_not_provision_knowledge_bases_upfront():
     # KBs are lazy: an agent nobody has trained costs no KB.
     c = FakeClient()
-    row = AgentService(c).create("cb-1", "o1", "T", "", "", "m", "strict", False)
+    row = AgentService(c).create("cb-1", "o1", "T", "", "", "m", "strict")
     assert c.kbs == []
     assert row["kb_id"] is None and row["kb_full_id"] is None
 
@@ -117,7 +117,7 @@ def test_create_does_not_provision_knowledge_bases_upfront():
 def test_ensure_kb_creates_chunk_kb_once_and_persists_it():
     c = FakeClient()
     svc = AgentService(c)
-    row = svc.create("cb-1", "o1", "T", "", "", "m", "strict", False)
+    row = svc.create("cb-1", "o1", "T", "", "", "m", "strict")
 
     first = svc.ensure_kb(row, full_document=False)
     second = svc.ensure_kb(c.get_agent_row("ag-1"), full_document=False)
@@ -130,7 +130,7 @@ def test_ensure_kb_creates_chunk_kb_once_and_persists_it():
 def test_ensure_kb_creates_a_separate_full_document_kb():
     c = FakeClient()
     svc = AgentService(c)
-    row = svc.create("cb-1", "o1", "T", "", "", "m", "strict", False)
+    row = svc.create("cb-1", "o1", "T", "", "", "m", "strict")
 
     chunk = svc.ensure_kb(row, full_document=False)
     full = svc.ensure_kb(c.get_agent_row("ag-1"), full_document=True)
@@ -143,7 +143,7 @@ def test_ensure_kb_creates_a_separate_full_document_kb():
 def test_ensure_kb_passes_the_reranker_config():
     c = FakeClient()
     svc = AgentService(c, reranker_config={"reranker": {"model": "m", "candidate_count": 20}})
-    row = svc.create("cb-1", "o1", "T", "", "", "m", "strict", False)
+    row = svc.create("cb-1", "o1", "T", "", "", "m", "strict")
     svc.ensure_kb(row)
     assert c.kbs[0][2] == {"reranker": {"model": "m", "candidate_count": 20}}
 
@@ -151,7 +151,7 @@ def test_ensure_kb_passes_the_reranker_config():
 def test_get_owned_returns_none_for_another_users_agent():
     c = FakeClient()
     svc = AgentService(c)
-    svc.create("cb-1", "o1", "T", "", "", "m", "strict", False)
+    svc.create("cb-1", "o1", "T", "", "", "m", "strict")
     assert svc.get_owned("ag-1", "someone-else") is None
     assert svc.get_owned("ag-1", "o1") is not None
 
@@ -161,7 +161,7 @@ def test_list_returns_only_the_chatbots_agents():
     # by get_owned, and a chatbot narrows what you see rather than who you are.
     c = FakeClient()
     svc = AgentService(c)
-    svc.create("cb-1", "o1", "T", "", "", "m", "strict", False)
+    svc.create("cb-1", "o1", "T", "", "", "m", "strict")
     assert [r["id"] for r in svc.list("cb-1")] == ["ag-1"]
     assert svc.list("cb-other") == []
 
@@ -169,7 +169,7 @@ def test_list_returns_only_the_chatbots_agents():
 def test_update_patches_the_remote_agent_when_prompt_inputs_change():
     c = FakeClient()
     svc = AgentService(c)
-    row = svc.create("cb-1", "o1", "T", "Old.", "", "m", "strict", False)
+    row = svc.create("cb-1", "o1", "T", "Old.", "", "m", "strict")
 
     svc.update(row, {"instructions": "New.", "grounding": "open"})
 
@@ -181,7 +181,7 @@ def test_update_patches_the_remote_agent_when_prompt_inputs_change():
 def test_update_patches_the_remote_agent_when_model_changes():
     c = FakeClient()
     svc = AgentService(c)
-    row = svc.create("cb-1", "o1", "T", "", "", "m1", "strict", False)
+    row = svc.create("cb-1", "o1", "T", "", "", "m1", "strict")
 
     svc.update(row, {"model": "m2"})
 
@@ -189,22 +189,22 @@ def test_update_patches_the_remote_agent_when_model_changes():
 
 
 def test_update_skips_the_remote_call_for_local_only_fields():
-    # Renaming or toggling general knowledge changes nothing Powabase knows about.
+    # Renaming or changing the description changes nothing Powabase knows about.
     c = FakeClient()
     svc = AgentService(c)
-    row = svc.create("cb-1", "o1", "T", "", "", "m", "strict", False)
+    row = svc.create("cb-1", "o1", "T", "", "", "m", "strict")
 
-    svc.update(row, {"name": "Renamed", "use_general_kb": True})
+    svc.update(row, {"name": "Renamed", "description": "New desc"})
 
     assert c.updated_agents == []
     assert c.rows["ag-1"]["name"] == "Renamed"
-    assert c.rows["ag-1"]["use_general_kb"] is True
+    assert c.rows["ag-1"]["description"] == "New desc"
 
 
 def test_update_returns_the_merged_row():
     c = FakeClient()
     svc = AgentService(c)
-    row = svc.create("cb-1", "o1", "Old", "Keep.", "", "m", "strict", False)
+    row = svc.create("cb-1", "o1", "Old", "Keep.", "", "m", "strict")
 
     merged = svc.update(row, {"name": "New"})
 
@@ -215,7 +215,7 @@ def test_update_returns_the_merged_row():
 def test_delete_removes_the_permanent_kbs_and_the_remote_agent():
     c = FakeClient()
     svc = AgentService(c)
-    row = svc.create("cb-1", "o1", "T", "", "", "m", "strict", False)
+    row = svc.create("cb-1", "o1", "T", "", "", "m", "strict")
     svc.ensure_kb(row, full_document=False)
     svc.ensure_kb(c.get_agent_row("ag-1"), full_document=True)
 
@@ -232,7 +232,7 @@ def test_delete_never_touches_chats():
     # including the turns that agent answered.
     c = FakeClient()
     svc = AgentService(c)
-    svc.create("cb-1", "o1", "T", "", "", "m", "strict", False)
+    svc.create("cb-1", "o1", "T", "", "", "m", "strict")
 
     svc.delete("ag-1")
 
@@ -251,7 +251,7 @@ def test_delete_survives_a_failing_remote_cleanup():
 
     c = Failing()
     svc = AgentService(c)
-    row = svc.create("cb-1", "o1", "T", "", "", "m", "strict", False)
+    row = svc.create("cb-1", "o1", "T", "", "", "m", "strict")
     svc.ensure_kb(row)
 
     assert svc.delete("ag-1") is True
@@ -265,7 +265,7 @@ def test_create_probes_the_model_and_cleans_the_probe_up():
     # Powabase accepts any model string and only fails at run time, so a typo
     # would otherwise ship as a silently broken agent.
     c = FakeClient()
-    AgentService(c).create("cb-1", "o1", "T", "", "", "gpt-4o-mini", "strict", False)
+    AgentService(c).create("cb-1", "o1", "T", "", "", "gpt-4o-mini", "strict")
 
     assert c.probes, "expected a probe call"
     assert c.probe_agents[0][1] == "gpt-4o-mini"
@@ -281,7 +281,7 @@ def test_create_rejects_a_model_the_provider_refuses():
 
     c = Refusing()
     with pytest.raises(ModelRejectedError) as exc:
-        AgentService(c).create("cb-1", "o1", "T", "", "", "not-a-real-model", "strict", False)
+        AgentService(c).create("cb-1", "o1", "T", "", "", "not-a-real-model", "strict")
 
     assert exc.value.model == "not-a-real-model"
     # no agent row was written, and the probe agent was cleaned up anyway
@@ -293,7 +293,7 @@ def test_create_rejects_a_model_the_provider_refuses():
 def test_update_probes_only_when_the_model_actually_changes():
     c = FakeClient()
     svc = AgentService(c)
-    row = svc.create("cb-1", "o1", "T", "", "", "m1", "strict", False)
+    row = svc.create("cb-1", "o1", "T", "", "", "m1", "strict")
     c.probes.clear()
 
     svc.update(row, {"name": "Renamed"})
@@ -319,7 +319,7 @@ def test_update_leaves_the_agent_untouched_when_the_model_is_refused():
 
     c = Refusing()
     svc = AgentService(c)
-    row = svc.create("cb-1", "o1", "T", "", "", "good-model", "strict", False)
+    row = svc.create("cb-1", "o1", "T", "", "", "good-model", "strict")
     c.refuse = True
 
     with pytest.raises(ModelRejectedError):
@@ -334,7 +334,7 @@ def test_create_persists_the_routing_description():
     c = FakeClient()
     row = AgentService(c).create(
         "cb-1", "o1", "Tutor", "Be terse.", "Answers AP Chemistry questions.",
-        "gpt-4o-mini", "strict", False,
+        "gpt-4o-mini", "strict",
     )
     assert row["description"] == "Answers AP Chemistry questions."
 
@@ -343,7 +343,7 @@ def test_description_is_local_only_and_skips_the_remote_patch():
     # The description exists for routing; Powabase knows nothing about it.
     c = FakeClient()
     svc = AgentService(c)
-    row = svc.create("cb-1", "o1", "T", "", "old desc", "m", "strict", False)
+    row = svc.create("cb-1", "o1", "T", "", "old desc", "m", "strict")
     c.updated_agents.clear()
 
     svc.update(row, {"description": "new desc"})
@@ -401,7 +401,7 @@ def test_creating_an_agent_clamps_an_oversized_budget():
     """The slider is a convenience; the server is the guard. A client can post
     anything."""
     c = FakeClient()
-    row = AgentService(c).create("cb-1", "o1", "T", "", "", "gpt-4o-mini", "strict", False,
+    row = AgentService(c).create("cb-1", "o1", "T", "", "", "gpt-4o-mini", "strict",
                                  max_context_tokens=999_999)
     assert row["max_context_tokens"] == 64_000        # half of 128k
 
@@ -409,7 +409,7 @@ def test_creating_an_agent_clamps_an_oversized_budget():
 def test_creating_an_agent_defaults_the_budget():
     from app.services.context_budget import DEFAULT_CONTEXT_TOKENS
     c = FakeClient()
-    row = AgentService(c).create("cb-1", "o1", "T", "", "", "gpt-4o-mini", "strict", False)
+    row = AgentService(c).create("cb-1", "o1", "T", "", "", "gpt-4o-mini", "strict")
     assert row["max_context_tokens"] == DEFAULT_CONTEXT_TOKENS
 
 
@@ -418,7 +418,7 @@ def test_moving_to_a_smaller_model_lowers_the_budget():
     an edit that only changes the model leaves an out-of-range value behind."""
     c = FakeClient()
     svc = AgentService(c)
-    row = svc.create("cb-1", "o1", "T", "", "", "claude-sonnet-5", "strict", False,
+    row = svc.create("cb-1", "o1", "T", "", "", "claude-sonnet-5", "strict",
                      max_context_tokens=100_000)
     assert row["max_context_tokens"] == 100_000
 
@@ -432,7 +432,7 @@ def test_moving_to_a_smaller_model_lowers_the_budget():
 def test_editing_only_the_budget_clamps_it():
     c = FakeClient()
     svc = AgentService(c)
-    row = svc.create("cb-1", "o1", "T", "", "", "gpt-4o-mini", "strict", False)
+    row = svc.create("cb-1", "o1", "T", "", "", "gpt-4o-mini", "strict")
 
     merged = svc.update(row, {"max_context_tokens": 999_999})
 
@@ -443,7 +443,7 @@ def test_deleting_an_agent_prunes_it_from_chat_exclusion_lists():
     """A chat that excluded this agent would otherwise keep an id that can
     never match again, accumulating junk on every delete."""
     c = FakeClient()
-    row = AgentService(c).create("cb-1", "o1", "T", "", "", "gpt-4o-mini", "strict", False)
+    row = AgentService(c).create("cb-1", "o1", "T", "", "", "gpt-4o-mini", "strict")
     c.all_sessions = [
         {"id": "s1", "excluded_agent_ids": [row["id"], "other"]},
         {"id": "s2", "excluded_agent_ids": []},
@@ -458,7 +458,7 @@ def test_pruning_never_blocks_the_delete():
     """Best-effort, like every other cleanup here: a chat that cannot be
     updated must not leave the agent undeletable."""
     c = FakeClient()
-    row = AgentService(c).create("cb-1", "o1", "T", "", "", "gpt-4o-mini", "strict", False)
+    row = AgentService(c).create("cb-1", "o1", "T", "", "", "gpt-4o-mini", "strict")
     c.all_sessions = [{"id": "s1", "excluded_agent_ids": [row["id"]]}]
     c.fail_session_update = True
 
@@ -468,7 +468,7 @@ def test_pruning_never_blocks_the_delete():
 def test_an_agent_records_the_chatbot_it_belongs_to():
     c = FakeClient()
     row = AgentService(c).create("cb-1", "o1", "T", "", "", "gpt-4o-mini",
-                                 "strict", False)
+                                 "strict")
     assert row["chatbot_id"] == "cb-1"
     assert row["owner_id"] == "o1"      # ownership is unchanged by the layer
 
@@ -476,7 +476,7 @@ def test_an_agent_records_the_chatbot_it_belongs_to():
 def test_listing_is_scoped_to_one_chatbot():
     c = FakeClient()
     svc = AgentService(c)
-    svc.create("cb-1", "o1", "A", "", "", "gpt-4o-mini", "strict", False)
-    svc.create("cb-2", "o1", "B", "", "", "gpt-4o-mini", "strict", False)
+    svc.create("cb-1", "o1", "A", "", "", "gpt-4o-mini", "strict")
+    svc.create("cb-2", "o1", "B", "", "", "gpt-4o-mini", "strict")
 
     assert [a["name"] for a in svc.list("cb-1")] == ["A"]

@@ -103,7 +103,6 @@ Click **+** in the sidebar to create an agent. You give it:
 - a **model**, picked from a list — or **Other…** to type any LiteLLM id
 - a **grounding** mode — *only answer from my documents* (strict) or *use my
   documents, but answer freely* (open)
-- whether it may also use the shared **general knowledge** base
 
 Then open **⚙ Manage** to train it: upload PDFs into its permanent knowledge
 base, see what it has been trained on, and remove a document you didn't mean to
@@ -113,9 +112,11 @@ Chats are listed under the selected agent. Each chat also has its own **scratch*
 documents: a PDF you attach inside a chat is answerable there and nowhere else,
 so you can drop in a one-off document without permanently teaching the agent.
 
-Retrieval for one question spans up to four knowledge bases: the agent's two
-permanent ones (chunked and full-document), this chat's scratch documents, and
-the shared general KB if the agent opted in.
+Retrieval for one question spans three tiers: the agent's own permanent
+documents (if it's a specialist and has been trained), the chatbot's knowledge
+(read by every agent inside it, including the general assistant, with no
+per-agent opt-in), and this chat's own scratch documents (answerable only in
+this chat, unless you promote one into the chatbot's knowledge).
 
 Those knowledge bases are attached **to the run itself** rather than searched
 up front: the agent gets a `knowledge_search` tool over exactly the bases in
@@ -138,14 +139,13 @@ agent that breaks on its first message.
 **Run single-worker** (the default `uvicorn app.main:app --reload` is). Agent
 resources are provisioned per request; running multiple workers is untested.
 
-## 7. Admin: shared general knowledge
+## 7. Admin
 
 Set `ADMIN_PASSWORD` in `backend/.env` to enable the admin feature. Then open
-`/admin` (there's an "Admin" link at the bottom of the sidebar), enter the
-password, and upload PDFs into the shared **general knowledge** base.
+`/admin` (there's an "Admin" link at the bottom of the sidebar) and enter the
+password to manage users: list accounts, view a user's chats, rename or reset
+a password, or delete an account.
 
-Unlike before, general knowledge is **opt-in per agent** rather than automatic:
-an agent uses it only if its creator ticked "Also use shared general knowledge".
 If `ADMIN_PASSWORD` is not set, the admin endpoints are disabled and the rest of
 the app runs normally.
 
@@ -182,8 +182,9 @@ project. Everything is scoped to the logged-in user, so pass a bearer token:
       the same agent can't see it.
 - [ ] Edit the instructions → the next answer changes, and `powabase_agent_id`
       is unchanged (edits patch in place rather than recreating).
-- [ ] An agent with `use_general_kb: false` doesn't answer from general
-      knowledge; flipping it to `true` makes the same question answerable.
+- [ ] Promote a chat upload (`POST /sessions/{id}/documents/{source_id}/promote`)
+      → 202, gone from that chat's uploads, and a new chat with any agent in
+      the same chatbot can answer from it via `GET /knowledge/documents`.
 - [ ] Untrain the document → gone from `GET /agents/{id}/documents`.
 - [ ] Delete the agent → its chats go with it, and `GET /agents` no longer
       lists it.

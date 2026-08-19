@@ -25,7 +25,6 @@ let contextLimits = {};
 let contextDefault = 32000;
 let contextMin = 1000;
 const agentGroundingInput = document.getElementById("agent-grounding");
-const agentGeneralKbInput = document.getElementById("agent-general-kb");
 const agentDocsSection = document.getElementById("agent-docs");
 const agentDocList = document.getElementById("agent-doc-list");
 const agentTrainFile = document.getElementById("agent-train-file");
@@ -218,7 +217,6 @@ function openAgentModal(agentId) {
     agentDescriptionInput.value = "";
     agentInstructionsInput.value = "";
     agentGroundingInput.value = "strict";
-    agentGeneralKbInput.checked = false;
     renderModelSelect(null);
     applyContextCeiling(contextDefault);
   }
@@ -239,7 +237,6 @@ async function loadAgentDetail(agentId) {
   agentDescriptionInput.value = a.description || "";
   agentInstructionsInput.value = a.instructions || "";
   agentGroundingInput.value = a.grounding;
-  agentGeneralKbInput.checked = a.use_general_kb;
   renderModelSelect(a.model || "");
   // The server sends the stored value already clamped to this model's ceiling.
   applyContextCeiling(a.max_context_tokens);
@@ -257,7 +254,6 @@ async function saveAgentRequest() {
     description: agentDescriptionInput.value.trim(),
     instructions: agentInstructionsInput.value,
     grounding: agentGroundingInput.value,
-    use_general_kb: agentGeneralKbInput.checked,
     max_context_tokens: Number(agentContextInput.value),
   };
   const model = chosenModel();

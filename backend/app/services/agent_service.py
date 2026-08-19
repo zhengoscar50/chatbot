@@ -75,7 +75,6 @@ class AgentService:
         description: str,
         model: str,
         grounding: str,
-        use_general_kb: bool,
         max_context_tokens=None,
     ) -> dict:
         self.probe_model(model)
@@ -91,7 +90,6 @@ class AgentService:
             "description": description,
             "model": model,
             "grounding": grounding,
-            "use_general_kb": use_general_kb,
             "powabase_agent_id": agent["id"],
             "kb_id": None,
             "kb_full_id": None,

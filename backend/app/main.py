@@ -18,14 +18,13 @@ from app.api.routes.sessions import router as sessions_router
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient
 from app.core.config import FRONTEND_DIR, get_settings
 from app.services.agent_service import AgentService
+from app.services.chatbot_kb import ChatbotKbService
 from app.services.chatbot_service import ChatbotService
 from app.services.general_assistant import ensure_general_assistant
-from app.services.general_kb import ensure_general_kb
 from app.services.orchestrator import ensure_orchestrator_agent
 from app.services.retrieval import reranker_retrieval_config
 from app.services.scratch_kb import ensure_scratch_kb
 from app.services.session_service import SessionService
-from app.services.user_kb import UserKbService
 
 
 @asynccontextmanager
@@ -38,7 +37,6 @@ async def lifespan(app: FastAPI):
             reranker_config = reranker_retrieval_config(
                 settings.reranker_model, settings.reranker_candidate_count
             )
-            general_kb_id = ensure_general_kb(client, reranker_config)
             scratch_kb_id = ensure_scratch_kb(client, reranker_config)
             orchestrator_agent_id = ensure_orchestrator_agent(
                 client, settings.orchestrator_model
@@ -49,7 +47,6 @@ async def lifespan(app: FastAPI):
         except PowabaseAPIError as e:
             raise RuntimeError(f"Powabase is not reachable: {e}") from e
         app.state.powabase_client = client
-        app.state.general_kb_id = general_kb_id
         app.state.scratch_kb_id = scratch_kb_id
         app.state.orchestrator_agent_id = orchestrator_agent_id
         app.state.general_assistant_id = general_assistant_id
@@ -66,7 +63,7 @@ async def lifespan(app: FastAPI):
         except PowabaseAPIError as e:
             logger.warning("prompt re-sync skipped: upstream %s", e.status_code)
         app.state.agent_service = agent_service
-        app.state.user_kb_service = UserKbService(client, reranker_config)
+        app.state.chatbot_kb_service = ChatbotKbService(client, reranker_config)
         app.state.session_service = SessionService(
             client, reranker_config, scratch_kb_id
         )

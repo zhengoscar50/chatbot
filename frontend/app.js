@@ -9,6 +9,7 @@ const fileInput = document.getElementById("file-input");
 const attachmentChip = document.getElementById("attachment-chip");
 const attachmentName = document.getElementById("attachment-name");
 const attachmentStatus = document.getElementById("attachment-status");
+const attachmentPromote = document.getElementById("attachment-promote");
 const chatForm = document.getElementById("chat-form");
 const chatInput = document.getElementById("chat-input");
 const sendButton = document.getElementById("send-button");
@@ -40,6 +41,7 @@ let currentSessionId = null;
 let loadedSessions = [];
 let isAsking = false;
 let uploadPollToken = 0;
+let attachedSource = null;   // {sessionId, sourceId} of the chip's document
 
 init();
 
@@ -188,6 +190,7 @@ function doLogout() {
   setChatScope([]);
   sessionList.innerHTML = "";
   attachmentChip.hidden = true;
+  attachmentPromote.hidden = true;
   activeTitle.textContent = "RAG Chat";
   resetAgentState();
   document.getElementById("knowledge-modal").hidden = true;
@@ -288,6 +291,7 @@ async function deleteSession(id, name) {
       currentSessionId = null;
       activeTitle.textContent = "RAG Chat";
       attachmentChip.hidden = true;
+      attachmentPromote.hidden = true;
       clearThread("Type a message to start a new session — or pick one on the left.");
     }
     await loadSessions();
@@ -373,7 +377,10 @@ async function openSession(id, name) {
   const row = loadedSessions.find((s) => s.id === id);
   setChatScope((row && row.excluded_agent_ids) || []);
   activeTitle.textContent = name;
+  uploadPollToken++;
+  attachedSource = null;
   attachmentChip.hidden = true;
+  attachmentPromote.hidden = true;
   sidebar.classList.remove("open");
   markActive();
   setComposerEnabled(true);
@@ -434,6 +441,7 @@ fileInput.addEventListener("change", async () => {
     if (response.ok || response.status === 202) {
       showAttachment(file.name, "Indexing…", null);
       pollIngestStatus(sessionId, body.source_id, file.name);
+      attachedSource = { sessionId, sourceId: body.source_id };
     } else {
       showAttachment(file.name, errorText(body, response), "error");
     }
@@ -460,6 +468,7 @@ async function pollIngestStatus(sessionId, sourceId, fileName) {
       if (myToken !== uploadPollToken) return;
       if (body.status === "indexed") {
         showAttachment(fileName, "indexed", "ok");
+        attachmentPromote.hidden = false;
         return;
       }
       if (body.status === "failed") {
@@ -472,6 +481,29 @@ async function pollIngestStatus(sessionId, sourceId, fileName) {
     }
   }
 }
+
+attachmentPromote.addEventListener("click", async () => {
+  if (!attachedSource) return;
+  attachmentPromote.disabled = true;
+  const { sessionId, sourceId } = attachedSource;
+  try {
+    const res = await authFetch(
+      `/sessions/${encodeURIComponent(sessionId)}` +
+      `/documents/${encodeURIComponent(sourceId)}/promote`,
+      { method: "POST" }
+    );
+    if (res.ok || res.status === 202) {
+      attachmentPromote.hidden = true;
+      attachmentStatus.textContent = "saved to chatbot knowledge";
+    } else {
+      attachmentStatus.textContent = "could not save";
+    }
+  } catch (err) {
+    attachmentStatus.textContent = err.message;
+  } finally {
+    attachmentPromote.disabled = false;
+  }
+});
 
 chatForm.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -550,6 +582,7 @@ function showAttachment(name, statusText, state) {
   attachmentChip.hidden = false;
   attachmentName.textContent = name;
   attachmentStatus.textContent = statusText;
+  attachmentPromote.hidden = true;
   if (state) attachmentStatus.dataset.state = state;
   else delete attachmentStatus.dataset.state;
 }

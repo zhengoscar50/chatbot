@@ -141,7 +141,6 @@ class AgentCreateRequest(BaseModel):
     description: str = Field(default="", max_length=500)
     model: Optional[str] = Field(default=None)
     grounding: str = Field(default="strict")
-    use_general_kb: bool = Field(default=False)
     # Clamped server-side to the model's ceiling; the bound here only rejects
     # obvious nonsense early.
     max_context_tokens: Optional[int] = Field(default=None, ge=0, le=2_000_000)
@@ -160,7 +159,6 @@ class AgentUpdateRequest(BaseModel):
     description: Optional[str] = Field(default=None, max_length=500)
     model: Optional[str] = None
     grounding: Optional[str] = None
-    use_general_kb: Optional[bool] = None
     max_context_tokens: Optional[int] = Field(default=None, ge=0, le=2_000_000)
 
     @field_validator("grounding")
@@ -178,7 +176,6 @@ class AgentResponse(BaseModel):
     description: str = ""
     model: str
     grounding: str
-    use_general_kb: bool
     trained: bool
     max_context_tokens: int = 0
     max_context_ceiling: int = 0

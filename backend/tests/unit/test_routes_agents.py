@@ -19,14 +19,13 @@ class FakeAgentService:
         self._n = 0
 
     def create(self, chatbot_id, owner_id, name, instructions, description, model,
-               grounding, use_general_kb, max_context_tokens=None):
+               grounding, max_context_tokens=None):
         self._n += 1
         row = {
             "id": f"ag-{self._n}", "chatbot_id": chatbot_id, "owner_id": owner_id,
             "name": name,
             "instructions": instructions, "description": description,
-            "model": model, "grounding": grounding,
-            "use_general_kb": use_general_kb, "powabase_agent_id": "pa-1",
+            "model": model, "grounding": grounding, "powabase_agent_id": "pa-1",
             "max_context_tokens": max_context_tokens,
             "kb_id": None, "kb_full_id": None, "updated_at": "2026-08-06T00:00:00Z",
         }
@@ -107,13 +106,12 @@ def test_create_agent_returns_the_configured_agent():
     app = build_app()
     r = TestClient(app).post("/agents", json={
         "chatbot_id": "cb-1", "name": "Tutor", "instructions": "Be terse.",
-        "grounding": "open", "use_general_kb": True,
+        "grounding": "open",
     })
     assert r.status_code == 201
     body = r.json()
     assert body["name"] == "Tutor"
     assert body["grounding"] == "open"
-    assert body["use_general_kb"] is True
     assert body["trained"] is False
 
 

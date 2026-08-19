@@ -108,6 +108,32 @@ class SessionService:
         source_ids.append(source_id)
         self.client.update_session(session_id, {"source_ids": source_ids})
 
+    def forget_source(self, session_id: str, source_id: str) -> None:
+        """Drop one upload from this chat's scratch scope.
+
+        The other half of record_source, used when a document is promoted into
+        chatbot knowledge: the chat reads that knowledge too, so keeping the id
+        here as well would search the same document twice.
+
+        Re-reads the row for the same reason record_source does — promotion
+        finishes in a background task, and a stale copy would write back a list
+        missing a concurrent upload.
+
+        Deliberately does NOT unlink the source from the shared scratch KB.
+        upload_source deduplicates identical content, so another chat may hold
+        the same source id, and unlinking it would break that chat's retrieval.
+        An unreferenced link is never searched, because scratch retrieval is
+        restricted to the ids named on this row.
+        """
+        row = self.client.get_session_row(session_id)
+        if row is None:
+            return
+        source_ids = list(row.get("source_ids") or [])
+        if source_id not in source_ids:
+            return
+        source_ids.remove(source_id)
+        self.client.update_session(session_id, {"source_ids": source_ids})
+
     def _unlink_scratch_sources(self, row: dict) -> None:
         """Remove this chat's uploads from the SHARED scratch KB.
 
