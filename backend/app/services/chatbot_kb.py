@@ -54,7 +54,7 @@ class ChatbotKbService:
         return kb["id"]
 
     def documents(self, chatbot_row: dict) -> list:
-        """Every document across both tiers, newest first where available."""
+        """Every document across both tiers, in the order Powabase returns them."""
         out = []
         for kb_id in self.kb_ids(chatbot_row):
             for item in self.client.list_kb_sources(kb_id).get("items", []):

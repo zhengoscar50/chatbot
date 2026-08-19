@@ -377,6 +377,8 @@ async function openSession(id, name) {
   const row = loadedSessions.find((s) => s.id === id);
   setChatScope((row && row.excluded_agent_ids) || []);
   activeTitle.textContent = name;
+  uploadPollToken++;
+  attachedSource = null;
   attachmentChip.hidden = true;
   attachmentPromote.hidden = true;
   sidebar.classList.remove("open");

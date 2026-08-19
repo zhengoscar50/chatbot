@@ -64,17 +64,16 @@ def chat(
     except PowabaseAPIError:
         history = []
 
-    # The chatbot comes off the CHAT ROW, never the request body — the same
-    # rule the roster follows below, for the same reason. A legacy chat with no
-    # chatbot_id degrades to no chatbot knowledge rather than raising.
+    # The chatbot comes off the CHAT ROW, never the request body, for both the
+    # knowledge lookup below and the roster: a client must not be able to aim
+    # one chatbot's question at another chatbot's knowledge or roster. A
+    # legacy chat with no chatbot_id degrades to no chatbot knowledge rather
+    # than raising.
     chatbot_id = row.get("chatbot_id")
     chatbot = chatbots.get_owned(chatbot_id, user["id"]) if chatbot_id else None
 
     # One call decides both which agent answers and whether to retrieve.
     # Every chat starts with the whole roster; this chat may exclude some.
-    # The chatbot comes off the CHAT ROW, never the request body — a client
-    # must not be able to ask one chatbot's question against another
-    # chatbot's roster.
     roster = roster_for(agents.list(row.get("chatbot_id")), row.get("excluded_agent_ids"))
     decision = OrchestratorService(client, orchestrator_agent_id).route(
         req.query, roster, history

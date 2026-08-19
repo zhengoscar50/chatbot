@@ -41,9 +41,6 @@ class FakeClient:
         self.row = row if row is not None else dict(USER)
         self.kb_items = {}
 
-    def get_user(self, user_id):
-        return self.row
-
     def list_kb_sources(self, kb_id):
         return {"items": self.kb_items.get(kb_id, [])}
 
@@ -261,6 +258,24 @@ def test_documents_come_from_the_named_chatbot(client, auth, my_chatbot, fake):
     res = client.get(f"/knowledge/documents?chatbot_id={my_chatbot}", headers=auth)
     assert res.status_code == 200
     assert [d["source_id"] for d in res.json()] == ["s1"]
+
+
+def test_two_chatbots_owned_by_the_same_user_see_only_their_own_documents(
+    client, auth, chatbots, fake
+):
+    cb_a = chatbots.add(owner_id=USER["id"], kb_id="kb-a")
+    cb_b = chatbots.add(owner_id=USER["id"], kb_id="kb-b")
+    fake.kb_items["kb-a"] = [
+        {"id": "i1", "source_id": "s-a", "source_name": "a.pdf", "index_status": "indexed"}
+    ]
+    fake.kb_items["kb-b"] = [
+        {"id": "i2", "source_id": "s-b", "source_name": "b.pdf", "index_status": "indexed"}
+    ]
+
+    res = client.get(f"/knowledge/documents?chatbot_id={cb_a}", headers=auth)
+
+    assert res.status_code == 200
+    assert [d["source_id"] for d in res.json()] == ["s-a"]
 
 
 def test_untraining_another_users_chatbot_is_not_found(client, auth, other_chatbot):

@@ -1,6 +1,3 @@
-import pytest
-
-from app.clients.powabase_client import PowabaseAPIError
 from app.services.chatbot_kb import ChatbotKbService
 
 

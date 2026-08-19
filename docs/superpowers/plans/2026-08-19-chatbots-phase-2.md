@@ -1771,3 +1771,14 @@ Migrations are applied by hand in Powabase Studio; there is no SQL endpoint.
 6. Apply **`013`**. A failure here means step 1 was skipped.
 7. Delete the orphaned `general-knowledge-kb` in Studio by hand, once you have
    confirmed nothing misses it.
+
+**Consequence of `012`'s oldest-chatbot copy, worth knowing before relying on
+`users.kb_id`/`users.kb_full_id` for recovery:** after `012`, the oldest
+chatbot's `kb_id`/`kb_full_id` for each user **is** that user's old
+`users.kb_id`/`users.kb_full_id` — the same Powabase knowledge base, not a
+copy. Deleting that chatbot hard-deletes it (`chatbot_service.py`), which
+leaves `users.kb_id` pointing at a destroyed knowledge base. The `users`
+columns were kept in place, rather than dropped in `012`, precisely so a
+rollback would lose no data — but once a user deletes their original chatbot,
+that rollback guarantee no longer holds for them. No live impact today, since
+nothing still reads `users.kb_id`.

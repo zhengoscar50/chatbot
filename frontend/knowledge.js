@@ -90,12 +90,12 @@ async function untrainKnowledge(sourceId) {
   }
 }
 
-async function pollKnowledgeStatus(sourceId, filename) {
+async function pollKnowledgeStatus(sourceId, filename, chatbotId) {
   for (let i = 0; i < KNOWLEDGE_POLL_LIMIT; i += 1) {
     await new Promise((r) => setTimeout(r, KNOWLEDGE_POLL_MS));
     const res = await authFetch(
       `/knowledge/documents/${encodeURIComponent(sourceId)}/status` +
-      `?chatbot_id=${encodeURIComponent(currentChatbotId)}`
+      `?chatbot_id=${encodeURIComponent(chatbotId)}`
     );
     if (!res.ok) continue; // a blip mid-poll is not a failed upload
     const body = await res.json();
@@ -110,12 +110,13 @@ async function pollKnowledgeStatus(sourceId, filename) {
 async function trainKnowledge() {
   const file = knowledgeFile.files[0];
   if (!file || knowledgeTraining) return;
+  const chatbotId = currentChatbotId;
   knowledgeTraining = true;
   knowledgeFile.disabled = true;
   knowledgeStatus.textContent = `Reading ${file.name}… this can take a few minutes for a large document.`;
   const data = new FormData();
   data.append("file", file);
-  data.append("chatbot_id", currentChatbotId);
+  data.append("chatbot_id", chatbotId);
   try {
     const res = await authFetch("/knowledge/train", { method: "POST", body: data });
     let body;
@@ -128,7 +129,7 @@ async function trainKnowledge() {
       knowledgeStatus.textContent = errorText(body, res);
       return;
     }
-    const result = await pollKnowledgeStatus(body.source_id, file.name);
+    const result = await pollKnowledgeStatus(body.source_id, file.name, chatbotId);
     knowledgeStatus.textContent = result.ok
       ? `Added ${file.name}. Every agent in this chatbot can use it now.`
       : result.detail;

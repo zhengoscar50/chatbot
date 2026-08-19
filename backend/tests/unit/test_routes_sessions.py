@@ -338,6 +338,7 @@ def test_promote_moves_the_document_into_chatbot_knowledge(client, auth, fake):
     res = client.post("/sessions/s1/documents/src-1/promote", headers=auth)
     assert res.status_code == 202
     assert "src-1" not in fake.sessions["s1"]["source_ids"]
+    assert fake.indexed == [("kb-chatbot-cb-1-knowledge", "src-1")]
 
 
 def test_promote_rejects_a_source_this_chat_never_uploaded(client, auth, fake):
