@@ -22,13 +22,13 @@ from app.services.ingest_service import (
     IngestTimeoutError,
     source_status,
 )
-from app.services.user_kb import UserKbService, get_user_kb_service
+from app.services.chatbot_kb import ChatbotKbService, get_chatbot_kb_service
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 logger = logging.getLogger(__name__)
 
 
-def _finish_training(service, user_kb, user_row, source_id, full_document_max_chars) -> None:
+def _finish_training(service, chatbot_kb, user_row, source_id, full_document_max_chars) -> None:
     """Extract, classify and index one document, after the response.
 
     Same shape as agent training: backgrounded with the long budget, because a
@@ -39,7 +39,7 @@ def _finish_training(service, user_kb, user_row, source_id, full_document_max_ch
     try:
         service.await_extraction(source_id)
         full_document = 0 < service.char_count(source_id) <= full_document_max_chars
-        kb_id = user_kb.ensure_kb(user_row, full_document)
+        kb_id = chatbot_kb.ensure_kb(user_row, full_document)
         service.index_into(kb_id, source_id)
     except AttentionRequiredError:
         logger.warning("user knowledge %s: needs OCR re-extraction", source_id)
@@ -56,7 +56,7 @@ async def train_user_knowledge(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     user: dict = Depends(get_current_user),
-    user_kb: UserKbService = Depends(get_user_kb_service),
+    chatbot_kb: ChatbotKbService = Depends(get_chatbot_kb_service),
     client: PowabaseClient = Depends(get_powabase_client),
     settings=Depends(get_settings),
 ):
@@ -72,7 +72,7 @@ async def train_user_knowledge(
         raise HTTPException(status_code=502, detail=str(e))
 
     background_tasks.add_task(
-        _finish_training, service, user_kb, user, source_id,
+        _finish_training, service, chatbot_kb, user, source_id,
         settings.full_document_max_chars,
     )
     return JSONResponse(
@@ -85,7 +85,7 @@ async def train_user_knowledge(
 async def user_knowledge_status(
     source_id: str,
     user: dict = Depends(get_current_user),
-    user_kb: UserKbService = Depends(get_user_kb_service),
+    chatbot_kb: ChatbotKbService = Depends(get_chatbot_kb_service),
     client: PowabaseClient = Depends(get_powabase_client),
 ):
     # Re-read the row: the tier is created during the background task, so the
@@ -93,7 +93,7 @@ async def user_knowledge_status(
     fresh = await run_in_threadpool(client.get_user, user["id"]) or user
     try:
         status, detail = await run_in_threadpool(
-            source_status, client, source_id, user_kb.kb_ids(fresh)
+            source_status, client, source_id, chatbot_kb.kb_ids(fresh)
         )
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
@@ -103,12 +103,12 @@ async def user_knowledge_status(
 @router.get("/documents", response_model=list)
 async def list_user_knowledge(
     user: dict = Depends(get_current_user),
-    user_kb: UserKbService = Depends(get_user_kb_service),
+    chatbot_kb: ChatbotKbService = Depends(get_chatbot_kb_service),
     client: PowabaseClient = Depends(get_powabase_client),
 ):
     fresh = await run_in_threadpool(client.get_user, user["id"]) or user
     try:
-        return await run_in_threadpool(user_kb.documents, fresh)
+        return await run_in_threadpool(chatbot_kb.documents, fresh)
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
@@ -117,12 +117,12 @@ async def list_user_knowledge(
 async def untrain_user_knowledge(
     source_id: str,
     user: dict = Depends(get_current_user),
-    user_kb: UserKbService = Depends(get_user_kb_service),
+    chatbot_kb: ChatbotKbService = Depends(get_chatbot_kb_service),
     client: PowabaseClient = Depends(get_powabase_client),
 ):
     fresh = await run_in_threadpool(client.get_user, user["id"]) or user
     try:
-        found = await run_in_threadpool(user_kb.untrain, fresh, source_id)
+        found = await run_in_threadpool(chatbot_kb.untrain, fresh, source_id)
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
     if not found:

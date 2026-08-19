@@ -8,7 +8,7 @@ from app.api.deps import get_current_user
 from app.api.routes import knowledge as knowledge_route
 from app.clients.powabase_client import get_powabase_client
 from app.core.config import get_settings
-from app.services.user_kb import get_user_kb_service
+from app.services.chatbot_kb import get_chatbot_kb_service
 
 USER = {"id": "u1", "username": "alice", "kb_id": None, "kb_full_id": None}
 
@@ -69,7 +69,7 @@ def build_app(kb=None, client=None):
     app = FastAPI()
     app.include_router(knowledge_route.router)
     app.dependency_overrides[get_current_user] = lambda: dict(USER)
-    app.dependency_overrides[get_user_kb_service] = lambda: kb or FakeUserKb()
+    app.dependency_overrides[get_chatbot_kb_service] = lambda: kb or FakeUserKb()
     app.dependency_overrides[get_powabase_client] = lambda: client or FakeClient()
     app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
         poll_interval_seconds=0.01,

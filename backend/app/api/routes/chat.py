@@ -19,7 +19,7 @@ from app.services.agent_scope import roster_for
 from app.services.context_budget import clamp_context_tokens
 from app.services.retrieval_scope import kb_ids_for
 from app.services.scratch_kb import get_scratch_kb_id
-from app.services.user_kb import UserKbService, get_user_kb_service
+from app.services.chatbot_kb import ChatbotKbService, get_chatbot_kb_service
 from app.services.session_service import DEFAULT_NAME, SessionService, get_session_service
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -48,7 +48,7 @@ def chat(
     agents: AgentService = Depends(get_agent_service),
     messages: MessageStore = Depends(get_message_store),
     scratch_kb_id: str = Depends(get_scratch_kb_id),
-    user_kb: UserKbService = Depends(get_user_kb_service),
+    chatbot_kb: ChatbotKbService = Depends(get_chatbot_kb_service),
     orchestrator_agent_id: str = Depends(get_orchestrator_agent_id),
     general_assistant_id: str = Depends(get_general_assistant_id),
     settings=Depends(get_settings),
