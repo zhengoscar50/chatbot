@@ -10,7 +10,6 @@ from app.clients.powabase_client import get_powabase_client
 from app.core.config import get_settings
 from app.services.agent_service import get_agent_service
 from app.services.general_assistant import get_general_assistant_id
-from app.services.general_kb import get_general_kb_id
 from app.services.scratch_kb import get_scratch_kb_id
 from app.services.user_kb import get_user_kb_service
 from app.services.orchestrator import Decision, OrchestratorService, get_orchestrator_agent_id
@@ -34,7 +33,7 @@ DEFAULT_AGENT = {
     "id": "ag-1", "owner_id": "o1", "name": "Chem tutor",
     "powabase_agent_id": "pa-1", "description": "Chemistry.",
     "kb_id": "ag-chunk", "kb_full_id": "ag-full",
-    "use_general_kb": False, "model": "m",
+    "model": "m",
 }
 
 
@@ -89,7 +88,6 @@ def build_app(session_service, agent_service=None):
     app.dependency_overrides[get_powabase_client] = lambda: app.state.message_client
     app.dependency_overrides[get_session_service] = lambda: session_service
     app.dependency_overrides[get_agent_service] = lambda: (agent_service or FakeAgentService())
-    app.dependency_overrides[get_general_kb_id] = lambda: "gkb-1"
     app.dependency_overrides[get_scratch_kb_id] = lambda: "scratch-kb"
     # An untrained user contributes no personal knowledge base.
     app.dependency_overrides[get_user_kb_service] = lambda: SimpleNamespace(
@@ -270,17 +268,6 @@ def test_chat_routes_to_the_agent_the_orchestrator_picked(monkeypatch):
     assert r.json()["answered_by"] == {"id": "ag-1", "name": "Chem tutor"}
 
 
-def test_chat_includes_general_kb_only_when_the_agent_opted_in(monkeypatch):
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to("ag-1"))
-    LAST_CHAT_ARGS.clear()
-    opted_in = FakeAgentService(dict(DEFAULT_AGENT, kb_full_id=None, use_general_kb=True))
-
-    post(TestClient(build_app(FakeSessionService(), opted_in)), {"session_id": "s1", "query": "q"})
-
-    assert LAST_CHAT_ARGS["kb_ids"] == ["ag-chunk", "kb-s", "gkb-1"]
-
-
 def test_chat_falls_back_to_the_general_assistant(monkeypatch):
     monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
     monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to(None))
@@ -291,7 +278,7 @@ def test_chat_falls_back_to_the_general_assistant(monkeypatch):
     assert LAST_CHAT_ARGS["agent_id"] == "general-1"
     # Never a specialist's permanent KBs — that would leak one agent's
     # documents into an answer attributed to another.
-    assert LAST_CHAT_ARGS["kb_ids"] == ["kb-s", "gkb-1"]
+    assert LAST_CHAT_ARGS["kb_ids"] == ["kb-s"]
     assert r.json()["answered_by"] == {"id": None, "name": "General assistant"}
 
 
@@ -325,8 +312,7 @@ def test_a_chat_can_exclude_an_agent_from_answering(monkeypatch):
     svc = FakeSessionService()
     svc.row = dict(svc.row, excluded_agent_ids=["ag-1"])
     agents = FakeAgentService(row={"id": "ag-1", "name": "Chem", "powabase_agent_id": "pa-1",
-                                   "kb_id": "kb-1", "kb_full_id": None, "model": "gpt-4o-mini",
-                                   "use_general_kb": False})
+                                   "kb_id": "kb-1", "kb_full_id": None, "model": "gpt-4o-mini"})
 
     TestClient(build_app(svc, agents)).post(
         "/chat", json={"session_id": "s1", "query": "hi"}
@@ -346,8 +332,7 @@ def test_a_chat_with_no_exclusions_sees_every_agent(monkeypatch):
     monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
     svc = FakeSessionService()
     agents = FakeAgentService(row={"id": "ag-1", "name": "Chem", "powabase_agent_id": "pa-1",
-                                   "kb_id": "kb-1", "kb_full_id": None, "model": "gpt-4o-mini",
-                                   "use_general_kb": False})
+                                   "kb_id": "kb-1", "kb_full_id": None, "model": "gpt-4o-mini"})
 
     TestClient(build_app(svc, agents)).post(
         "/chat", json={"session_id": "s1", "query": "hi"}
@@ -374,8 +359,7 @@ def test_the_roster_comes_from_the_chats_chatbot(monkeypatch):
         def list(self, chatbot_id):
             seen["asked_for"] = chatbot_id
             return [{"id": "ag-1", "name": "A", "powabase_agent_id": "pa-1",
-                     "kb_id": "kb-1", "kb_full_id": None, "model": "gpt-4o-mini",
-                     "use_general_kb": False}]
+                     "kb_id": "kb-1", "kb_full_id": None, "model": "gpt-4o-mini"}]
 
     TestClient(build_app(svc, ScopedAgents())).post(
         "/chat", json={"session_id": "s1", "query": "hi", "chatbot_id": "cb-OTHER"}

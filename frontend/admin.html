@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Admin · General Knowledge</title>
+    <title>Admin</title>
     <link rel="stylesheet" href="/styles.css" />
     <script>
       // Apply the theme before first paint to avoid a flash of the wrong theme.
@@ -22,7 +22,7 @@
     <div class="admin-page">
       <header class="admin-head">
         <span class="topbar__mark" aria-hidden="true"></span>
-        <h1 class="admin-title">General Knowledge — Admin</h1>
+        <h1 class="admin-title">Admin</h1>
         <a class="admin-back" href="/">← Back to chat</a>
         <button type="button" id="theme-toggle" class="icon-btn theme-toggle" aria-label="Toggle dark mode" title="Toggle theme">
           <svg class="theme-ico theme-ico--moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
@@ -31,24 +31,12 @@
       </header>
 
       <section class="admin-card" id="gate">
-        <p class="admin-hint">Enter the admin password to manage shared general knowledge.</p>
+        <p class="admin-hint">Enter the admin password to manage user accounts.</p>
         <form id="gate-form" class="admin-row">
           <input type="password" id="password-input" class="admin-input" placeholder="Admin password" autocomplete="current-password" />
           <button type="submit" class="btn-solid">Unlock</button>
         </form>
         <p class="admin-status" id="gate-status"></p>
-      </section>
-
-      <section class="admin-card" id="uploader" hidden>
-        <p class="admin-hint">
-          Upload PDFs to the shared general knowledge base. Every <strong>new</strong>
-          session can then draw on these, alongside its own uploads.
-        </p>
-        <div class="admin-row">
-          <input type="file" id="file-input" accept="application/pdf" />
-          <button type="button" id="upload-button" class="btn-solid">Upload</button>
-        </div>
-        <p class="admin-status" id="upload-status"></p>
       </section>
 
       <section class="admin-card" id="users-panel" hidden>

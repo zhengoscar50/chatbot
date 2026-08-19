@@ -20,7 +20,6 @@ from app.core.config import FRONTEND_DIR, get_settings
 from app.services.agent_service import AgentService
 from app.services.chatbot_service import ChatbotService
 from app.services.general_assistant import ensure_general_assistant
-from app.services.general_kb import ensure_general_kb
 from app.services.orchestrator import ensure_orchestrator_agent
 from app.services.retrieval import reranker_retrieval_config
 from app.services.scratch_kb import ensure_scratch_kb
@@ -38,7 +37,6 @@ async def lifespan(app: FastAPI):
             reranker_config = reranker_retrieval_config(
                 settings.reranker_model, settings.reranker_candidate_count
             )
-            general_kb_id = ensure_general_kb(client, reranker_config)
             scratch_kb_id = ensure_scratch_kb(client, reranker_config)
             orchestrator_agent_id = ensure_orchestrator_agent(
                 client, settings.orchestrator_model
@@ -49,7 +47,6 @@ async def lifespan(app: FastAPI):
         except PowabaseAPIError as e:
             raise RuntimeError(f"Powabase is not reachable: {e}") from e
         app.state.powabase_client = client
-        app.state.general_kb_id = general_kb_id
         app.state.scratch_kb_id = scratch_kb_id
         app.state.orchestrator_agent_id = orchestrator_agent_id
         app.state.general_assistant_id = general_assistant_id

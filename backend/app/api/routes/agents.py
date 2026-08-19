@@ -81,7 +81,6 @@ def _to_response(row: dict) -> AgentResponse:
         description=row.get("description") or "",
         model=row["model"],
         grounding=row.get("grounding", "strict"),
-        use_general_kb=bool(row.get("use_general_kb")),
         trained=_trained(row),
         max_context_tokens=clamp_context_tokens(
             row.get("max_context_tokens"), row.get("model")
@@ -103,7 +102,7 @@ async def create_agent(
     try:
         row = await run_in_threadpool(
             agents.create, req.chatbot_id, user["id"], req.name, req.instructions, req.description,
-            req.model or settings.default_agent_model, req.grounding, req.use_general_kb,
+            req.model or settings.default_agent_model, req.grounding,
             req.max_context_tokens,
         )
     except ModelRejectedError as e:

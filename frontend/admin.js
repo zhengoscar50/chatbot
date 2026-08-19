@@ -2,10 +2,6 @@ const gateForm = document.getElementById("gate-form");
 const passwordInput = document.getElementById("password-input");
 const gateStatus = document.getElementById("gate-status");
 const gate = document.getElementById("gate");
-const uploader = document.getElementById("uploader");
-const fileInput = document.getElementById("file-input");
-const uploadButton = document.getElementById("upload-button");
-const uploadStatus = document.getElementById("upload-status");
 const usersPanel = document.getElementById("users-panel");
 const usersTable = document.getElementById("users-table");
 const usersStatus = document.getElementById("users-status");
@@ -28,7 +24,6 @@ gateForm.addEventListener("submit", async (event) => {
     if (response.ok) {
       adminPassword = password;
       gate.hidden = true;
-      uploader.hidden = false;
       usersPanel.hidden = false;
       loadUsers();
     } else if (response.status === 401) {
@@ -41,36 +36,6 @@ gateForm.addEventListener("submit", async (event) => {
     }
   } catch (err) {
     setStatus(gateStatus, err.message, "error");
-  }
-});
-
-uploadButton.addEventListener("click", async () => {
-  const file = fileInput.files[0];
-  if (!file) {
-    setStatus(uploadStatus, "Choose a PDF first.", "error");
-    return;
-  }
-  if (!adminPassword) return;
-  setStatus(uploadStatus, `Uploading and indexing ${file.name}…`, null);
-  const formData = new FormData();
-  formData.append("password", adminPassword);
-  formData.append("file", file);
-  try {
-    const response = await fetch("/admin/train", { method: "POST", body: formData });
-    let body;
-    try {
-      body = await response.json();
-    } catch (parseErr) {
-      body = { detail: `${response.status} ${response.statusText}` };
-    }
-    if (response.ok || response.status === 202) {
-      setStatus(uploadStatus, `${file.name}: ${body.status}`, body.status === "indexed" ? "ok" : null);
-      fileInput.value = "";
-    } else {
-      setStatus(uploadStatus, body.detail || response.statusText, "error");
-    }
-  } catch (err) {
-    setStatus(uploadStatus, err.message, "error");
   }
 });
 
@@ -114,7 +79,6 @@ async function adminFetch(url, options = {}) {
 function resetToGate() {
   adminPassword = null;
   gate.hidden = false;
-  uploader.hidden = true;
   usersPanel.hidden = true;
   setStatus(gateStatus, "Session expired — please unlock again.", "error");
 }

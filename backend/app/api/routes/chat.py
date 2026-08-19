@@ -14,7 +14,6 @@ from app.services.agent_service import AgentService, get_agent_service
 from app.services.conversation import conversation_message
 from app.services.general_assistant import get_general_assistant_id
 from app.services.message_store import MessageStore, get_message_store
-from app.services.general_kb import get_general_kb_id
 from app.services.orchestrator import OrchestratorService, get_orchestrator_agent_id
 from app.services.agent_scope import roster_for
 from app.services.context_budget import clamp_context_tokens
@@ -48,7 +47,6 @@ def chat(
     sessions: SessionService = Depends(get_session_service),
     agents: AgentService = Depends(get_agent_service),
     messages: MessageStore = Depends(get_message_store),
-    general_kb_id: str = Depends(get_general_kb_id),
     scratch_kb_id: str = Depends(get_scratch_kb_id),
     user_kb: UserKbService = Depends(get_user_kb_service),
     orchestrator_agent_id: str = Depends(get_orchestrator_agent_id),
@@ -84,8 +82,7 @@ def chat(
 
     service = ChatService(
         client, answering_agent_id,
-        kb_ids_for(agent_row, row, general_kb_id, scratch_kb_id,
-                   user_kb_ids=user_kb.kb_ids(user)),
+        kb_ids_for(agent_row, row, scratch_kb_id),
         # retrieval depth is derived from the budget below, not configured
         None,
         # The answering agent's own budget, re-clamped at read time so a value
