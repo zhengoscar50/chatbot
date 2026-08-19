@@ -12,6 +12,7 @@ from app.services.agent_service import get_agent_service
 from app.services.general_assistant import get_general_assistant_id
 from app.services.scratch_kb import get_scratch_kb_id
 from app.services.chatbot_kb import get_chatbot_kb_service
+from app.services.chatbot_service import get_chatbot_service
 from app.services.orchestrator import Decision, OrchestratorService, get_orchestrator_agent_id
 from app.services.session_service import get_session_service
 
@@ -43,6 +44,21 @@ class FakeAgentService:
 
     def list(self, owner_id):
         return [self.row] if self.row else []
+
+
+class FakeChatbotService:
+    """Stands in for ChatbotService.get_owned, keyed by chatbot id.
+
+    Empty by default, so a chat's chatbot_id that nobody registered here
+    resolves to None, same as a chatbot that does not exist.
+    """
+
+    def __init__(self):
+        self.chatbots = {}
+
+    def get_owned(self, chatbot_id, owner_id):
+        row = self.chatbots.get(chatbot_id)
+        return row if row and row.get("owner_id") == owner_id else None
 
 
 class FakeMessageClient:
@@ -81,7 +97,7 @@ def route_to(agent_id):
     return lambda self, q, roster, history=None: Decision(agent_id)
 
 
-def build_app(session_service, agent_service=None):
+def build_app(session_service, agent_service=None, chatbots=None, chatbot_kb=None):
     app = FastAPI()
     app.include_router(chat_route.router)
     app.state.message_client = FakeMessageClient()
@@ -90,9 +106,10 @@ def build_app(session_service, agent_service=None):
     app.dependency_overrides[get_agent_service] = lambda: (agent_service or FakeAgentService())
     app.dependency_overrides[get_scratch_kb_id] = lambda: "scratch-kb"
     # An untrained user contributes no personal knowledge base.
-    app.dependency_overrides[get_chatbot_kb_service] = lambda: SimpleNamespace(
+    app.dependency_overrides[get_chatbot_kb_service] = lambda: (chatbot_kb or SimpleNamespace(
         kb_ids=lambda row: []
-    )
+    ))
+    app.dependency_overrides[get_chatbot_service] = lambda: (chatbots or FakeChatbotService())
     app.dependency_overrides[get_orchestrator_agent_id] = lambda: "orch-1"
     app.dependency_overrides[get_general_assistant_id] = lambda: "general-1"
     app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
@@ -367,3 +384,22 @@ def test_the_roster_comes_from_the_chats_chatbot(monkeypatch):
 
     assert seen["asked_for"] == "cb-1"
     assert seen["roster"] == ["ag-1"]
+
+
+def test_chat_retrieves_from_the_chats_own_chatbot(monkeypatch):
+    # Two chatbots, one owner. The chat belongs to A, so B's knowledge must
+    # never appear in the scope passed to retrieval.
+    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    LAST_CHAT_ARGS.clear()
+    svc = FakeSessionService()
+    svc.row = dict(svc.row, chatbot_id="cb-a")
+    chatbots = FakeChatbotService()
+    chatbots.chatbots["cb-a"] = {"id": "cb-a", "owner_id": "o1", "kb_id": "kb-a"}
+    chatbots.chatbots["cb-b"] = {"id": "cb-b", "owner_id": "o1", "kb_id": "kb-b"}
+    chatbot_kb = SimpleNamespace(kb_ids=lambda row: [row["kb_id"]] if row else [])
+    app = build_app(svc, chatbots=chatbots, chatbot_kb=chatbot_kb)
+
+    post(TestClient(app), {"session_id": "s1", "query": "hi"})
+
+    assert "kb-a" in LAST_CHAT_ARGS["kb_ids"]
+    assert "kb-b" not in LAST_CHAT_ARGS["kb_ids"]

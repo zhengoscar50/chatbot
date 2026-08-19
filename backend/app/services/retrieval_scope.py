@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 
-def kb_ids_for(agent_row, session_row, scratch_kb_id=None) -> list:
+def kb_ids_for(agent_row, session_row, chatbot_kb_ids=None,
+               scratch_kb_id=None) -> list:
     """Knowledge bases in scope for one question, in retrieval order.
 
     Entries are either a bare KB id (search all of it) or a dict
@@ -10,7 +11,8 @@ def kb_ids_for(agent_row, session_row, scratch_kb_id=None) -> list:
     and no others, because retrieval is restricted to the source ids recorded
     on that chat's row.
 
-    With a specialist: its permanent KBs, then this chat's scratch documents.
+    With a specialist: its permanent KBs, then the chatbot's knowledge, then
+    this chat's scratch documents.
 
     With ``agent_row=None`` the general assistant is answering: it sees this
     chat's scratch documents and never a specialist's permanent KBs — that
@@ -33,6 +35,11 @@ def kb_ids_for(agent_row, session_row, scratch_kb_id=None) -> list:
     ids: list = []
     if agent_row:
         ids.extend([agent_row.get("kb_id"), agent_row.get("kb_full_id")])
+    # The chatbot's own knowledge, searched by every agent inside it —
+    # including the general assistant, because this belongs to the container
+    # rather than to any one agent. That is deliberately unlike a specialist's
+    # permanent tier above, which the general assistant never sees.
+    ids.extend(chatbot_kb_ids or [])
     if session_row:
         ids.append(session_row.get("kb_id"))          # legacy per-chat KB
         source_ids = session_row.get("source_ids") or []

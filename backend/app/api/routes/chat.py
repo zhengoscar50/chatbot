@@ -11,6 +11,7 @@ from app.services.chat_service import (
     ProviderKeyError,
 )
 from app.services.agent_service import AgentService, get_agent_service
+from app.services.chatbot_service import ChatbotService, get_chatbot_service
 from app.services.conversation import conversation_message
 from app.services.general_assistant import get_general_assistant_id
 from app.services.message_store import MessageStore, get_message_store
@@ -49,6 +50,7 @@ def chat(
     messages: MessageStore = Depends(get_message_store),
     scratch_kb_id: str = Depends(get_scratch_kb_id),
     chatbot_kb: ChatbotKbService = Depends(get_chatbot_kb_service),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
     orchestrator_agent_id: str = Depends(get_orchestrator_agent_id),
     general_assistant_id: str = Depends(get_general_assistant_id),
     settings=Depends(get_settings),
@@ -61,6 +63,12 @@ def chat(
         history = messages.recent_turns(req.session_id, settings.history_turns)
     except PowabaseAPIError:
         history = []
+
+    # The chatbot comes off the CHAT ROW, never the request body — the same
+    # rule the roster follows below, for the same reason. A legacy chat with no
+    # chatbot_id degrades to no chatbot knowledge rather than raising.
+    chatbot_id = row.get("chatbot_id")
+    chatbot = chatbots.get_owned(chatbot_id, user["id"]) if chatbot_id else None
 
     # One call decides both which agent answers and whether to retrieve.
     # Every chat starts with the whole roster; this chat may exclude some.
@@ -82,7 +90,7 @@ def chat(
 
     service = ChatService(
         client, answering_agent_id,
-        kb_ids_for(agent_row, row, scratch_kb_id),
+        kb_ids_for(agent_row, row, chatbot_kb.kb_ids(chatbot), scratch_kb_id),
         # retrieval depth is derived from the budget below, not configured
         None,
         # The answering agent's own budget, re-clamped at read time so a value

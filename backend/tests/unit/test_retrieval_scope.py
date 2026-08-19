@@ -48,3 +48,35 @@ def test_chat_with_no_uploads_contributes_no_scratch_entry():
 def test_no_duplicates_when_ids_repeat():
     same = {"kb_id": "x", "kb_full_id": "x"}
     assert kb_ids_for(same, {"kb_id": "x"}) == ["x"]
+
+
+def test_chatbot_knowledge_follows_the_agents_own_kbs():
+    assert kb_ids_for(AGENT, None, ["cb-chunk", "cb-full"]) == [
+        "ag-chunk", "ag-full", "cb-chunk", "cb-full",
+    ]
+
+
+def test_general_assistant_reads_chatbot_knowledge():
+    # Unlike a specialist's permanent tier, chatbot knowledge belongs to the
+    # container, so the agent with no row of its own still sees it.
+    assert kb_ids_for(None, None, ["cb-chunk"]) == ["cb-chunk"]
+
+
+def test_every_agent_reads_it_with_no_opt_in():
+    # There is no per-agent flag. A row carrying the disused one changes
+    # nothing in either direction.
+    assert kb_ids_for(dict(AGENT, use_general_kb=False), None, ["cb"]) == [
+        "ag-chunk", "ag-full", "cb",
+    ]
+
+
+def test_untrained_chatbot_contributes_nothing():
+    assert kb_ids_for(AGENT, None, []) == ["ag-chunk", "ag-full"]
+
+
+def test_full_order_is_agent_then_chatbot_then_legacy_then_scratch():
+    session = {"kb_id": "legacy", "source_ids": ["s1"]}
+    assert kb_ids_for(AGENT, session, ["cb"], scratch_kb_id="scratch") == [
+        "ag-chunk", "ag-full", "cb", "legacy",
+        {"id": "scratch", "source_ids": ["s1"]},
+    ]
