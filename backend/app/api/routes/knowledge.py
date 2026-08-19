@@ -1,12 +1,21 @@
-"""The signed-in user's personal knowledge base.
+"""A chatbot's knowledge base.
 
-Trained once, searched by every agent that user owns. Distinct from
-/admin/train, which curates the shared general KB for everyone, and from
-/agents/{id}/train, which teaches one agent.
+Trained once, searched by every agent in that chatbot — the general assistant
+included. Distinct from /agents/{id}/train, which teaches one agent, and from a
+chat's uploads, which are temporary until promoted.
 """
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -23,12 +32,13 @@ from app.services.ingest_service import (
     source_status,
 )
 from app.services.chatbot_kb import ChatbotKbService, get_chatbot_kb_service
+from app.services.chatbot_service import ChatbotService, get_chatbot_service
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 logger = logging.getLogger(__name__)
 
 
-def _finish_training(service, chatbot_kb, user_row, source_id, full_document_max_chars) -> None:
+def _finish_training(service, chatbot_kb, chatbot_row, source_id, full_document_max_chars) -> None:
     """Extract, classify and index one document, after the response.
 
     Same shape as agent training: backgrounded with the long budget, because a
@@ -39,27 +49,32 @@ def _finish_training(service, chatbot_kb, user_row, source_id, full_document_max
     try:
         service.await_extraction(source_id)
         full_document = 0 < service.char_count(source_id) <= full_document_max_chars
-        kb_id = chatbot_kb.ensure_kb(user_row, full_document)
+        kb_id = chatbot_kb.ensure_kb(chatbot_row, full_document)
         service.index_into(kb_id, source_id)
     except AttentionRequiredError:
-        logger.warning("user knowledge %s: needs OCR re-extraction", source_id)
+        logger.warning("chatbot knowledge %s: needs OCR re-extraction", source_id)
     except (ExtractionFailedError, IndexingFailedError) as e:
-        logger.warning("user knowledge %s failed: %s", source_id, e.message)
+        logger.warning("chatbot knowledge %s failed: %s", source_id, e.message)
     except IngestTimeoutError as e:
-        logger.warning("user knowledge %s timed out while %s", source_id, e.status)
+        logger.warning("chatbot knowledge %s timed out while %s", source_id, e.status)
     except PowabaseAPIError as e:
-        logger.warning("user knowledge %s: upstream %s", source_id, e.status_code)
+        logger.warning("chatbot knowledge %s: upstream %s", source_id, e.status_code)
 
 
 @router.post("/train", response_model=IngestResponse)
-async def train_user_knowledge(
+async def train_chatbot_knowledge(
     background_tasks: BackgroundTasks,
+    chatbot_id: str = Form(...),
     file: UploadFile = File(...),
     user: dict = Depends(get_current_user),
     chatbot_kb: ChatbotKbService = Depends(get_chatbot_kb_service),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
     client: PowabaseClient = Depends(get_powabase_client),
     settings=Depends(get_settings),
 ):
+    chatbot = await run_in_threadpool(chatbots.get_owned, chatbot_id, user["id"])
+    if chatbot is None:
+        raise HTTPException(status_code=404, detail="Chatbot not found")
     content = await file.read()
     service = IngestService(
         client, None,
@@ -72,7 +87,7 @@ async def train_user_knowledge(
         raise HTTPException(status_code=502, detail=str(e))
 
     background_tasks.add_task(
-        _finish_training, service, chatbot_kb, user, source_id,
+        _finish_training, service, chatbot_kb, chatbot, source_id,
         settings.full_document_max_chars,
     )
     return JSONResponse(
@@ -82,18 +97,22 @@ async def train_user_knowledge(
 
 
 @router.get("/documents/{source_id}/status", response_model=IngestStatusResponse)
-async def user_knowledge_status(
+async def chatbot_knowledge_status(
     source_id: str,
+    chatbot_id: str = Query(...),
     user: dict = Depends(get_current_user),
     chatbot_kb: ChatbotKbService = Depends(get_chatbot_kb_service),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
     client: PowabaseClient = Depends(get_powabase_client),
 ):
-    # Re-read the row: the tier is created during the background task, so the
-    # token's copy of the user predates it.
-    fresh = await run_in_threadpool(client.get_user, user["id"]) or user
+    # get_owned re-reads the row, which is also what this needs: the tier is
+    # created during the background task, so any earlier copy predates it.
+    chatbot = await run_in_threadpool(chatbots.get_owned, chatbot_id, user["id"])
+    if chatbot is None:
+        raise HTTPException(status_code=404, detail="Chatbot not found")
     try:
         status, detail = await run_in_threadpool(
-            source_status, client, source_id, chatbot_kb.kb_ids(fresh)
+            source_status, client, source_id, chatbot_kb.kb_ids(chatbot)
         )
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
@@ -101,28 +120,34 @@ async def user_knowledge_status(
 
 
 @router.get("/documents", response_model=list)
-async def list_user_knowledge(
+async def list_chatbot_knowledge(
+    chatbot_id: str = Query(...),
     user: dict = Depends(get_current_user),
     chatbot_kb: ChatbotKbService = Depends(get_chatbot_kb_service),
-    client: PowabaseClient = Depends(get_powabase_client),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
 ):
-    fresh = await run_in_threadpool(client.get_user, user["id"]) or user
+    chatbot = await run_in_threadpool(chatbots.get_owned, chatbot_id, user["id"])
+    if chatbot is None:
+        raise HTTPException(status_code=404, detail="Chatbot not found")
     try:
-        return await run_in_threadpool(chatbot_kb.documents, fresh)
+        return await run_in_threadpool(chatbot_kb.documents, chatbot)
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
 
 
 @router.delete("/documents/{source_id}", status_code=204)
-async def untrain_user_knowledge(
+async def untrain_chatbot_knowledge(
     source_id: str,
+    chatbot_id: str = Query(...),
     user: dict = Depends(get_current_user),
     chatbot_kb: ChatbotKbService = Depends(get_chatbot_kb_service),
-    client: PowabaseClient = Depends(get_powabase_client),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
 ):
-    fresh = await run_in_threadpool(client.get_user, user["id"]) or user
+    chatbot = await run_in_threadpool(chatbots.get_owned, chatbot_id, user["id"])
+    if chatbot is None:
+        raise HTTPException(status_code=404, detail="Chatbot not found")
     try:
-        found = await run_in_threadpool(chatbot_kb.untrain, fresh, source_id)
+        found = await run_in_threadpool(chatbot_kb.untrain, chatbot, source_id)
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
     if not found:
