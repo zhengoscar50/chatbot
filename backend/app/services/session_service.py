@@ -29,17 +29,18 @@ class SessionService:
         # touch scratch documents.
         self.scratch_kb_id = scratch_kb_id
 
-    def create_session(self, owner_id: str, name: str | None = None) -> dict:
+    def create_session(self, owner_id: str, chatbot_id: str, name: str | None = None) -> dict:
         """Create a chat. Chats belong to the user, not to an agent — the
         orchestrator picks an agent per message."""
         return self.client.insert_session({
             "id": str(uuid.uuid4()),
             "owner_id": owner_id,
+            "chatbot_id": chatbot_id,
             "name": name or DEFAULT_NAME,
         })
 
-    def list(self, owner_id: str) -> list:
-        rows = self.client.list_sessions(owner_id)
+    def list(self, chatbot_id: str) -> list:
+        rows = self.client.list_sessions(chatbot_id)
         return [
             {"id": r["id"], "name": r["name"], "updated_at": r.get("updated_at"),
              "excluded_agent_ids": r.get("excluded_agent_ids") or []}

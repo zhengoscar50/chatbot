@@ -24,6 +24,7 @@ from app.models.schemas import (
     IngestStatusResponse,
 )
 from app.services.agent_service import AgentService, ModelRejectedError, get_agent_service
+from app.services.chatbot_service import ChatbotService, get_chatbot_service
 from app.services.context_budget import clamp_context_tokens, max_context_for
 from app.services.ingest_service import (
     AttentionRequiredError,
@@ -94,11 +95,14 @@ async def create_agent(
     req: AgentCreateRequest,
     user: dict = Depends(get_current_user),
     agents: AgentService = Depends(get_agent_service),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
     settings=Depends(get_settings),
 ):
+    if await run_in_threadpool(chatbots.get_owned, req.chatbot_id, user["id"]) is None:
+        raise HTTPException(status_code=404, detail="Chatbot not found")
     try:
         row = await run_in_threadpool(
-            agents.create, user["id"], req.name, req.instructions, req.description,
+            agents.create, req.chatbot_id, user["id"], req.name, req.instructions, req.description,
             req.model or settings.default_agent_model, req.grounding, req.use_general_kb,
             req.max_context_tokens,
         )
@@ -114,11 +118,15 @@ async def create_agent(
 
 @router.get("", response_model=list)
 async def list_agents(
+    chatbot_id: str,
     user: dict = Depends(get_current_user),
     agents: AgentService = Depends(get_agent_service),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
 ):
+    if await run_in_threadpool(chatbots.get_owned, chatbot_id, user["id"]) is None:
+        raise HTTPException(status_code=404, detail="Chatbot not found")
     try:
-        rows = await run_in_threadpool(agents.list, user["id"])
+        rows = await run_in_threadpool(agents.list, chatbot_id)
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return [

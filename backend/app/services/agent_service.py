@@ -68,6 +68,7 @@ class AgentService:
 
     def create(
         self,
+        chatbot_id: str,
         owner_id: str,
         name: str,
         instructions: str,
@@ -83,6 +84,7 @@ class AgentService:
             f"user-agent-{name}", model=model, system_prompt=prompt
         )
         return self.client.insert_agent_row({
+            "chatbot_id": chatbot_id,
             "owner_id": owner_id,
             "name": name,
             "instructions": instructions,
@@ -98,8 +100,11 @@ class AgentService:
             "max_context_tokens": clamp_context_tokens(max_context_tokens, model),
         })
 
-    def list(self, owner_id: str) -> list:
-        return self.client.list_agent_rows(owner_id)
+    def list(self, chatbot_id: str) -> list:
+        """Agents in one chatbot. Ownership is checked on the CHATBOT by the
+        caller — a chatbot narrows what you see, it does not replace who you
+        are."""
+        return self.client.list_agent_rows(chatbot_id)
 
     def get_owned(self, agent_id: str, owner_id: str):
         row = self.client.get_agent_row(agent_id)

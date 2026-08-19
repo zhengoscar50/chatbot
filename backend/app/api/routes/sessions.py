@@ -14,6 +14,7 @@ from app.models.schemas import (
 from app.services.message_store import MessageStore, get_message_store
 from app.services.agent_scope import sanitise_exclusions
 from app.services.agent_service import AgentService, get_agent_service
+from app.services.chatbot_service import ChatbotService, get_chatbot_service
 from app.services.session_service import SessionService, get_session_service
 
 router = APIRouter(tags=["sessions"])
@@ -24,9 +25,14 @@ async def create_session(
     req: SessionCreateRequest,
     user: dict = Depends(get_current_user),
     sessions: SessionService = Depends(get_session_service),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
 ):
+    if await run_in_threadpool(chatbots.get_owned, req.chatbot_id, user["id"]) is None:
+        raise HTTPException(status_code=404, detail="Chatbot not found")
     try:
-        row = await run_in_threadpool(sessions.create_session, user["id"], req.name)
+        row = await run_in_threadpool(
+            sessions.create_session, user["id"], req.chatbot_id, req.name
+        )
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return SessionResponse(id=row["id"], name=row["name"])
@@ -50,8 +56,10 @@ async def update_session(
             await run_in_threadpool(sessions.rename, session_id, req.name)
         if req.excluded_agent_ids is not None:
             # Intersected with the caller's own roster, never trusted: a client
-            # can post any id, including another user's agent.
-            roster = await run_in_threadpool(agents.list, user["id"])
+            # can post any id, including another user's agent. The chatbot
+            # comes off the chat's own row — never the request — so a client
+            # can't ask one chatbot's chat to exclude another chatbot's agent.
+            roster = await run_in_threadpool(agents.list, row.get("chatbot_id"))
             excluded = sanitise_exclusions(req.excluded_agent_ids, roster)
             await run_in_threadpool(
                 sessions.set_excluded_agents, session_id, excluded
@@ -84,11 +92,15 @@ async def delete_session(
 
 @router.get("/sessions", response_model=list[SessionSummary])
 async def list_sessions(
+    chatbot_id: str,
     user: dict = Depends(get_current_user),
     sessions: SessionService = Depends(get_session_service),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
 ):
+    if await run_in_threadpool(chatbots.get_owned, chatbot_id, user["id"]) is None:
+        raise HTTPException(status_code=404, detail="Chatbot not found")
     try:
-        return await run_in_threadpool(sessions.list, user["id"])
+        return await run_in_threadpool(sessions.list, chatbot_id)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except PowabaseAPIError as e:

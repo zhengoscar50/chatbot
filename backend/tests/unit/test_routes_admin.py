@@ -56,6 +56,14 @@ class FakeAdminClient:
         self.session_messages = {
             "psid-1": {"messages": [{"role": "user", "content": "hi"}]},
         }
+        # Owner-scoped, unlike list_sessions/list_agent_rows above which are
+        # chatbot-scoped: account deletion (and the admin session listing)
+        # must find everything a user owns across every chatbot, not just
+        # one it already knows about.
+        self.agents_by_owner = {"u1": [{"id": "ag-1"}]}
+        self.chatbots_by_owner = {}
+        self.failing_chatbot_deletes = set()
+        self.deleted_chatbots = []
         self.updated = []
         self.deleted_users = []
 
@@ -65,8 +73,20 @@ class FakeAdminClient:
     def list_all_sessions(self):
         return list(self.sessions)
 
-    def list_sessions(self, owner_id):
+    def list_sessions_by_owner(self, owner_id):
         return [s for s in self.sessions if s["owner_id"] == owner_id]
+
+    def list_agent_rows_by_owner(self, owner_id):
+        return list(self.agents_by_owner.get(owner_id, []))
+
+    def list_chatbot_rows(self, owner_id):
+        return list(self.chatbots_by_owner.get(owner_id, []))
+
+    def delete_chatbot_row(self, chatbot_id):
+        if chatbot_id in self.failing_chatbot_deletes:
+            from app.clients.powabase_client import PowabaseAPIError
+            raise PowabaseAPIError(500, {"error": "boom"})
+        self.deleted_chatbots.append(chatbot_id)
 
     def get_user(self, uid):
         return next((u for u in self.users if u["id"] == uid), None)
@@ -228,13 +248,21 @@ def test_list_users_200_with_counts(monkeypatch):
 # --- GET /admin/users/{id}/sessions ------------------------------------
 
 def test_user_sessions_200(monkeypatch):
+    # Regression: the route used to call the chatbot-scoped list_sessions(user_id),
+    # which matches no chatbot's id and always returned []. It must call
+    # list_sessions_by_owner(user_id) so the admin panel actually sees the
+    # user's sessions.
     set_admin(monkeypatch)
     r = TestClient(build_users_app()).get(
         "/admin/users/u1/sessions", headers={"X-Admin-Password": "s3cret"}
     )
     assert r.status_code == 200
-    ids = {s["id"] for s in r.json()}
+    body = r.json()
+    ids = {s["id"] for s in body}
     assert ids == {"s1", "s2"}
+    by_id = {s["id"]: s for s in body}
+    assert by_id["s1"]["name"] == "Session 1"
+    assert by_id["s1"]["updated_at"] == "t3"
 
 
 def test_user_sessions_404_unknown_user(monkeypatch):

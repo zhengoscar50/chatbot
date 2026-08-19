@@ -12,6 +12,7 @@ from app.models.schemas import (
 from app.services.auth_service import (
     AuthService, DuplicateUsernameError, InvalidCredentialsError,
 )
+from app.services.chatbot_service import ChatbotService, get_chatbot_service
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -34,6 +35,7 @@ def register(
     req: RegisterRequest,
     client: PowabaseClient = Depends(get_powabase_client),
     settings=Depends(get_settings),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
 ):
     # Gates registration only. Login is untouched, so rotating the code can
     # never lock out an existing user.
@@ -44,7 +46,7 @@ def register(
             detail="This demo needs an invite code to register. Ask whoever shared the link.",
         )
     try:
-        user = AuthService(client).register(req.username, req.password)
+        user = AuthService(client, chatbots=chatbots).register(req.username, req.password)
     except DuplicateUsernameError:
         raise HTTPException(status_code=409, detail="Username already taken")
     return AuthResponse(token=_token_for(user, settings), username=user["username"])

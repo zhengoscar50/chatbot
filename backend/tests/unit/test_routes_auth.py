@@ -6,6 +6,7 @@ from app.api.deps import get_current_user
 from app.clients.powabase_client import get_powabase_client
 from app.core.config import get_settings
 from app.core.security import hash_password, create_access_token
+from app.services.chatbot_service import get_chatbot_service
 from types import SimpleNamespace
 
 
@@ -32,6 +33,11 @@ def build_app(client, invite_code=""):
     app.dependency_overrides[get_settings] = lambda: SimpleNamespace(
         auth_jwt_secret="test-secret", auth_token_ttl_hours=168,
         signup_invite_code=invite_code,
+    )
+    # app.state.chatbot_service isn't wired up until a later task; stand in
+    # with a no-op so registration's chatbot-creation call has something to hit.
+    app.dependency_overrides[get_chatbot_service] = lambda: SimpleNamespace(
+        create=lambda *a, **k: {"id": "cb-1"}
     )
     return app
 

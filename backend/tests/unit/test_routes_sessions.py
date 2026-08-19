@@ -7,14 +7,15 @@ from app.api.deps import get_current_user
 from app.api.routes import sessions as sessions_route
 from app.clients.powabase_client import get_powabase_client
 from app.services.agent_service import get_agent_service
+from app.services.chatbot_service import get_chatbot_service
 from app.services.session_service import get_session_service
 
 
 class FakeSessionService:
-    def create_session(self, owner_id, name=None):
+    def create_session(self, owner_id, chatbot_id, name=None):
         return {"id": "s1", "name": name or "New chat"}
 
-    def list(self, owner_id):
+    def list(self, chatbot_id):
         return [{"id": "s1", "name": "Taxes", "updated_at": "t1"}]
 
     def get_owned_session(self, session_id, owner_id):
@@ -22,7 +23,7 @@ class FakeSessionService:
             return None
         if session_id == "not-mine":
             return None
-        return {"id": session_id, "powabase_session_id": "ps1"}
+        return {"id": session_id, "powabase_session_id": "ps1", "chatbot_id": "cb-1"}
 
 
 class FakeClient:
@@ -36,7 +37,23 @@ class FakeClient:
         ]
 
 
-def build_app():
+class FakeChatbots:
+    """Stands in for ChatbotService.get_owned.
+
+    owned=True (the default) reports every chatbot as belonging to whoever
+    asks — enough for tests that aren't exercising the ownership guard
+    itself. owned=False simulates a chatbot that is missing, or somebody
+    else's.
+    """
+
+    def __init__(self, owned=True):
+        self.owned = owned
+
+    def get_owned(self, chatbot_id, owner_id):
+        return {"id": chatbot_id, "owner_id": owner_id} if self.owned else None
+
+
+def build_app(chatbots=None):
     app = FastAPI()
     app.include_router(sessions_route.router)
     app.dependency_overrides[get_session_service] = lambda: FakeSessionService()
@@ -46,27 +63,41 @@ def build_app():
     )
     app.dependency_overrides[get_powabase_client] = lambda: FakeClient()
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
+    app.dependency_overrides[get_chatbot_service] = lambda: (chatbots or FakeChatbots())
     return app
 
 
 def test_create_session_returns_id_and_name():
-    r = TestClient(build_app()).post("/sessions", json={"name": "Taxes"})
+    r = TestClient(build_app()).post(
+        "/sessions", json={"chatbot_id": "cb-1", "name": "Taxes"}
+    )
     assert r.status_code == 200
     assert r.json() == {"id": "s1", "name": "Taxes", "excluded_agent_ids": []}
 
 
 def test_create_session_defaults_name_when_omitted():
-    r = TestClient(build_app()).post("/sessions", json={})
+    r = TestClient(build_app()).post("/sessions", json={"chatbot_id": "cb-1"})
     assert r.status_code == 200
     assert r.json() == {"id": "s1", "name": "New chat", "excluded_agent_ids": []}
 
 
+def test_create_session_requires_a_chatbot_you_own():
+    app = build_app(chatbots=FakeChatbots(owned=False))
+    r = TestClient(app).post("/sessions", json={"chatbot_id": "cb-OTHER"})
+    assert r.status_code == 404
+
+
 def test_list_sessions_for_current_user():
-    r = TestClient(build_app()).get("/sessions")
+    r = TestClient(build_app()).get("/sessions?chatbot_id=cb-1")
     assert r.status_code == 200
     assert r.json() == [
         {"id": "s1", "name": "Taxes", "updated_at": "t1", "excluded_agent_ids": []}
     ]
+
+
+def test_listing_sessions_requires_a_chatbot_you_own():
+    app = build_app(chatbots=FakeChatbots(owned=False))
+    assert TestClient(app).get("/sessions?chatbot_id=cb-1").status_code == 404
 
 
 def test_messages_formats_roles_and_citations():

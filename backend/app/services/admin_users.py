@@ -27,26 +27,39 @@ def list_users_with_counts(client) -> list:
 
 
 def delete_user(client, session_service, agent_service, user_id: str) -> bool:
-    """Delete a user and everything they own: their chats and their agents.
+    """Delete a user and everything they own: their chats, agents, and chatbots.
 
-    Both cascades are best-effort — the user row delete is authoritative, and a
-    stale remote resource must not leave the account half-removed. Skipping the
-    agents entirely (as this did before agents became user-owned) stranded them
-    with no owner: unreachable through the API, yet still holding their
-    knowledge bases and Powabase agents indefinitely.
+    Enumeration MUST be owner-scoped (list_sessions_by_owner /
+    list_agent_rows_by_owner), not chatbot-scoped (list_sessions /
+    agent_service.list) — the latter take a chatbot id, so passing a user id
+    matches no chatbot and silently finds nothing. That is exactly the bug
+    this function was already fixed for once: skipping the agents (as this
+    did before agents became user-owned) stranded them with no owner —
+    unreachable through the API, yet still holding their knowledge bases and
+    Powabase agents indefinitely. Do not let it come back.
+
+    All three cascades are best-effort — the user row delete is authoritative,
+    and a stale remote resource must not leave the account half-removed.
     """
     if client.get_user(user_id) is None:
         return False
 
-    for session in client.list_sessions(user_id):
+    for session in client.list_sessions_by_owner(user_id):
         try:
             session_service.delete(session["id"])   # scratch KB + row
         except PowabaseAPIError:
             pass
 
-    for agent in agent_service.list(user_id):
+    for agent in client.list_agent_rows_by_owner(user_id):
         try:
             agent_service.delete(agent["id"])       # permanent KBs + remote agent + row
+        except PowabaseAPIError:
+            pass
+
+    # Their chatbots are empty now; remove them so no rows outlive the account.
+    for chatbot in client.list_chatbot_rows(user_id):
+        try:
+            client.delete_chatbot_row(chatbot["id"])
         except PowabaseAPIError:
             pass
 

@@ -52,6 +52,7 @@ function init() {
   wireAgents();
   wireKnowledge();
   wireScope();
+  wireChatbots();
   newSessionButton.addEventListener("click", createSession);
   sidebarToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
   document.getElementById("logout-btn").addEventListener("click", doLogout);
@@ -169,6 +170,9 @@ async function enterApp() {
   newSessionButton.disabled = false;
   setComposerEnabled(true);
   clearThread("Type a message to start a chat.");
+  // Agents and chats both belong to a chatbot, so its id must be known before
+  // either request goes out.
+  await loadChatbots();
   // The roster is loaded for the Manage agents list; chats are independent of
   // it now, so it never touches the thread.
   await loadAgents();
@@ -200,7 +204,7 @@ async function ensureSession() {
   const response = await authFetch("/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify({ chatbot_id: currentChatbotId }),
   });
   const body = await response.json();
   if (!response.ok) throw new Error(errorText(body, response));
@@ -214,7 +218,7 @@ async function ensureSession() {
 async function loadSessions() {
   setSidebarStatus("Loading sessions…", null);
   try {
-    const response = await authFetch("/sessions");
+    const response = await authFetch(`/sessions?chatbot_id=${encodeURIComponent(currentChatbotId)}`);
     const body = await response.json();
     if (!response.ok) {
       setSidebarStatus(errorText(body, response), "error");
@@ -348,7 +352,7 @@ async function createSession() {
     const response = await authFetch("/sessions", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ chatbot_id: currentChatbotId }),
     });
     const body = await response.json();
     if (!response.ok) {

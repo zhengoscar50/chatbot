@@ -45,6 +45,7 @@ class ChatResponse(BaseModel):
 
 
 class SessionCreateRequest(BaseModel):
+    chatbot_id: str = Field(..., min_length=1)
     name: Optional[str] = None
 
 
@@ -134,6 +135,7 @@ class MeResponse(BaseModel):
 # one (Pydantic resolves these at class-definition time). On Python 3.9 that
 # makes PEP 604 unions (`str | None`) a TypeError at import — use Optional[X].
 class AgentCreateRequest(BaseModel):
+    chatbot_id: str = Field(..., min_length=1)
     name: str = Field(..., min_length=1, max_length=80)
     instructions: str = Field(default="", max_length=8000)
     description: str = Field(default="", max_length=500)
@@ -195,3 +197,18 @@ class AgentDocument(BaseModel):
     source_id: str
     filename: Optional[str] = None
     status: Optional[str] = None
+
+
+class ChatbotCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    description: str = Field(default="", max_length=500)
+
+
+class ChatbotUpdateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+
+
+class ChatbotResponse(BaseModel):
+    id: str
+    name: str
+    description: str = ""

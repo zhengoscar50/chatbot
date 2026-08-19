@@ -581,6 +581,21 @@ body {
   cursor: default;
 }
 
+.chatbot-picker {
+  display: block;
+}
+
+.chatbot-picker select {
+  width: 100%;
+  padding: 0.45rem 0.6rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.85rem;
+}
+
 .session-list {
   list-style: none;
   margin: 0;

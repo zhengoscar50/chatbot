@@ -105,9 +105,13 @@ def admin_user_sessions(
 ):
     if client.get_user(user_id) is None:
         raise HTTPException(status_code=404, detail="User not found")
+    # list_sessions is chatbot-scoped; a user id matches no chatbot's id, so
+    # that call silently returns []. This admin listing must enumerate every
+    # session the user owns across every chatbot, hence the owner-scoped call
+    # (same fix already applied in admin_users.delete_user).
     return [
         {"id": r["id"], "name": r["name"], "updated_at": r.get("updated_at")}
-        for r in client.list_sessions(user_id)
+        for r in client.list_sessions_by_owner(user_id)
     ]
 
 

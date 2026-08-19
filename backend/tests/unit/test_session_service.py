@@ -30,8 +30,8 @@ class FakeClient:
         self.inserted.append(row)
         return row
 
-    def list_sessions(self, owner_id):
-        return [r for r in self.rows if r.get("owner_id") == owner_id]
+    def list_sessions(self, chatbot_id):
+        return [r for r in self.rows if r.get("chatbot_id") == chatbot_id]
 
     def get_session_row(self, session_id):
         return next((r for r in self.rows if r["id"] == session_id), None)
@@ -66,7 +66,7 @@ class FakeClient:
 def test_create_session_creates_no_agent_and_binds_to_none():
     # Chats belong to the user; the orchestrator picks an agent per message.
     c = FakeClient()
-    row = SessionService(c).create_session("o1", "My chat")
+    row = SessionService(c).create_session("o1", "cb-1", "My chat")
 
     assert row["owner_id"] == "o1"
     assert row["name"] == "My chat"
@@ -75,22 +75,24 @@ def test_create_session_creates_no_agent_and_binds_to_none():
 
 
 def test_create_session_defaults_the_name():
-    row = SessionService(FakeClient()).create_session("o1")
+    row = SessionService(FakeClient()).create_session("o1", "cb-1")
     assert row["name"] == "New chat"
 
 
 def test_create_session_does_not_provision_a_kb_upfront():
     c = FakeClient()
-    SessionService(c).create_session("o1")
+    SessionService(c).create_session("o1", "cb-1")
     assert c.created_kbs == []
 
 
-def test_list_filters_by_owner():
+def test_list_filters_by_chatbot():
+    # list() is scoped by chatbot, not owner — see
+    # test_a_chat_records_its_chatbot for the ownership-is-unchanged half.
     c = FakeClient(rows=[
-        {"id": "s1", "owner_id": "o1", "name": "A", "updated_at": "t1"},
-        {"id": "s2", "owner_id": "o2", "name": "B", "updated_at": "t2"},
+        {"id": "s1", "chatbot_id": "cb-1", "name": "A", "updated_at": "t1"},
+        {"id": "s2", "chatbot_id": "cb-2", "name": "B", "updated_at": "t2"},
     ])
-    assert SessionService(c).list("o1") == [
+    assert SessionService(c).list("cb-1") == [
         {"id": "s1", "name": "A", "updated_at": "t1", "excluded_agent_ids": []}
     ]
 
@@ -243,3 +245,10 @@ def test_deleting_the_last_chat_holding_a_source_does_unlink_it():
 
     assert c.unlinked == [("scratch", "idx-1")]
     FakeClient.kb_items = []
+
+
+def test_a_chat_records_its_chatbot():
+    c = FakeClient()
+    row = SessionService(c).create_session("o1", "cb-1")
+    assert row["chatbot_id"] == "cb-1"
+    assert row["owner_id"] == "o1"

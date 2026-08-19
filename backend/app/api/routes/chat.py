@@ -66,7 +66,10 @@ def chat(
 
     # One call decides both which agent answers and whether to retrieve.
     # Every chat starts with the whole roster; this chat may exclude some.
-    roster = roster_for(agents.list(user["id"]), row.get("excluded_agent_ids"))
+    # The chatbot comes off the CHAT ROW, never the request body — a client
+    # must not be able to ask one chatbot's question against another
+    # chatbot's roster.
+    roster = roster_for(agents.list(row.get("chatbot_id")), row.get("excluded_agent_ids"))
     decision = OrchestratorService(client, orchestrator_agent_id).route(
         req.query, roster, history
     )

@@ -1349,3 +1349,4 @@ git commit -m "fix: account deletion must enumerate by owner, not by chatbot"
 2. Run `python -m scripts.verify_chatbot_backfill` — must print `PASS`, zero orphans, and per-user counts matching 11/18, 5/4, 0/3.
 3. Only then `git pull && sudo systemctl restart ragchat` on the box. Do **not** restart `cloudflared`.
 4. Re-check: the picker lists "My chatbot"; the eyewash question still reaches Chem Tutor.
+5. **After the restart, RE-RUN the two `update` statements at the bottom of `011_chatbots.sql`.** The old release stays live between steps 1 and 3, and any agent/session it creates in that window is stamped by neither backfill (it didn't exist yet when the migration ran) — it's left with a null `chatbot_id` forever otherwise, invisible to `GET /sessions` and a 400 from PostgREST on `POST /chat`. Then re-run `python -m scripts.verify_chatbot_backfill` again to confirm zero orphans remain.
