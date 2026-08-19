@@ -17,6 +17,7 @@ function wireChatbots() {
     await loadSessions();
   });
   document.getElementById("new-chatbot").addEventListener("click", createChatbot);
+  document.getElementById("delete-chatbot").addEventListener("click", deleteChatbot);
 }
 
 async function loadChatbots() {
@@ -54,6 +55,52 @@ async function createChatbot() {
   currentChatbotId = created.id;
   localStorage.setItem(CHATBOT_KEY, currentChatbotId);
   renderChatbotSelect();
+  await loadAgents();
+  await loadSessions();
+}
+
+async function deleteChatbot() {
+  if (!currentChatbotId) return;
+  const bot = chatbots.find((c) => c.id === currentChatbotId);
+  // Count before asking: a confirmation that names the damage is worth two
+  // round trips, and "are you sure?" is not. `agents` is a module global kept
+  // current by loadAgents; chats are NOT — loadSessions renders straight from
+  // the response without storing them — so the count is fetched here.
+  const countOf = async (path) => {
+    try {
+      const res = await authFetch(
+        `${path}?chatbot_id=${encodeURIComponent(currentChatbotId)}`
+      );
+      return res.ok ? (await res.json()).length : 0;
+    } catch (err) {
+      return 0;
+    }
+  };
+  const [chatCount, docCount] = await Promise.all([
+    countOf("/sessions"),
+    countOf("/knowledge/documents"),
+  ]);
+  const message =
+    `Delete "${bot ? bot.name : "this chatbot"}"?\n\n` +
+    `This removes ${agents.length} agents, ${chatCount} chats, ` +
+    `and ${docCount} documents.\n\nThis can't be undone.`;
+  if (!confirm(message)) return;
+  const res = await authFetch(`/chatbots/${encodeURIComponent(currentChatbotId)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    // Phase 1 returns 400 for LastChatbotError, with the message to show.
+    let detail = "Could not delete this chatbot.";
+    try {
+      detail = (await res.json()).detail || detail;
+    } catch (err) { /* keep the fallback */ }
+    alert(detail);
+    return;
+  }
+  localStorage.removeItem(CHATBOT_KEY);
+  await loadChatbots();
+  currentSessionId = null;
+  clearThread("Pick or create a chat to start.");
   await loadAgents();
   await loadSessions();
 }
