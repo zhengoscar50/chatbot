@@ -17,6 +17,13 @@ const appView = document.getElementById("app-view");
 function wireDashboard() {
   document.getElementById("to-dashboard").addEventListener("click", showDashboard);
   document.getElementById("dashboard-logout").addEventListener("click", doLogout);
+  document.addEventListener("click", closeAllCardMenus);
+}
+
+function closeAllCardMenus() {
+  dashboardGrid.querySelectorAll(".bot-card__actions").forEach((el) => {
+    el.hidden = true;
+  });
 }
 
 async function showDashboard() {
@@ -60,6 +67,92 @@ async function loadDashboard() {
   dashboardStatus.textContent = "";
   dashboardGrid.innerHTML = "";
   details.forEach((detail) => dashboardGrid.appendChild(renderCard(detail)));
+  dashboardGrid.appendChild(renderNewTile());
+}
+
+function renderNewTile() {
+  const tile = document.createElement("button");
+  tile.type = "button";
+  tile.className = "bot-card bot-card--new";
+  tile.textContent = "+ New chatbot";
+  tile.addEventListener("click", createChatbotFromDashboard);
+  return tile;
+}
+
+async function createChatbotFromDashboard() {
+  const name = prompt("Name this chatbot");
+  if (!name) return;
+  const res = await authFetch("/chatbots", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    dashboardStatus.textContent = await detailOf(res, "Could not create that chatbot.");
+    return;
+  }
+  await loadDashboard();
+}
+
+async function renameChatbot(bot) {
+  const name = prompt("Rename this chatbot", bot.name);
+  if (!name || name === bot.name) return;
+  const res = await authFetch(`/chatbots/${encodeURIComponent(bot.id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!res.ok) {
+    dashboardStatus.textContent = await detailOf(res, "Could not rename that chatbot.");
+    return;
+  }
+  await loadDashboard();
+}
+
+async function deleteChatbotFromDashboard(bot) {
+  // Counted only now, not on every card: the document count is the one number
+  // that costs a Powabase round trip per knowledge tier.
+  let docs = 0;
+  try {
+    const res = await authFetch(
+      `/knowledge/documents?chatbot_id=${encodeURIComponent(bot.id)}`
+    );
+    if (res.ok) docs = (await res.json()).length;
+  } catch (err) {
+    docs = 0;
+  }
+  const roster = await authFetch(
+    `/agents?chatbot_id=${encodeURIComponent(bot.id)}`
+  ).then((r) => (r.ok ? r.json() : [])).catch(() => []);
+  const chats = await authFetch(
+    `/sessions?chatbot_id=${encodeURIComponent(bot.id)}`
+  ).then((r) => (r.ok ? r.json() : [])).catch(() => []);
+
+  const message =
+    `Delete "${bot.name}"?\n\n` +
+    `This removes ${roster.length} agents, ${chats.length} chats, ` +
+    `and ${docs} documents.\n\nThis can't be undone.`;
+  if (!confirm(message)) return;
+
+  const res = await authFetch(`/chatbots/${encodeURIComponent(bot.id)}`, {
+    method: "DELETE",
+  });
+  if (!res.ok) {
+    // The server refuses to delete a user's last chatbot with 400 and a
+    // message. Show its message rather than inventing one.
+    dashboardStatus.textContent = await detailOf(res, "Could not delete that chatbot.");
+    return;
+  }
+  await loadDashboard();
+}
+
+async function detailOf(res, fallback) {
+  try {
+    const body = await res.json();
+    return errorText(body, res) || fallback;
+  } catch (err) {
+    return fallback;
+  }
 }
 
 async function loadCardDetail(bot) {
@@ -90,7 +183,38 @@ function renderCard({ bot, agents: roster, chats }) {
   name.textContent = bot.name;
   name.title = bot.name;          // the CSS truncates; the tooltip does not
   head.appendChild(name);
+
+  const menuButton = document.createElement("button");
+  menuButton.type = "button";
+  menuButton.className = "bot-card__menu";
+  menuButton.textContent = "⋯";
+  menuButton.setAttribute("aria-label", `Actions for ${bot.name}`);
+  head.appendChild(menuButton);
   card.appendChild(head);
+
+  const actions = document.createElement("div");
+  actions.className = "bot-card__actions";
+  actions.hidden = true;
+  [["Rename", () => renameChatbot(bot)],
+   ["Delete", () => deleteChatbotFromDashboard(bot)]].forEach(([text, run]) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = text;
+    b.addEventListener("click", (event) => {
+      event.stopPropagation();   // the card behind opens the chatbot
+      actions.hidden = true;
+      run();
+    });
+    actions.appendChild(b);
+  });
+  card.appendChild(actions);
+
+  menuButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const wasHidden = actions.hidden;
+    closeAllCardMenus();
+    actions.hidden = !wasHidden;
+  });
 
   if (bot.description) {
     const desc = document.createElement("p");
