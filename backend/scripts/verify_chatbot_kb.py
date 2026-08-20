@@ -10,12 +10,18 @@ import sys
 
 import httpx
 
-# REPLACE BEFORE RUNNING: paste the result of the Step 2 baseline query.
-# The values below are a placeholder shape, not measured data.
+# Measured against the live project on 2026-08-19, BEFORE migration 012 was
+# applied: (had_chunked, had_full) per user.
+#
+# Only oscarzheng has personal knowledge, and only in the whole-document tier —
+# every document trained there was short enough to index whole, so the chunked
+# tier was never lazily created. After 012 exactly one chatbot should carry
+# that kb_full_id and no chatbot should carry any kb_id.
 EXPECTED = {
-    "oscarzheng": (True, True),
-    "oscar":      (True, False),
-    "zheng":      (False, False),
+    "oscar":                (False, False),
+    "oscarzheng":           (False, True),
+    "smoketest_1787085226": (False, False),
+    "zheng":                (False, False),
 }
 
 BASE = os.environ["POWABASE_BASE_URL"].rstrip("/")

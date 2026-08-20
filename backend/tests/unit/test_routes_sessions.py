@@ -341,6 +341,35 @@ def test_promote_moves_the_document_into_chatbot_knowledge(client, auth, fake):
     assert fake.indexed == [("kb-chatbot-cb-1-knowledge", "src-1")]
 
 
+def test_promote_on_a_chat_with_no_chatbot_is_not_found(client, auth, fake):
+    """A chat created between migration 011 and the deploy that stamped it has
+    a null chatbot_id. Promoting there must refuse, not push the document into
+    a chatbot that does not exist — and must leave the chat untouched."""
+    fake.sessions["s1"]["chatbot_id"] = None
+    fake.sessions["s1"]["source_ids"] = ["src-1"]
+
+    res = client.post("/sessions/s1/documents/src-1/promote", headers=auth)
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Chatbot not found"
+    assert fake.sessions["s1"]["source_ids"] == ["src-1"]
+    assert fake.indexed == []
+
+
+def test_promote_into_a_chatbot_owned_by_someone_else_is_not_found(client, auth, fake):
+    fake.chatbots["cb-theirs"] = {
+        "id": "cb-theirs", "owner_id": "someone-else", "kb_id": None, "kb_full_id": None,
+    }
+    fake.sessions["s1"]["chatbot_id"] = "cb-theirs"
+    fake.sessions["s1"]["source_ids"] = ["src-1"]
+
+    res = client.post("/sessions/s1/documents/src-1/promote", headers=auth)
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Chatbot not found"
+    assert fake.indexed == []
+
+
 def test_promote_rejects_a_source_this_chat_never_uploaded(client, auth, fake):
     fake.sessions["s1"]["source_ids"] = ["src-1"]
     res = client.post("/sessions/s1/documents/other/promote", headers=auth)
