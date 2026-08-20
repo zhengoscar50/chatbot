@@ -57,7 +57,21 @@ def delete_user(client, session_service, agent_service, user_id: str) -> bool:
             pass
 
     # Their chatbots are empty now; remove them so no rows outlive the account.
+    #
+    # Delete each chatbot's OWN knowledge bases first. Since phase 2 a chatbot
+    # holds two tiers of its own, and dropping only the row leaves both alive in
+    # Powabase with nothing referencing them — the same stranding described
+    # above, in a newer form. Sources are never deleted, only the bases:
+    # upload_source deduplicates identical content, so a Source may belong to
+    # another user entirely.
     for chatbot in client.list_chatbot_rows(user_id):
+        for kb_id in (chatbot.get("kb_id"), chatbot.get("kb_full_id")):
+            if not kb_id:
+                continue
+            try:
+                client.delete_knowledge_base(kb_id)
+            except PowabaseAPIError:
+                pass
         try:
             client.delete_chatbot_row(chatbot["id"])
         except PowabaseAPIError:

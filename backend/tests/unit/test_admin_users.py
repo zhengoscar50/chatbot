@@ -23,6 +23,8 @@ class FakeClient:
         self.agents_by_owner = {"u1": [{"id": "ag-1"}, {"id": "ag-2"}]}
         self.chatbots_by_owner = {}
         self.failing_chatbot_deletes = set()
+        self.deleted_kbs = []
+        self.failing_kb_deletes = set()
         self.updated = []
         self.deleted_users = []
         self.deleted_chatbots = []
@@ -33,6 +35,11 @@ class FakeClient:
     def list_sessions_by_owner(self, owner_id): return list(self.sessions_by_owner.get(owner_id, []))
     def list_agent_rows_by_owner(self, owner_id): return list(self.agents_by_owner.get(owner_id, []))
     def list_chatbot_rows(self, owner_id): return list(self.chatbots_by_owner.get(owner_id, []))
+
+    def delete_knowledge_base(self, kb_id):
+        if kb_id in self.failing_kb_deletes:
+            raise PowabaseAPIError(500, {"error": "boom"})
+        self.deleted_kbs.append(kb_id)
 
     def delete_chatbot_row(self, chatbot_id):
         if chatbot_id in self.failing_chatbot_deletes:
@@ -197,3 +204,30 @@ def test_rename_user_same_name_ok():
     # renaming to your own (lowercased) name is not a conflict
     client = FakeClient()
     assert admin_users.rename_user(client, "u1", "Alice")["username"] == "alice"
+
+
+def test_deleting_a_user_also_deletes_their_chatbots_knowledge_bases():
+    """A chatbot owns two knowledge-base tiers since phase 2. Removing only the
+    row leaves both alive in Powabase with nothing referencing them — the same
+    stranding this function's docstring warns about, in a newer form."""
+    client = FakeClient()
+    client.chatbots_by_owner["u1"] = [
+        {"id": "cb-1", "kb_id": "k-chunked", "kb_full_id": "k-full"},
+        {"id": "cb-2", "kb_id": None, "kb_full_id": None},
+    ]
+
+    assert admin_users.delete_user(client, FakeSessionService(), FakeAgentService(), "u1")
+
+    assert sorted(client.deleted_kbs) == ["k-chunked", "k-full"]
+    assert sorted(client.deleted_chatbots) == ["cb-1", "cb-2"]
+
+
+def test_a_knowledge_base_that_is_already_gone_does_not_block_the_delete():
+    client = FakeClient()
+    client.chatbots_by_owner["u1"] = [{"id": "cb-1", "kb_id": "k1", "kb_full_id": None}]
+    client.failing_kb_deletes = {"k1"}
+
+    assert admin_users.delete_user(client, FakeSessionService(), FakeAgentService(), "u1")
+
+    assert client.deleted_chatbots == ["cb-1"]
+    assert client.deleted_users == ["u1"]
