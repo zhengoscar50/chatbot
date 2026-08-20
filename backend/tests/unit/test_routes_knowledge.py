@@ -236,7 +236,11 @@ def my_chatbot(chatbots):
 
 @pytest.fixture
 def other_chatbot(chatbots):
-    return chatbots.add(owner_id="someone-else")
+    # Carries a real knowledge base on purpose. Without one, every ownership
+    # test below would 404 for the wrong reason — "that document isn't here"
+    # rather than "that chatbot isn't yours" — and would keep passing if the
+    # ownership check were removed.
+    return chatbots.add(owner_id="someone-else", kb_id="their-kb")
 
 
 def test_listing_documents_requires_a_chatbot_id(client, auth):
@@ -249,6 +253,7 @@ def test_listing_another_users_chatbot_is_not_found(client, auth, other_chatbot)
     )
     # 404 not 403: a foreign id must be indistinguishable from a missing one.
     assert res.status_code == 404
+    assert res.json()["detail"] == "Chatbot not found"
 
 
 def test_documents_come_from_the_named_chatbot(client, auth, my_chatbot, fake):
@@ -278,11 +283,28 @@ def test_two_chatbots_owned_by_the_same_user_see_only_their_own_documents(
     assert [d["source_id"] for d in res.json()] == ["s-a"]
 
 
-def test_untraining_another_users_chatbot_is_not_found(client, auth, other_chatbot):
+def test_untraining_another_users_chatbot_is_not_found(client, auth, other_chatbot, fake):
+    # Aim at a document that REALLY IS in the other user's knowledge base. A
+    # missing id would 404 either way; only a present one can tell the
+    # ownership check from a lookup miss.
+    fake.kb_items["their-kb"] = [{"id": "i1", "source_id": "theirs"}]
+
     res = client.delete(
-        f"/knowledge/documents/s1?chatbot_id={other_chatbot}", headers=auth
+        f"/knowledge/documents/theirs?chatbot_id={other_chatbot}", headers=auth
+    )
+
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Chatbot not found"
+    # The point of the test: their document is untouched.
+    assert fake.kb_items["their-kb"] == [{"id": "i1", "source_id": "theirs"}]
+
+
+def test_status_of_another_users_chatbot_is_not_found(client, auth, other_chatbot):
+    res = client.get(
+        f"/knowledge/documents/theirs/status?chatbot_id={other_chatbot}", headers=auth
     )
     assert res.status_code == 404
+    assert res.json()["detail"] == "Chatbot not found"
 
 
 def test_training_another_users_chatbot_is_not_found(client, auth, other_chatbot):
@@ -293,3 +315,4 @@ def test_training_another_users_chatbot_is_not_found(client, auth, other_chatbot
         headers=auth,
     )
     assert res.status_code == 404
+    assert res.json()["detail"] == "Chatbot not found"
