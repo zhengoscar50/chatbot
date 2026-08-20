@@ -22,12 +22,13 @@ function wireChatbots() {
 
 async function loadChatbots() {
   const res = await authFetch("/chatbots");
-  if (!res.ok) return;
+  if (!res.ok) return false;
   chatbots = await res.json();
   const remembered = localStorage.getItem(CHATBOT_KEY);
   const exists = chatbots.some((c) => c.id === remembered);
   currentChatbotId = exists ? remembered : (chatbots[0] && chatbots[0].id) || null;
   renderChatbotSelect();
+  return true;
 }
 
 function renderChatbotSelect() {

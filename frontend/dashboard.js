@@ -45,7 +45,99 @@ async function enterChatbot(id) {
   await loadSessions();
 }
 
-// Filled in by the next task; declared here so the transitions above work.
+const CARD_AGENT_LIMIT = 3;
+
 async function loadDashboard() {
+  dashboardStatus.textContent = "Loading…";
   dashboardGrid.innerHTML = "";
+  if (!(await loadChatbots())) {
+    dashboardStatus.textContent = "Could not load your chatbots.";
+    return;
+  }
+  // Each card needs its own agents and chats. Fanned out rather than awaited
+  // in sequence, so one slow chatbot does not hold up the rest of the grid.
+  const details = await Promise.all(chatbots.map(loadCardDetail));
+  dashboardStatus.textContent = "";
+  dashboardGrid.innerHTML = "";
+  details.forEach((detail) => dashboardGrid.appendChild(renderCard(detail)));
+}
+
+async function loadCardDetail(bot) {
+  const q = "?chatbot_id=" + encodeURIComponent(bot.id);
+  const get = async (path) => {
+    try {
+      const res = await authFetch(path + q);
+      return res.ok ? await res.json() : [];
+    } catch (err) {
+      return [];   // a card with no counts beats a grid that fails to draw
+    }
+  };
+  const [agentRows, sessionRows] = await Promise.all([get("/agents"), get("/sessions")]);
+  return { bot, agents: agentRows, chats: sessionRows.length };
+}
+
+function renderCard({ bot, agents: roster, chats }) {
+  const card = document.createElement("article");
+  card.className = "bot-card";
+  card.dataset.id = bot.id;
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+
+  const head = document.createElement("header");
+  head.className = "bot-card__head";
+  const name = document.createElement("h2");
+  name.className = "bot-card__name";
+  name.textContent = bot.name;
+  name.title = bot.name;          // the CSS truncates; the tooltip does not
+  head.appendChild(name);
+  card.appendChild(head);
+
+  if (bot.description) {
+    const desc = document.createElement("p");
+    desc.className = "bot-card__desc";
+    desc.textContent = bot.description;
+    card.appendChild(desc);
+  }
+
+  const label = document.createElement("p");
+  label.className = "bot-card__label";
+  label.textContent = "Agents";
+  card.appendChild(label);
+
+  if (roster.length === 0) {
+    // An empty region reads as a failed load, so say it plainly instead.
+    const none = document.createElement("p");
+    none.className = "bot-card__none";
+    none.textContent = "No agents yet";
+    card.appendChild(none);
+  } else {
+    const list = document.createElement("ul");
+    list.className = "bot-card__agents";
+    roster.slice(0, CARD_AGENT_LIMIT).forEach((a) => {
+      const li = document.createElement("li");
+      li.textContent = a.name;
+      list.appendChild(li);
+    });
+    card.appendChild(list);
+    if (roster.length > CARD_AGENT_LIMIT) {
+      const more = document.createElement("p");
+      more.className = "bot-card__more";
+      more.textContent = `+${roster.length - CARD_AGENT_LIMIT} more`;
+      card.appendChild(more);
+    }
+  }
+
+  const count = document.createElement("p");
+  count.className = "bot-card__count";
+  count.textContent = chats === 1 ? "1 chat" : `${chats} chats`;
+  card.appendChild(count);
+
+  card.addEventListener("click", () => enterChatbot(bot.id));
+  card.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      enterChatbot(bot.id);
+    }
+  });
+  return card;
 }
