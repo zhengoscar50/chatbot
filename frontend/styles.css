@@ -1283,3 +1283,11 @@ body {
 }
 
 #scope-list li { display: flex; align-items: center; gap: 0.5rem; }
+
+/* A class selector with `display` beats the UA's [hidden] rule, so `hidden`
+   must be restated for any element that has one. Same reason .auth-gate[hidden]
+   exists above. */
+.app[hidden],
+.dashboard[hidden] {
+  display: none;
+}

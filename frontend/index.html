@@ -31,7 +31,15 @@
         <button type="button" id="auth-toggle" class="auth-toggle">Need an account? Register</button>
       </form>
     </div>
-    <div class="app">
+    <div class="dashboard" id="dashboard" hidden>
+      <header class="dashboard__head">
+        <h1 class="dashboard__title">Your chatbots</h1>
+        <button type="button" id="dashboard-logout" class="logout-btn">Log out</button>
+      </header>
+      <p class="dashboard__status" id="dashboard-status"></p>
+      <div class="dashboard__grid" id="dashboard-grid"></div>
+    </div>
+    <div class="app" id="app-view" hidden>
       <aside class="sidebar" id="sidebar">
         <div class="sidebar__head">
           <span class="sidebar__user" id="current-user"></span>
@@ -52,6 +60,7 @@
 
       <div class="main">
         <header class="topbar">
+          <button type="button" id="to-dashboard" class="scope-button">← Dashboard</button>
           <button id="sidebar-toggle" class="icon-btn topbar__toggle" aria-label="Toggle sessions">☰</button>
           <span class="topbar__mark" aria-hidden="true"></span>
           <span class="topbar__title" id="active-title">RAG Chat</span>
@@ -192,6 +201,7 @@
     <script src="/knowledge.js"></script>
     <script src="/scope.js"></script>
     <script src="/chatbots.js"></script>
+    <script src="/dashboard.js"></script>
     <script src="/app.js"></script>
   </body>
 </html>

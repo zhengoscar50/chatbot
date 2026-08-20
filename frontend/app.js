@@ -55,6 +55,7 @@ function init() {
   wireKnowledge();
   wireScope();
   wireChatbots();
+  wireDashboard();
   newSessionButton.addEventListener("click", createSession);
   sidebarToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
   document.getElementById("logout-btn").addEventListener("click", doLogout);
@@ -163,6 +164,8 @@ function setAuthError(text) {
 
 function showAuthGate() {
   authGate.hidden = false;
+  dashboard.hidden = true;
+  appView.hidden = true;
   setComposerEnabled(false);
 }
 
@@ -171,19 +174,21 @@ async function enterApp() {
   currentUserLabel.textContent = currentUsername || "";
   newSessionButton.disabled = false;
   setComposerEnabled(true);
-  clearThread("Type a message to start a chat.");
-  // Agents and chats both belong to a chatbot, so its id must be known before
-  // either request goes out.
   await loadChatbots();
-  // The roster is loaded for the Manage agents list; chats are independent of
-  // it now, so it never touches the thread.
-  await loadAgents();
-  loadSessions();
+  // The dashboard is where you START, not somewhere you are sent back to. A
+  // refresh mid-conversation resumes; a new tab does not.
+  const resume = sessionStorage.getItem(CHATBOT_SESSION_KEY);
+  if (resume && chatbots.some((c) => c.id === resume)) {
+    await enterChatbot(resume);
+  } else {
+    await showDashboard();
+  }
 }
 
 function doLogout() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(NAME_KEY);
+  sessionStorage.removeItem(CHATBOT_SESSION_KEY);
   authToken = null;
   currentUsername = null;
   currentSessionId = null;
