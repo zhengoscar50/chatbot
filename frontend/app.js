@@ -54,7 +54,6 @@ function init() {
   wireAgents();
   wireKnowledge();
   wireScope();
-  wireChatbots();
   wireDashboard();
   newSessionButton.addEventListener("click", createSession);
   sidebarToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
