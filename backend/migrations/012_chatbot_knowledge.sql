@@ -10,8 +10,17 @@
 -- data. Drop them by hand once this release has been live long enough to
 -- trust.
 
-alter table public.chatbots add column if not exists kb_id      uuid;
-alter table public.chatbots add column if not exists kb_full_id uuid;
+-- TEXT, not uuid: every knowledge-base id column in this schema is text
+-- (sessions.kb_id in 001, agents.kb_id in 004, users.kb_id in 008). Powabase
+-- knowledge-base ids are opaque strings and are never compared as uuids.
+--
+-- If you applied an earlier draft of this file that used uuid, the copy below
+-- failed with "column kb_id is of type uuid but expression is of type text".
+-- Correct it with:
+--     alter table public.chatbots alter column kb_id      type text using kb_id::text;
+--     alter table public.chatbots alter column kb_full_id type text using kb_full_id::text;
+alter table public.chatbots add column if not exists kb_id      text;
+alter table public.chatbots add column if not exists kb_full_id text;
 
 -- Copy each user's personal knowledge onto their OLDEST chatbot.
 --
