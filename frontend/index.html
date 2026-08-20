@@ -34,7 +34,13 @@
     <div class="dashboard" id="dashboard" hidden>
       <header class="dashboard__head">
         <h1 class="dashboard__title">Your chatbots</h1>
-        <button type="button" id="dashboard-logout" class="logout-btn">Log out</button>
+        <div class="dashboard__head-actions">
+          <button type="button" id="dashboard-theme-toggle" class="icon-btn theme-toggle" aria-label="Toggle dark mode" title="Toggle theme">
+            <svg class="theme-ico theme-ico--moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
+            <svg class="theme-ico theme-ico--sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></svg>
+          </button>
+          <button type="button" id="dashboard-logout" class="logout-btn">Log out</button>
+        </div>
       </header>
       <p class="dashboard__status" id="dashboard-status"></p>
       <div class="dashboard__grid" id="dashboard-grid"></div>
@@ -61,7 +67,7 @@
           <span class="topbar__title" id="active-title">RAG Chat</span>
           <button type="button" id="scope-button" class="scope-button" hidden
                   title="Choose which agents may answer in this chat">All agents</button>
-          <button type="button" id="theme-toggle" class="icon-btn topbar__theme" aria-label="Toggle dark mode" title="Toggle theme">
+          <button type="button" id="theme-toggle" class="icon-btn topbar__theme theme-toggle" aria-label="Toggle dark mode" title="Toggle theme">
             <svg class="theme-ico theme-ico--moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
             <svg class="theme-ico theme-ico--sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></svg>
           </button>

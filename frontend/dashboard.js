@@ -34,7 +34,22 @@ async function showDashboard() {
   currentSessionId = null;
   appView.hidden = true;
   dashboard.hidden = false;
+  // Modals are siblings of #app-view, not children, so hiding it alone leaves
+  // one floating over the dashboard grid — close whatever might be open.
+  agentModal.hidden = true;
+  agentListModal.hidden = true;
+  scopeModal.hidden = true;
+  knowledgeModal.hidden = true;
   await loadDashboard();
+}
+
+// A 404 from an agents/sessions load scoped to `currentChatbotId` means the
+// chatbot itself is gone (deleted in another tab, most often) — the server
+// makes no other 404 for that query. Bounce back to the dashboard rather than
+// leaving the chat view stranded on a chatbot that no longer exists.
+async function handleChatbotGone() {
+  await showDashboard();
+  dashboardStatus.textContent = "That chatbot no longer exists.";
 }
 
 async function enterChatbot(id) {
@@ -50,6 +65,8 @@ async function enterChatbot(id) {
     // reachable throughout, and loadAgents()/loadSessions() degrade to a
     // sidebar error rather than crashing if a dead id slips through anyway.
     dashboardStatus.textContent = "That chatbot no longer exists.";
+    dashboard.hidden = false;
+    appView.hidden = true;
     await loadDashboard();
     return;
   }
@@ -61,6 +78,7 @@ async function enterChatbot(id) {
   currentSessionId = null;
   clearThread("Pick or create a chat to start.");
   await loadAgents();
+  if (currentChatbotId !== id) return;   // loadAgents() already bounced us back
   await loadSessions();
 }
 
@@ -195,7 +213,6 @@ async function loadCardDetail(bot) {
 function renderCard({ bot, agents: roster, chats }) {
   const card = document.createElement("article");
   card.className = "bot-card";
-  card.dataset.id = bot.id;
   card.tabIndex = 0;
   card.setAttribute("role", "button");
 
@@ -218,6 +235,9 @@ function renderCard({ bot, agents: roster, chats }) {
   const actions = document.createElement("div");
   actions.className = "bot-card__actions";
   actions.hidden = true;
+  actions.addEventListener("click", (event) => {
+    event.stopPropagation();   // a click on the menu's own border must not fall through to the card
+  });
   [["Rename", () => renameChatbot(bot)],
    ["Delete", () => deleteChatbotFromDashboard(bot)]].forEach(([text, run]) => {
     const b = document.createElement("button");
@@ -281,6 +301,11 @@ function renderCard({ bot, agents: roster, chats }) {
 
   card.addEventListener("click", () => enterChatbot(bot.id));
   card.addEventListener("keydown", (event) => {
+    // Enter/Space bubble up from the card's own child buttons (the ⋯ menu,
+    // Rename, Delete). Without this, activating any of them here also
+    // re-triggers enterChatbot() on the card underneath — cancelling the
+    // button's own action and making those buttons unreachable by keyboard.
+    if (event.target !== card) return;
     if (event.key === "Enter" || event.key === " ") {
       event.preventDefault();
       enterChatbot(bot.id);

@@ -1,7 +1,8 @@
-// Theme toggle shared by the chat and admin pages. The initial theme is applied
-// pre-paint by a tiny inline <head> script (saved preference, else OS setting);
-// this file wires the #theme-toggle button and keeps following the OS until the
-// user makes an explicit choice.
+// Theme toggle shared by the chat, dashboard and admin pages. The initial theme
+// is applied pre-paint by a tiny inline <head> script (saved preference, else OS
+// setting); this file wires every .theme-toggle button on the page (there can be
+// more than one — e.g. the dashboard and the chat topbar both have one) and keeps
+// following the OS until the user makes an explicit choice.
 (function () {
   var KEY = "rag-chat-theme";
   var root = document.documentElement;
@@ -15,12 +16,12 @@
     if (persist) localStorage.setItem(KEY, theme);
   }
 
-  var btn = document.getElementById("theme-toggle");
-  if (btn) {
+  var btns = document.querySelectorAll(".theme-toggle");
+  btns.forEach(function (btn) {
     btn.addEventListener("click", function () {
       apply(current() === "dark" ? "light" : "dark", true);
     });
-  }
+  });
 
   // Follow the OS theme only while the user hasn't picked one explicitly.
   var mq = window.matchMedia("(prefers-color-scheme: dark)");
