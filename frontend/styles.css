@@ -1355,6 +1355,11 @@ body {
   border: 1px solid var(--border); border-radius: 8px;
   background: var(--bg); overflow: hidden;
 }
+/* Required, not optional: this rule's `display` outranks the UA's
+   [hidden] { display: none }, so without it the menu is permanently open
+   however carefully the JS toggles `hidden`. Same reason .app[hidden] and
+   .auth-gate[hidden] exist. */
+.bot-card__actions[hidden] { display: none; }
 .bot-card__actions button {
   border: none; background: none; cursor: pointer; text-align: left;
   padding: 8px 12px; font-size: 14px; color: var(--text);
