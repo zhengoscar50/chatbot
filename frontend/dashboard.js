@@ -38,16 +38,21 @@ async function showDashboard() {
 }
 
 async function enterChatbot(id) {
+  const bot = chatbots.find((c) => c.id === id);
+  if (!bot) {
+    // Deleted in another tab, or a stale resume marker. Redraw rather than
+    // entering a chatbot that is not there.
+    dashboardStatus.textContent = "That chatbot no longer exists.";
+    await loadDashboard();
+    return;
+  }
   currentChatbotId = id;
   sessionStorage.setItem(CHATBOT_SESSION_KEY, id);
   dashboard.hidden = true;
   appView.hidden = false;
-  const bot = chatbots.find((c) => c.id === id);
-  activeTitle.textContent = (bot && bot.name) || "RAG Chat";
+  activeTitle.textContent = bot.name;
   currentSessionId = null;
   clearThread("Pick or create a chat to start.");
-  // Agents and chats both belong to a chatbot, so currentChatbotId must
-  // already be set before either request goes out.
   await loadAgents();
   await loadSessions();
 }
@@ -58,7 +63,7 @@ async function loadDashboard() {
   dashboardStatus.textContent = "Loading…";
   dashboardGrid.innerHTML = "";
   if (!(await loadChatbots())) {
-    dashboardStatus.textContent = "Could not load your chatbots.";
+    showDashboardError("Could not load your chatbots.");
     return;
   }
   // Each card needs its own agents and chats. Fanned out rather than awaited
@@ -68,6 +73,17 @@ async function loadDashboard() {
   dashboardGrid.innerHTML = "";
   details.forEach((detail) => dashboardGrid.appendChild(renderCard(detail)));
   dashboardGrid.appendChild(renderNewTile());
+}
+
+function showDashboardError(message) {
+  dashboardStatus.textContent = message;
+  dashboardGrid.innerHTML = "";
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "bot-card bot-card--new";
+  retry.textContent = "Try again";
+  retry.addEventListener("click", loadDashboard);
+  dashboardGrid.appendChild(retry);
 }
 
 function renderNewTile() {
