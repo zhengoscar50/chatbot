@@ -40,8 +40,15 @@ async function showDashboard() {
 async function enterChatbot(id) {
   const bot = chatbots.find((c) => c.id === id);
   if (!bot) {
-    // Deleted in another tab, or a stale resume marker. Redraw rather than
-    // entering a chatbot that is not there.
+    // A cheap sanity check against the last-loaded list, not a live check —
+    // it only fires when `id` is missing from `chatbots` (a stale resume
+    // marker, or any future caller passing an id we never loaded). A card
+    // for a chatbot deleted in another tab still passes this find() until
+    // this tab's list is refreshed, so this does not, by itself, catch that
+    // race. The genuine recovery for that case is elsewhere: enterApp()
+    // re-fetches chatbots on every load/refresh, "← Dashboard" stays
+    // reachable throughout, and loadAgents()/loadSessions() degrade to a
+    // sidebar error rather than crashing if a dead id slips through anyway.
     dashboardStatus.textContent = "That chatbot no longer exists.";
     await loadDashboard();
     return;
