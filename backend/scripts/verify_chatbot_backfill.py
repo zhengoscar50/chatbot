@@ -44,7 +44,12 @@ ok &= not orphan_agents
 print("chats without a chatbot  :", len(orphan_chats))
 ok &= not orphan_chats
 
-# Check 2: each owner with content has exactly 1 chatbot (holds at backfill time only; users create more later)
+# Check 2: each owner with content has at least one chatbot.
+#
+# This asserted EXACTLY one until 2026-08-19. That was only ever true in the
+# window between the backfill and the first time anyone created a second
+# chatbot — which is the feature working, not a fault. The durable invariant
+# is "somewhere to live", not "exactly one place".
 owners_with_content = {a["owner_id"] for a in agents} | {s["owner_id"] for s in sessions}
 per_owner = {}
 for b in bots:
@@ -53,7 +58,28 @@ for owner in owners_with_content:
     n = len(per_owner.get(owner, []))
     username = users.get(owner, owner)
     print("%-14s chatbots: %d" % (username[:14], n))
-    ok &= n == 1
+    ok &= n >= 1
+
+# Check 2b: no agent or chat sits in a chatbot belonging to someone else.
+#
+# This is what check 2 was really protecting, and unlike a count it stays true
+# forever. A row here would mean one account's content is reachable from
+# another's chatbot — the failure the whole feature exists to prevent.
+bot_owner = {b["id"]: b["owner_id"] for b in bots}
+crossed = [
+    (kind, r["id"]) for kind, rows in (("agent", agents), ("chat", sessions))
+    for r in rows
+    if bot_owner.get(r.get("chatbot_id")) not in (None, r["owner_id"])
+]
+missing_bot = [
+    (kind, r["id"]) for kind, rows in (("agent", agents), ("chat", sessions))
+    for r in rows
+    if r.get("chatbot_id") and r["chatbot_id"] not in bot_owner
+]
+print("rows in someone else's chatbot :", len(crossed))
+ok &= not crossed
+print("rows citing a missing chatbot  :", len(missing_bot))
+ok &= not missing_bot
 
 # Check 3: per-user counts match the pre-migration baseline
 print()
