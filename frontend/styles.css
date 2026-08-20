@@ -606,21 +606,6 @@ body {
   cursor: default;
 }
 
-.chatbot-picker {
-  display: block;
-}
-
-.chatbot-picker select {
-  width: 100%;
-  padding: 0.45rem 0.6rem;
-  border-radius: 0.6rem;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text);
-  font: inherit;
-  font-size: 0.85rem;
-}
-
 .session-list {
   list-style: none;
   margin: 0;
@@ -1283,3 +1268,100 @@ body {
 }
 
 #scope-list li { display: flex; align-items: center; gap: 0.5rem; }
+
+/* A class selector with `display` beats the UA's [hidden] rule, so `hidden`
+   must be restated for any element that has one. Same reason .auth-gate[hidden]
+   exists above. */
+.app[hidden],
+.dashboard[hidden] {
+  display: none;
+}
+
+.dashboard {
+  padding: 32px 24px 48px;
+  max-width: 1100px;
+  margin: 0 auto;
+}
+.dashboard__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+.dashboard__head-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.dashboard__head .theme-toggle {
+  flex: none;
+}
+.dashboard__title { font-size: 22px; margin: 0; }
+.dashboard__status { color: var(--text-muted); min-height: 20px; margin: 4px 0 16px; }
+.dashboard__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+}
+.bot-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-subtle);
+  cursor: pointer;
+  text-align: left;
+}
+.bot-card:hover, .bot-card:focus-visible {
+  border-color: var(--accent-border);
+  background: var(--accent-surface);
+  outline: none;
+}
+.bot-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.bot-card__name {
+  font-size: 16px; margin: 0; min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bot-card__desc {
+  color: var(--text-muted); font-size: 13px; margin: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bot-card__label {
+  color: var(--text-muted); font-size: 11px; letter-spacing: .08em;
+  text-transform: uppercase; margin: 8px 0 0;
+}
+.bot-card__agents { list-style: none; margin: 0; padding: 0; font-size: 14px; }
+.bot-card__agents li {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.bot-card__none, .bot-card__more { color: var(--text-muted); font-size: 13px; margin: 0; }
+.bot-card__count {
+  color: var(--text-muted); font-size: 13px; margin: 10px 0 0;
+  border-top: 1px solid var(--border); padding-top: 10px;
+}
+
+.bot-card { position: relative; }
+.bot-card__menu {
+  border: none; background: none; cursor: pointer; font-size: 18px;
+  line-height: 1; padding: 0 4px; color: var(--text-muted); border-radius: 6px;
+}
+.bot-card__menu:hover { background: var(--accent-hover); color: var(--text); }
+.bot-card__actions {
+  position: absolute; top: 40px; right: 12px; z-index: 2;
+  display: flex; flex-direction: column; min-width: 120px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg); overflow: hidden;
+}
+.bot-card__actions button {
+  border: none; background: none; cursor: pointer; text-align: left;
+  padding: 8px 12px; font-size: 14px; color: var(--text);
+}
+.bot-card__actions button:hover { background: var(--accent-hover); }
+.bot-card--new {
+  align-items: center; justify-content: center; min-height: 140px;
+  color: var(--text-muted); font-size: 15px;
+  border-style: dashed; background: none;
+}

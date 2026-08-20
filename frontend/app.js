@@ -47,6 +47,8 @@ init();
 
 function init() {
   setComposerEnabled(false);
+  // Vestige of the retired sidebar chatbot picker — nothing reads it anymore.
+  localStorage.removeItem("rag-chat-chatbot");
   authToken = localStorage.getItem(TOKEN_KEY);
   currentUsername = localStorage.getItem(NAME_KEY);
   wireAuthForm();
@@ -54,7 +56,7 @@ function init() {
   wireAgents();
   wireKnowledge();
   wireScope();
-  wireChatbots();
+  wireDashboard();
   newSessionButton.addEventListener("click", createSession);
   sidebarToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
   document.getElementById("logout-btn").addEventListener("click", doLogout);
@@ -163,6 +165,8 @@ function setAuthError(text) {
 
 function showAuthGate() {
   authGate.hidden = false;
+  dashboard.hidden = true;
+  appView.hidden = true;
   setComposerEnabled(false);
 }
 
@@ -171,19 +175,26 @@ async function enterApp() {
   currentUserLabel.textContent = currentUsername || "";
   newSessionButton.disabled = false;
   setComposerEnabled(true);
-  clearThread("Type a message to start a chat.");
-  // Agents and chats both belong to a chatbot, so its id must be known before
-  // either request goes out.
-  await loadChatbots();
-  // The roster is loaded for the Manage agents list; chats are independent of
-  // it now, so it never touches the thread.
-  await loadAgents();
-  loadSessions();
+  // The dashboard is where you START, not somewhere you are sent back to. A
+  // refresh mid-conversation resumes; a new tab does not. Only the resume
+  // path needs the list up front (to check membership) — loadDashboard()
+  // fetches it anyway, so the no-resume path leaves it to that single fetch
+  // rather than loading /chatbots twice on every login.
+  const resume = sessionStorage.getItem(CHATBOT_SESSION_KEY);
+  if (resume) {
+    await loadChatbots();
+    if (chatbots.some((c) => c.id === resume)) {
+      await enterChatbot(resume);
+      return;
+    }
+  }
+  await showDashboard();
 }
 
 function doLogout() {
   localStorage.removeItem(TOKEN_KEY);
   localStorage.removeItem(NAME_KEY);
+  sessionStorage.removeItem(CHATBOT_SESSION_KEY);
   authToken = null;
   currentUsername = null;
   currentSessionId = null;
@@ -222,6 +233,13 @@ async function loadSessions() {
   setSidebarStatus("Loading sessions…", null);
   try {
     const response = await authFetch(`/sessions?chatbot_id=${encodeURIComponent(currentChatbotId)}`);
+    if (response.status === 404) {
+      // The only reason this scoped query 404s is that the chatbot itself is
+      // gone (e.g. deleted from another tab) — bounce back to the dashboard
+      // instead of leaving the chat view stranded.
+      await handleChatbotGone();
+      return;
+    }
     const body = await response.json();
     if (!response.ok) {
       setSidebarStatus(errorText(body, response), "error");

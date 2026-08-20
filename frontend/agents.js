@@ -71,6 +71,13 @@ async function loadAgents() {
   if (modelChoices.length === 0) await loadModelChoices();
   try {
     const res = await authFetch(`/agents?chatbot_id=${encodeURIComponent(currentChatbotId)}`);
+    if (res.status === 404) {
+      // The only reason this scoped query 404s is that the chatbot itself is
+      // gone (e.g. deleted from another tab) — bounce back to the dashboard
+      // instead of leaving the chat view stranded.
+      await handleChatbotGone();
+      return;
+    }
     if (!res.ok) {
       // Say something. A silently blank picker leaves the user with no idea
       // whether they have no agents or the request failed.
