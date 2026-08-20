@@ -1370,3 +1370,18 @@ body {
   color: var(--text-muted); font-size: 15px;
   border-style: dashed; background: none;
 }
+
+/* Navigation, not agent scoping. These sat side by side in the topbar sharing
+   .scope-button, so returning to the dashboard and narrowing the roster looked
+   like the same kind of control. */
+.topbar__back {
+  margin-right: 0.6rem;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.topbar__back:hover { color: inherit; background: var(--accent-hover); }
