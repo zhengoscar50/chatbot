@@ -482,22 +482,57 @@ async function pollIngestStatus(sessionId, sourceId, fileName) {
   }
 }
 
+// Promotion is accepted immediately and indexed in a background task, so this
+// polls for the outcome rather than trusting the 202 — the same shape as
+// training. Reporting "saved" on acceptance would be a promise the server has
+// not kept yet: if indexing fails the document correctly stays in the chat,
+// and claiming otherwise sends the user looking for it in the wrong place.
+const PROMOTE_POLL_MS = 3000;
+const PROMOTE_POLL_LIMIT = 200; // ~10 minutes, matching the server's budget
+
+async function pollPromoteStatus(sourceId, chatbotId) {
+  // Bound to the upload token, so switching chats abandons the poll quietly
+  // instead of writing a stale outcome over the new chat's chip.
+  const myToken = uploadPollToken;
+  for (let i = 0; i < PROMOTE_POLL_LIMIT; i += 1) {
+    await new Promise((r) => setTimeout(r, PROMOTE_POLL_MS));
+    if (myToken !== uploadPollToken) return null;
+    try {
+      const res = await authFetch(
+        `/knowledge/documents/${encodeURIComponent(sourceId)}/status` +
+        `?chatbot_id=${encodeURIComponent(chatbotId)}`
+      );
+      if (!res.ok) continue; // a blip mid-poll is not a failed promotion
+      const body = await res.json();
+      if (body.status === "indexed") return "saved to chatbot knowledge";
+      if (body.status === "failed") return body.detail || "could not save";
+    } catch (err) {
+      // transient network error -> keep polling
+    }
+  }
+  return "still saving — check chatbot knowledge shortly";
+}
+
 attachmentPromote.addEventListener("click", async () => {
   if (!attachedSource) return;
   attachmentPromote.disabled = true;
   const { sessionId, sourceId } = attachedSource;
+  // Captured once: the poll below outlives any chatbot switch.
+  const chatbotId = currentChatbotId;
   try {
     const res = await authFetch(
       `/sessions/${encodeURIComponent(sessionId)}` +
       `/documents/${encodeURIComponent(sourceId)}/promote`,
       { method: "POST" }
     );
-    if (res.ok || res.status === 202) {
-      attachmentPromote.hidden = true;
-      attachmentStatus.textContent = "saved to chatbot knowledge";
-    } else {
+    if (!(res.ok || res.status === 202)) {
       attachmentStatus.textContent = "could not save";
+      return;
     }
+    attachmentPromote.hidden = true;
+    attachmentStatus.textContent = "saving to chatbot knowledge…";
+    const outcome = await pollPromoteStatus(sourceId, chatbotId);
+    if (outcome) attachmentStatus.textContent = outcome;
   } catch (err) {
     attachmentStatus.textContent = err.message;
   } finally {
