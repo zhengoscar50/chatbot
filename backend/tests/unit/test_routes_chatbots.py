@@ -77,3 +77,20 @@ def test_deleting_the_last_chatbot_is_a_400():
     r = TestClient(build_app(bots)).delete("/chatbots/cb-1")
     assert r.status_code == 400
     assert "last" in r.json()["detail"].lower()
+
+
+def test_a_whitespace_only_name_is_rejected():
+    """min_length counts characters, so "   " passes it — and renders as a
+    blank, unselectable row in the chatbot picker."""
+    from app.models.schemas import ChatbotCreateRequest, ChatbotUpdateRequest
+    import pytest as _pytest
+
+    for model in (ChatbotCreateRequest, ChatbotUpdateRequest):
+        with _pytest.raises(ValueError):
+            model(name="   ")
+
+
+def test_a_name_is_stored_trimmed():
+    from app.models.schemas import ChatbotCreateRequest
+
+    assert ChatbotCreateRequest(name="  Work  ").name == "Work"

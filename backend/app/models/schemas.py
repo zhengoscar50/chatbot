@@ -196,13 +196,29 @@ class AgentDocument(BaseModel):
     status: Optional[str] = None
 
 
+def _visible_name(v: str) -> str:
+    """Reject a name that is only whitespace, and store it trimmed.
+
+    `min_length` counts characters, so "   " satisfies it — and produces a
+    chatbot that renders as a blank, unidentifiable row in the picker.
+    """
+    trimmed = (v or "").strip()
+    if not trimmed:
+        raise ValueError("name cannot be blank")
+    return trimmed
+
+
 class ChatbotCreateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=80)
     description: str = Field(default="", max_length=500)
 
+    _strip_name = field_validator("name")(_visible_name)
+
 
 class ChatbotUpdateRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=80)
+
+    _strip_name = field_validator("name")(_visible_name)
 
 
 class ChatbotResponse(BaseModel):
