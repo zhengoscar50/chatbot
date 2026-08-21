@@ -219,10 +219,14 @@ class PowabaseClient:
         created = response.json()
         return created[0] if isinstance(created, list) else created
 
-    def list_sessions(self, chatbot_id: str) -> list:
+    def list_sessions(self, chatbot_id: str, shared: bool = False) -> list:
         response = self._client.get(
             "/rest/v1/sessions",
-            params={"chatbot_id": f"eq.{chatbot_id}", "order": "updated_at.desc"},
+            params={
+                "chatbot_id": f"eq.{chatbot_id}",
+                "shared": f"is.{'true' if shared else 'false'}",
+                "order": "updated_at.desc",
+            },
         )
         self._raise_for_status(response)
         return response.json()

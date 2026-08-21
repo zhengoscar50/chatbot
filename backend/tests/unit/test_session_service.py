@@ -13,6 +13,7 @@ class FakeClient:
         self.deleted_agents = []
         self.deleted_rows = []
         self.unlinked = []
+        self.session_rows = []
 
     def create_knowledge_base(self, name, description="", indexing_config=None,
                               retrieval_config=None):
@@ -30,8 +31,14 @@ class FakeClient:
         self.inserted.append(row)
         return row
 
-    def list_sessions(self, chatbot_id):
-        return [r for r in self.rows if r.get("chatbot_id") == chatbot_id]
+    def list_sessions(self, chatbot_id, shared=False):
+        # session_rows is what tests use when they only care about the
+        # shared filter; rows (with its existing chatbot_id filtering)
+        # stays the default so older chatbot-scoping tests keep working.
+        rows = self.session_rows or self.rows
+        return [r for r in rows
+                if r.get("chatbot_id", chatbot_id) == chatbot_id
+                and r.get("shared", False) == shared]
 
     def get_session_row(self, session_id):
         return next((r for r in self.rows if r["id"] == session_id), None)
@@ -286,3 +293,38 @@ def test_forget_source_re_reads_rather_than_trusting_a_copy():
     service.forget_source("s1", "a")
 
     assert c.get_session_row("s1")["source_ids"] == ["b", "late"]
+
+
+# --- shared: flagging and hiding visitor sessions --------------------------
+
+def test_a_session_is_not_shared_by_default():
+    client = FakeClient()
+    SessionService(client, None, "scratch").create_session("u1", "cb-1")
+    assert client.inserted[-1]["shared"] is False
+
+
+def test_a_visitor_session_is_flagged_shared():
+    client = FakeClient()
+    SessionService(client, None, "scratch").create_session("u1", "cb-1", shared=True)
+    assert client.inserted[-1]["shared"] is True
+
+
+def test_listing_excludes_shared_sessions_by_default():
+    """The owner's sidebar must not fill with strangers' conversations."""
+    client = FakeClient()
+    client.session_rows = [
+        {"id": "s1", "name": "mine", "shared": False},
+        {"id": "s2", "name": "a visitor's", "shared": True},
+    ]
+    listed = SessionService(client, None, "scratch").list("cb-1")
+    assert [s["id"] for s in listed] == ["s1"]
+
+
+def test_listing_shared_returns_only_visitor_sessions():
+    client = FakeClient()
+    client.session_rows = [
+        {"id": "s1", "name": "mine", "shared": False},
+        {"id": "s2", "name": "a visitor's", "shared": True},
+    ]
+    listed = SessionService(client, None, "scratch").list("cb-1", shared=True)
+    assert [s["id"] for s in listed] == ["s2"]

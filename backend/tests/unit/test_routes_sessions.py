@@ -18,7 +18,7 @@ class FakeSessionService:
     def create_session(self, owner_id, chatbot_id, name=None):
         return {"id": "s1", "name": name or "New chat"}
 
-    def list(self, chatbot_id):
+    def list(self, chatbot_id, shared=False):
         return [{"id": "s1", "name": "Taxes", "updated_at": "t1"}]
 
     def get_owned_session(self, session_id, owner_id):
@@ -254,6 +254,12 @@ class PromoteFakeClient:
     def get_chatbot_row(self, chatbot_id):
         return self.chatbots.get(chatbot_id)
 
+    # --- SessionService (list) -----------------------------------------
+    def list_sessions(self, chatbot_id, shared=False):
+        return [s for s in self.sessions.values()
+                if s.get("chatbot_id") == chatbot_id
+                and s.get("shared", False) == shared]
+
     # --- ChatbotKbService ---------------------------------------------
     def create_knowledge_base(self, name, description="", indexing_config=None,
                                retrieval_config=None):
@@ -296,7 +302,8 @@ def fake():
 def client(fake, monkeypatch):
     monkeypatch.setattr(sessions_route, "IngestService", FakePromoteIngestService)
     fake.sessions["s1"] = {
-        "id": "s1", "owner_id": "o1", "chatbot_id": "cb-1", "source_ids": [],
+        "id": "s1", "owner_id": "o1", "chatbot_id": "cb-1", "name": "mine",
+        "source_ids": [],
     }
     fake.chatbots["cb-1"] = {
         "id": "cb-1", "owner_id": "o1", "kb_id": None, "kb_full_id": None,
@@ -403,3 +410,11 @@ def test_promoting_a_document_the_chatbot_already_holds_succeeds(client, auth, f
     assert res.status_code == 202
     assert "src-1" not in fake.sessions["s1"]["source_ids"]
     assert fake.indexed == []   # nothing re-indexed
+
+
+def test_listing_defaults_to_the_owners_own_chats(client, auth, fake):
+    fake.sessions["v1"] = {"id": "v1", "owner_id": "o1", "chatbot_id": "cb-1",
+                           "name": "a visitor's", "shared": True}
+    res = client.get("/sessions?chatbot_id=cb-1", headers=auth)
+    assert res.status_code == 200
+    assert all(s["id"] != "v1" for s in res.json())

@@ -29,18 +29,25 @@ class SessionService:
         # touch scratch documents.
         self.scratch_kb_id = scratch_kb_id
 
-    def create_session(self, owner_id: str, chatbot_id: str, name: str | None = None) -> dict:
+    def create_session(self, owner_id: str, chatbot_id: str, name: str | None = None,
+                       shared: bool = False) -> dict:
         """Create a chat. Chats belong to the user, not to an agent — the
-        orchestrator picks an agent per message."""
+        orchestrator picks an agent per message.
+
+        `shared` marks a visitor's chat on a public link. It keeps the chat out
+        of the owner's sidebar AND is the gate proving, later, that a session
+        named by a public request belongs to a visitor rather than the owner.
+        """
         return self.client.insert_session({
             "id": str(uuid.uuid4()),
             "owner_id": owner_id,
             "chatbot_id": chatbot_id,
             "name": name or DEFAULT_NAME,
+            "shared": shared,
         })
 
-    def list(self, chatbot_id: str) -> list:
-        rows = self.client.list_sessions(chatbot_id)
+    def list(self, chatbot_id: str, shared: bool = False) -> list:
+        rows = self.client.list_sessions(chatbot_id, shared=shared)
         return [
             {"id": r["id"], "name": r["name"], "updated_at": r.get("updated_at"),
              "excluded_agent_ids": r.get("excluded_agent_ids") or []}
