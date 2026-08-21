@@ -153,10 +153,23 @@ no visitor writes to the shared scratch knowledge base.
 A single page: the chatbot's name, a message thread with markdown rendering,
 the name of the agent that answered, and its citations.
 
-**Citations are shown deliberately**, including document filenames and quoted
-excerpts. That is the cost of a convincing demo, and it means anyone with the
-link learns the filenames in that chatbot's knowledge. Do not share a chatbot
-whose filenames are sensitive.
+**Citations are shown, with filenames redacted.** A visitor sees the numbered
+markers and the quoted excerpts — `[1]`, `[2]`, and the text each one supports —
+but the source is labelled `Source 1`, `Source 2` rather than
+`Q3_layoffs_confidential.pdf`.
+
+That split is deliberate. The demo's persuasive content is the *excerpt*: proof
+the answer came from a document rather than the model's memory. The filename
+carries almost none of that value and all of the exposure — anyone with the link
+would otherwise learn the name of every document in the chatbot's knowledge,
+including ones that never appear in an answer they asked for.
+
+Redaction happens **server-side**, in the public route's response mapping. The
+filename must never reach the browser, because anything sent to the page is
+readable in the network tab no matter how the page renders it.
+
+Excerpts still quote document text, so a document whose *contents* are sensitive
+remains unsafe to share. Redaction removes the index, not the content.
 
 No sidebar, no uploads, no settings, no theme toggle, no link back to the app.
 
@@ -207,6 +220,9 @@ Unit, following existing patterns:
 - `GET /sessions` excludes shared sessions by default and includes them with
   `shared=true`.
 - The public chat route rejects anything beyond a query — no uploads.
+- **The public chat response contains no filename.** Assert on the serialised
+  response body, not the render: a filename present in the payload is a leak
+  however the page displays it.
 - Every existing `/chat` test passes **unchanged** after the extraction.
 
 Live, after deploying:
@@ -226,6 +242,10 @@ Accepted rather than adding locking.
 
 **A forwarded link is a public link.** The daily cap is the automatic defence;
 regeneration is the manual one. There is no way to un-send a link.
+
+**Excerpts still quote document text.** Filenames are redacted, but the quoted
+passages are real. A chatbot holding confidential *content* is still unsafe to
+share; this feature protects the index, not the documents.
 
 **Storing strangers' text.** Visitor questions live in the owner's database
 indefinitely, under the owner's account.
