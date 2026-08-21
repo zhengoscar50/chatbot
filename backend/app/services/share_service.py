@@ -18,8 +18,25 @@ def redact_citations(citations: list) -> list:
     Labels are assigned per distinct source, so two markers quoting the same
     document agree — which is what the citation de-duplication in the UI needs.
     """
-    id_to_label: dict = {}  # Maps source_id to label
-    name_to_id: dict = {}   # Maps source_name to source_id when encountered
+    # First pass: learn which source_names map to which source_ids.
+    # This handles both order cases (id-first and name-first).
+    name_to_id: dict = {}
+    for citation in citations or []:
+        if not isinstance(citation, dict):
+            continue
+        source_id = citation.get("source_id")
+        source_name = citation.get("source_name")
+        # Coerce to string for hashability
+        if source_id is not None:
+            source_id = str(source_id)
+        if source_name is not None:
+            source_name = str(source_name)
+        # Record the mapping only if we have both
+        if source_id and source_name:
+            name_to_id[source_name] = source_id
+
+    # Second pass: assign labels using resolved identities.
+    id_to_label: dict = {}
     out: list = []
     for citation in citations or []:
         if not isinstance(citation, dict):
@@ -30,25 +47,18 @@ def redact_citations(citations: list) -> list:
         source_id = citation.get("source_id")
         source_name = citation.get("source_name")
 
-        # Coerce to string for hashability (in case of nested/unhashable values)
+        # Coerce to string for hashability
         if source_id is not None:
             source_id = str(source_id)
         if source_name is not None:
             source_name = str(source_name)
 
-        # Determine the canonical identity, preferring source_id (the real key)
-        # but remembering when source_name is associated with a source_id
+        # Determine identity: own source_id if present, else resolve through name_to_id
         if source_id:
             identity = source_id
-            # Remember this source_name is tied to this source_id
-            if source_name:
-                name_to_id[source_name] = source_id
         elif source_name:
-            # Check if we've seen this source_name before with a source_id
-            if source_name in name_to_id:
-                identity = name_to_id[source_name]
-            else:
-                identity = source_name
+            # Use the source_id we learned if this name has one, else use the name
+            identity = name_to_id.get(source_name, source_name)
         else:
             # No identity at all
             continue
