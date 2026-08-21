@@ -18,19 +18,48 @@ def redact_citations(citations: list) -> list:
     Labels are assigned per distinct source, so two markers quoting the same
     document agree — which is what the citation de-duplication in the UI needs.
     """
-    labels: dict = {}
+    id_to_label: dict = {}  # Maps source_id to label
+    name_to_id: dict = {}   # Maps source_name to source_id when encountered
     out: list = []
     for citation in citations or []:
         if not isinstance(citation, dict):
             # The legacy citation shape is the filename itself. There is
             # nothing to redact, so drop it: a missing marker beats a leak.
             continue
-        identity = citation.get("source_id") or citation.get("source_name")
-        if identity not in labels:
-            labels[identity] = "Source %d" % (len(labels) + 1)
+
+        source_id = citation.get("source_id")
+        source_name = citation.get("source_name")
+
+        # Coerce to string for hashability (in case of nested/unhashable values)
+        if source_id is not None:
+            source_id = str(source_id)
+        if source_name is not None:
+            source_name = str(source_name)
+
+        # Determine the canonical identity, preferring source_id (the real key)
+        # but remembering when source_name is associated with a source_id
+        if source_id:
+            identity = source_id
+            # Remember this source_name is tied to this source_id
+            if source_name:
+                name_to_id[source_name] = source_id
+        elif source_name:
+            # Check if we've seen this source_name before with a source_id
+            if source_name in name_to_id:
+                identity = name_to_id[source_name]
+            else:
+                identity = source_name
+        else:
+            # No identity at all
+            continue
+
+        # Assign label if not seen before
+        if identity not in id_to_label:
+            id_to_label[identity] = "Source %d" % (len(id_to_label) + 1)
+
         out.append({
             "key": citation.get("key"),
-            "source_name": labels[identity],
+            "source_name": id_to_label[identity],
             "text_excerpt": citation.get("text_excerpt") or "",
         })
     return out
