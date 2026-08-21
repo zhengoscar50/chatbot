@@ -25,6 +25,7 @@ from app.services.orchestrator import ensure_orchestrator_agent
 from app.services.retrieval import reranker_retrieval_config
 from app.services.scratch_kb import ensure_scratch_kb
 from app.services.session_service import SessionService
+from app.services.share_service import ShareService
 
 
 @asynccontextmanager
@@ -67,6 +68,7 @@ async def lifespan(app: FastAPI):
         app.state.session_service = SessionService(
             client, reranker_config, scratch_kb_id
         )
+        app.state.share_service = ShareService(client)
         yield
     finally:
         client.close()

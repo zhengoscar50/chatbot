@@ -73,3 +73,76 @@ def redact_citations(citations: list) -> list:
             "text_excerpt": citation.get("text_excerpt") or "",
         })
     return out
+
+
+import secrets
+from datetime import date
+
+from fastapi import Request
+
+# 32 bytes of urlsafe randomness. The link is unlisted rather than secret, but
+# it must not be guessable by anyone who finds one other link.
+TOKEN_BYTES = 32
+
+
+class ShareService:
+    """An unlisted link to one chatbot, with a per-day message cap.
+
+    The cap is this feature's load-bearing safety property: there is no rate
+    limiting anywhere else in the application, and a public route bypasses both
+    authentication and ownership. Every anonymous message spends the owner's
+    credits.
+    """
+
+    def __init__(self, client):
+        self.client = client
+
+    def enable(self, chatbot_id: str) -> str:
+        """Create or REPLACE the token, returning the new one.
+
+        Replacing is how revoke-and-reissue works: the previous link stops
+        resolving the moment this returns.
+        """
+        token = secrets.token_urlsafe(TOKEN_BYTES)
+        self.client.update_chatbot_row(chatbot_id, {"share_token": token})
+        return token
+
+    def disable(self, chatbot_id: str) -> None:
+        self.client.update_chatbot_row(chatbot_id, {"share_token": None})
+
+    def resolve(self, token: str):
+        """The chatbot this token belongs to, or None."""
+        if not token:
+            return None
+        return self.client.get_chatbot_by_share_token(token)
+
+    def consume(self, chatbot_row: dict, today: date | None = None) -> bool:
+        """Claim one message against today's allowance.
+
+        Returns False when the cap is reached, having changed nothing.
+
+        A counter from an earlier date is treated as zero and overwritten in
+        the same write, so "resets at midnight" needs no scheduled job.
+
+        Two simultaneous requests can both read the same count and both
+        proceed. At this scale that costs one extra message, not a breach, and
+        locking is not worth its complexity here.
+        """
+        today = today or date.today()
+        stamp = today.isoformat()
+        used = int(chatbot_row.get("share_used_today") or 0)
+        limit = int(chatbot_row.get("share_daily_limit") or 0)
+        if str(chatbot_row.get("share_used_date") or "") != stamp:
+            used = 0
+        if used >= limit:
+            return False
+        self.client.update_chatbot_row(chatbot_row["id"], {
+            "share_used_today": used + 1,
+            "share_used_date": stamp,
+        })
+        return True
+
+
+def get_share_service(request: Request) -> "ShareService":
+    """FastAPI dependency returning the shared ShareService."""
+    return request.app.state.share_service

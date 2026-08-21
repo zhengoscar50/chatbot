@@ -82,3 +82,84 @@ def test_two_documents_sharing_a_filename_stay_separate():
         {"key": 2, "source_id": "u-2", "source_name": "report.pdf", "text_excerpt": "two"},
     ])
     assert [c["source_name"] for c in out] == ["Source 1", "Source 2"]
+
+
+from datetime import date
+
+import pytest
+
+from app.services.share_service import ShareService
+
+
+class FakeClient:
+    def __init__(self, rows=None):
+        self.rows = {r["id"]: r for r in (rows or [])}
+        self.updates = []
+
+    def update_chatbot_row(self, chatbot_id, fields):
+        self.updates.append((chatbot_id, fields))
+        self.rows.setdefault(chatbot_id, {"id": chatbot_id}).update(fields)
+
+    def get_chatbot_by_share_token(self, token):
+        return next((r for r in self.rows.values() if r.get("share_token") == token), None)
+
+
+def bot(**over):
+    return dict({"id": "cb-1", "share_token": None, "share_daily_limit": 3,
+                 "share_used_today": 0, "share_used_date": None}, **over)
+
+
+def test_enable_returns_a_long_unguessable_token():
+    client = FakeClient([bot()])
+    token = ShareService(client).enable("cb-1")
+    assert len(token) >= 32
+    assert client.rows["cb-1"]["share_token"] == token
+
+
+def test_enabling_again_replaces_the_old_token():
+    """Regeneration IS revocation-and-reissue: the old link must die."""
+    client = FakeClient([bot()])
+    service = ShareService(client)
+    first = service.enable("cb-1")
+    second = service.enable("cb-1")
+    assert first != second
+    assert service.resolve(first) is None
+    assert service.resolve(second)["id"] == "cb-1"
+
+
+def test_disable_removes_the_token():
+    client = FakeClient([bot(share_token="tok")])
+    ShareService(client).disable("cb-1")
+    assert client.rows["cb-1"]["share_token"] is None
+
+
+def test_resolving_an_unknown_or_empty_token_is_none():
+    client = FakeClient([bot(share_token="tok")])
+    service = ShareService(client)
+    assert service.resolve("nope") is None
+    assert service.resolve("") is None
+    assert service.resolve(None) is None
+
+
+def test_consume_allows_up_to_the_limit_then_refuses():
+    client = FakeClient([bot(share_daily_limit=2)])
+    service = ShareService(client)
+    row = client.rows["cb-1"]
+    assert service.consume(row, today=date(2026, 1, 1)) is True
+    assert service.consume(client.rows["cb-1"], today=date(2026, 1, 1)) is True
+    assert service.consume(client.rows["cb-1"], today=date(2026, 1, 1)) is False
+
+
+def test_a_new_day_resets_the_counter():
+    """The whole point of storing the date beside the count: no scheduled job
+    resets anything, a request on a new date does it."""
+    client = FakeClient([bot(share_daily_limit=1, share_used_today=1,
+                             share_used_date="2026-01-01")])
+    service = ShareService(client)
+    assert service.consume(client.rows["cb-1"], today=date(2026, 1, 1)) is False
+    assert service.consume(client.rows["cb-1"], today=date(2026, 1, 2)) is True
+
+
+def test_a_zero_limit_refuses_everything():
+    client = FakeClient([bot(share_daily_limit=0)])
+    assert ShareService(client).consume(client.rows["cb-1"], today=date(2026, 1, 1)) is False
