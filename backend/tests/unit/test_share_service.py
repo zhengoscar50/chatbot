@@ -147,7 +147,9 @@ def test_consume_allows_up_to_the_limit_then_refuses():
     row = client.rows["cb-1"]
     assert service.consume(row, today=date(2026, 1, 1)) is True
     assert service.consume(client.rows["cb-1"], today=date(2026, 1, 1)) is True
+    writes_before_refusal = len(client.updates)
     assert service.consume(client.rows["cb-1"], today=date(2026, 1, 1)) is False
+    assert len(client.updates) == writes_before_refusal
 
 
 def test_a_new_day_resets_the_counter():
@@ -162,4 +164,6 @@ def test_a_new_day_resets_the_counter():
 
 def test_a_zero_limit_refuses_everything():
     client = FakeClient([bot(share_daily_limit=0)])
+    assert client.updates == []
     assert ShareService(client).consume(client.rows["cb-1"], today=date(2026, 1, 1)) is False
+    assert client.updates == []
