@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chat</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <script>
+      // Apply the theme before first paint to avoid a flash of the wrong theme.
+      (function () {
+        try {
+          var t = localStorage.getItem("rag-chat-theme");
+          if (t !== "dark" && t !== "light") {
+            t = window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+          }
+          document.documentElement.setAttribute("data-theme", t);
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body>
+    <div class="app">
+      <div class="main">
+        <header class="share-head">
+          <h1 id="bot-name"></h1>
+          <p id="bot-desc"></p>
+        </header>
+
+        <main class="thread" id="thread" aria-live="polite"></main>
+
+        <footer class="composer-wrap">
+          <p class="share-status" id="status"></p>
+          <div class="composer">
+            <input
+              type="text"
+              id="q"
+              class="composer__input"
+              placeholder="Ask a question…"
+              aria-label="Message"
+              autocomplete="off"
+            />
+            <button type="button" id="send" class="icon-btn icon-btn--accent" aria-label="Send message">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 19V5M5 12l7-7 7 7" />
+              </svg>
+            </button>
+          </div>
+        </footer>
+      </div>
+    </div>
+
+    <script src="/markdown.js"></script>
+    <script src="/share.js"></script>
+  </body>
+</html>

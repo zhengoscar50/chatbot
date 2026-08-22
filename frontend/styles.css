@@ -1385,3 +1385,78 @@ body {
   cursor: pointer;
 }
 .topbar__back:hover { color: inherit; background: var(--accent-hover); }
+
+/* --- Public share page (frontend/share.html) ------------------------------
+   No sidebar, no topbar controls — just a name/description header above the
+   existing .thread/.composer-wrap. .bubble/.citations are new here because
+   the public page appends messages straight into .thread rather than
+   wrapping them in the authenticated app's .row/.content structure. */
+.share-head {
+  flex: none;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.share-head h1 {
+  margin: 0 0 0.15rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.share-head p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.share-status {
+  max-width: 48rem;
+  margin: 0 auto 0.5rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  min-height: 1em;
+}
+
+.bubble {
+  max-width: 48rem;
+  margin: 0 auto 1.25rem;
+}
+
+.bubble--user {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border);
+  border-radius: 1.25rem;
+  padding: 0.65rem 1rem;
+  max-width: 80%;
+  margin-left: auto;
+  margin-right: 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.bubble--assistant p,
+.bubble--assistant li {
+  margin: 0 0 0.5rem;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.bubble--assistant p:last-child {
+  margin-bottom: 0;
+}
+
+.citations {
+  max-width: 48rem;
+  margin: -0.75rem auto 1.25rem;
+}
+
+.citation {
+  margin: 0 0 0.3rem;
+  padding: 0.3rem 0.6rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  background: var(--accent-surface);
+  border: 1px solid var(--accent-border);
+  border-radius: 0.5rem;
+}
