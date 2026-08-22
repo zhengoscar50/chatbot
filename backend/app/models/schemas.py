@@ -225,3 +225,11 @@ class ChatbotResponse(BaseModel):
     id: str
     name: str
     description: str = ""
+
+
+class ShareResponse(BaseModel):
+    token: Optional[str] = None       # None when the chatbot is not shared
+    url: Optional[str] = None
+    embed: Optional[str] = None
+    daily_limit: int = 0
+    used_today: int = 0
