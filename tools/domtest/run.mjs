@@ -136,6 +136,12 @@ async function boot({ state, session = null, withCss = true } = {}) {
   return { dom, w, d: w.document };
 }
 
+// Menu entries are chosen by LABEL, never by index: this harness silently
+// tested the wrong buttons the day a third entry was added to the card menu.
+const menuItem = (card, label) =>
+  Array.from(card.querySelectorAll(".bot-card__actions button"))
+    .find((b) => b.textContent.trim() === label);
+
 const $ = (d, s) => d.querySelector(s);
 const $$ = (d, s) => Array.from(d.querySelectorAll(s));
 const shown = (w, el) => el && !el.hidden;
@@ -273,7 +279,7 @@ console.log("\n=== G. rename, create, delete ===");
   let cards = $$(d, ".bot-card:not(.bot-card--new)");
 
   w.__promptReply = "Renamed";
-  cards[0].querySelector(".bot-card__actions button").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  menuItem(cards[0], "Rename").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
   await flush(30);
   check($$(d, ".bot-card__name")[0].textContent === "Renamed", "rename updates the card",
         $$(d, ".bot-card__name")[0].textContent);
@@ -286,8 +292,7 @@ console.log("\n=== G. rename, create, delete ===");
 
   cards = $$(d, ".bot-card:not(.bot-card--new)");
   w.__confirmReply = true;
-  cards[0].querySelectorAll(".bot-card__actions button")[1]
-    .dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  menuItem(cards[0], "Delete").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
   await flush(40);
   const msg = w.__confirmText || "";
   check(/5 agents/.test(msg) && /2 chats/.test(msg) && /3 documents/.test(msg),
@@ -301,7 +306,7 @@ console.log("\n=== H. the last chatbot cannot be deleted ===");
   state.chatbots = [state.chatbots[0]];
   const { w, d } = await boot({ state });
   w.__confirmReply = true;
-  $(d, ".bot-card__actions").querySelectorAll("button")[1]
+  menuItem($(d, ".bot-card:not(.bot-card--new)"), "Delete")
     .dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
   await flush(40);
   const status = $(d, "#dashboard-status").textContent;
