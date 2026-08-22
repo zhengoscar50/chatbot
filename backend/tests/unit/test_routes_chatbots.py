@@ -162,10 +162,14 @@ def test_sharing_a_chatbot_returns_a_link_and_an_embed(client, auth, my_chatbot)
     assert "<iframe" in body["embed"]
 
 
-def test_sharing_another_users_chatbot_is_not_found(client, auth, other_chatbot):
+def test_sharing_another_users_chatbot_is_not_found(client, auth, other_chatbot, share):
     res = client.post(f"/chatbots/{other_chatbot}/share", headers=auth)
     assert res.status_code == 404
     assert res.json()["detail"] == "Chatbot not found"
+    # The ownership check must run before any token is minted: minting one
+    # here would both create a working public link into a stranger's
+    # chatbot and (since enable() replaces) destroy the real owner's link.
+    assert share.enabled == []
 
 
 def test_stopping_sharing_clears_the_token(client, auth, my_chatbot):
@@ -173,6 +177,13 @@ def test_stopping_sharing_clears_the_token(client, auth, my_chatbot):
     res = client.delete(f"/chatbots/{my_chatbot}/share", headers=auth)
     assert res.status_code == 200
     assert res.json()["token"] is None
+
+
+def test_stopping_sharing_on_another_users_chatbot_is_not_found(client, auth, other_chatbot, share):
+    res = client.delete(f"/chatbots/{other_chatbot}/share", headers=auth)
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Chatbot not found"
+    assert share.disabled == []
 
 
 def test_reading_share_state_for_an_unshared_chatbot(client, auth, my_chatbot):
