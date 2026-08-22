@@ -1101,6 +1101,22 @@ body {
   color: var(--error);
 }
 
+.share-field {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+}
+
+.share-field input,
+.share-field textarea {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.share-field button {
+  flex: 0 0 auto;
+}
+
 #agent-doc-list {
   list-style: none;
   padding: 0;
@@ -1342,6 +1358,8 @@ body {
   color: var(--text-muted); font-size: 13px; margin: 10px 0 0;
   border-top: 1px solid var(--border); padding-top: 10px;
 }
+.bot-card__shared { color: var(--accent); font-size: 13px; margin: 4px 0 0; }
+.bot-card__visitors { color: var(--text-muted); font-size: 13px; margin: 4px 0 0; }
 
 .bot-card { position: relative; }
 .bot-card__menu {

@@ -149,6 +149,30 @@
       </div>
     </div>
 
+    <div id="share-modal" class="modal" hidden>
+      <div class="modal-card">
+        <h2>Share this chatbot</h2>
+        <label>Public link
+          <div class="share-field">
+            <input type="text" id="share-url" readonly />
+            <button type="button" id="share-copy">Copy</button>
+          </div>
+        </label>
+        <label>Embed snippet
+          <div class="share-field">
+            <textarea id="share-embed" rows="3" readonly></textarea>
+            <button type="button" id="share-embed-copy">Copy</button>
+          </div>
+        </label>
+        <p id="share-usage" class="train-status"></p>
+        <div class="modal-actions">
+          <button type="button" id="share-stop" class="danger" hidden>Stop sharing</button>
+          <button type="button" id="share-close">Close</button>
+          <button type="button" id="share-regenerate">Create link</button>
+        </div>
+      </div>
+    </div>
+
     <div id="agent-modal" class="modal" hidden>
       <form id="agent-form" class="modal-card">
         <h2 id="agent-modal-title">New agent</h2>
