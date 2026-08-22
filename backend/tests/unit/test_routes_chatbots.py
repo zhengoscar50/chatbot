@@ -192,6 +192,24 @@ def test_reading_share_state_for_an_unshared_chatbot(client, auth, my_chatbot):
     assert res.json()["token"] is None
 
 
+def test_used_today_is_stale_across_a_date_change(client, auth, bots):
+    """`consume` is the only path that applies the date reset when it writes.
+    A read-only response must apply that same reset itself, or the morning
+    after 87 messages the modal still says 87 — a full day after the true
+    count reset to zero."""
+    from datetime import date, timedelta
+
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    bots.rows.append({
+        "id": "cb-stale", "owner_id": "o1", "name": "Stale", "description": "",
+        "share_token": "tok-stale", "share_daily_limit": 100,
+        "share_used_today": 87, "share_used_date": yesterday,
+    })
+    res = client.get("/chatbots/cb-stale/share", headers=auth)
+    assert res.status_code == 200
+    assert res.json()["used_today"] == 0
+
+
 def test_reading_another_users_share_state_is_not_found(client, auth, other_chatbot):
     res = client.get(f"/chatbots/{other_chatbot}/share", headers=auth)
     assert res.status_code == 404

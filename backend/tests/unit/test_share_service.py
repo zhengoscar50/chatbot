@@ -1,4 +1,6 @@
-from app.services.share_service import redact_citations
+from datetime import date
+
+from app.services.share_service import ShareService, redact_citations, redact_turn
 
 
 def test_the_filename_never_survives():
@@ -84,11 +86,48 @@ def test_two_documents_sharing_a_filename_stay_separate():
     assert [c["source_name"] for c in out] == ["Source 1", "Source 2"]
 
 
-from datetime import date
+def test_redact_turn_replaces_the_filename_in_the_answer_with_its_label():
+    answer, citations = redact_turn(
+        "That's from Q3_confidential.pdf, page 2.",
+        [{"key": 1, "source_id": "u-1", "source_name": "Q3_confidential.pdf",
+          "text_excerpt": "revenue rose"}],
+    )
+    assert "Q3_confidential.pdf" not in answer
+    assert citations[0]["source_name"] == "Source 1"
+    assert "Source 1" in answer
 
-import pytest
 
-from app.services.share_service import ShareService
+def test_redact_turn_leaves_an_answer_untouched_when_the_filename_is_absent():
+    answer, citations = redact_turn(
+        "The revenue rose year over year.",
+        [{"key": 1, "source_id": "u-1", "source_name": "Q3_confidential.pdf",
+          "text_excerpt": "revenue rose"}],
+    )
+    assert answer == "The revenue rose year over year."
+    assert citations[0]["source_name"] == "Source 1"
+
+
+def test_redact_turn_handles_overlapping_filenames_longest_first():
+    answer, citations = redact_turn(
+        "See annual_report.pdf, which cites report.pdf directly.",
+        [{"key": 1, "source_id": "u-1", "source_name": "annual_report.pdf",
+          "text_excerpt": "one"},
+         {"key": 2, "source_id": "u-2", "source_name": "report.pdf",
+          "text_excerpt": "two"}],
+    )
+    assert "annual_report.pdf" not in answer
+    assert "report.pdf" not in answer
+    by_key = {c["key"]: c["source_name"] for c in citations}
+    assert by_key[1] == "Source 1"
+    assert by_key[2] == "Source 2"
+    assert "Source 1" in answer
+    assert "Source 2" in answer
+
+
+def test_redact_turn_with_no_citations_returns_the_answer_unchanged():
+    answer, citations = redact_turn("Just an answer with no sources.", [])
+    assert answer == "Just an answer with no sources."
+    assert citations == []
 
 
 class FakeClient:
@@ -166,4 +205,35 @@ def test_a_zero_limit_refuses_everything():
     client = FakeClient([bot(share_daily_limit=0)])
     assert client.updates == []
     assert ShareService(client).consume(client.rows["cb-1"], today=date(2026, 1, 1)) is False
+    assert client.updates == []
+
+
+def test_has_room_is_true_under_the_limit():
+    client = FakeClient([bot(share_daily_limit=2, share_used_today=1,
+                             share_used_date="2026-01-01")])
+    service = ShareService(client)
+    assert service.has_room(client.rows["cb-1"], today=date(2026, 1, 1)) is True
+
+
+def test_has_room_is_false_at_the_limit():
+    client = FakeClient([bot(share_daily_limit=2, share_used_today=2,
+                             share_used_date="2026-01-01")])
+    service = ShareService(client)
+    assert service.has_room(client.rows["cb-1"], today=date(2026, 1, 1)) is False
+
+
+def test_has_room_is_true_again_on_a_new_date():
+    client = FakeClient([bot(share_daily_limit=1, share_used_today=1,
+                             share_used_date="2026-01-01")])
+    service = ShareService(client)
+    assert service.has_room(client.rows["cb-1"], today=date(2026, 1, 1)) is False
+    assert service.has_room(client.rows["cb-1"], today=date(2026, 1, 2)) is True
+
+
+def test_has_room_writes_nothing():
+    client = FakeClient([bot(share_daily_limit=2, share_used_today=2,
+                             share_used_date="2026-01-01")])
+    service = ShareService(client)
+    service.has_room(client.rows["cb-1"], today=date(2026, 1, 1))
+    service.has_room(client.rows["cb-1"], today=date(2026, 1, 2))
     assert client.updates == []

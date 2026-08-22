@@ -712,60 +712,10 @@ function appendMessage(role, avatarText, text, citations, answeredBy) {
   messages.scrollTop = messages.scrollHeight;
 }
 
+// renderMarkdown/appendSpans live in markdown.js now, shared with share.js.
+
 // Handles two citation shapes: chat's {key, source_name/source_id, text_excerpt}
 // objects.
-// Renders tokens as elements. Nothing here builds an HTML string, so answers
-// — which summarise documents the user did not write — cannot introduce markup.
-function appendSpans(parent, spans) {
-  spans.forEach((span) => {
-    if (span.type === "text") {
-      parent.appendChild(document.createTextNode(span.text));
-      return;
-    }
-    const tag = span.type === "strong" ? "strong" : span.type === "em" ? "em" : "code";
-    const el = document.createElement(tag);
-    el.textContent = span.text;
-    parent.appendChild(el);
-  });
-}
-
-function renderMarkdown(container, text) {
-  const tokens = parseMarkdown(text);
-  if (tokens.length === 0) {
-    const p = document.createElement("p");
-    p.textContent = text || "";
-    container.appendChild(p);
-    return;
-  }
-  tokens.forEach((token) => {
-    if (token.type === "code") {
-      const pre = document.createElement("pre");
-      const code = document.createElement("code");
-      code.textContent = token.text;
-      pre.appendChild(code);
-      container.appendChild(pre);
-      return;
-    }
-    if (token.type === "list") {
-      const list = document.createElement(token.ordered ? "ol" : "ul");
-      list.className = "md-list";
-      token.items.forEach((spans) => {
-        const li = document.createElement("li");
-        appendSpans(li, spans);
-        list.appendChild(li);
-      });
-      container.appendChild(list);
-      return;
-    }
-    const el = document.createElement(
-      token.type === "heading" ? `h${Math.min(token.level + 2, 6)}` : "p"
-    );
-    if (token.type === "heading") el.className = "md-heading";
-    appendSpans(el, token.spans);
-    container.appendChild(el);
-  });
-}
-
 function buildReferenceList(citations) {
   const list = document.createElement("ul");
   list.className = "refs";

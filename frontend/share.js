@@ -6,9 +6,9 @@
 //
 // This page loads only markdown.js and share.js — never app.js, which carries
 // account concepts (agents, sessions list, uploads) that have no business
-// here. markdown.js exports `parseMarkdown` (tokens), not a renderer, so the
-// small renderer below is a deliberate duplicate of app.js's renderMarkdown/
-// appendSpans rather than a reason to load app.js.
+// here. markdown.js exports both the parser and the renderMarkdown/
+// appendSpans renderer, shared with app.js, so a markdown fix lands on this
+// public page the same moment it lands on the account one.
 
 const TOKEN = location.pathname.split("/")[2] || "";
 const thread = document.getElementById("thread");
@@ -28,58 +28,7 @@ async function api(path, body) {
   return res;
 }
 
-// Renders markdown tokens (from markdown.js's parseMarkdown) as elements.
-// Nothing here builds an HTML string, so an answer — which summarises
-// documents the visitor did not write — cannot introduce markup.
-function appendSpans(parent, spans) {
-  spans.forEach((span) => {
-    if (span.type === "text") {
-      parent.appendChild(document.createTextNode(span.text));
-      return;
-    }
-    const tag = span.type === "strong" ? "strong" : span.type === "em" ? "em" : "code";
-    const el = document.createElement(tag);
-    el.textContent = span.text;
-    parent.appendChild(el);
-  });
-}
-
-function renderMarkdown(container, text) {
-  const tokens = parseMarkdown(text);
-  if (tokens.length === 0) {
-    const p = document.createElement("p");
-    p.textContent = text || "";
-    container.appendChild(p);
-    return;
-  }
-  tokens.forEach((token) => {
-    if (token.type === "code") {
-      const pre = document.createElement("pre");
-      const code = document.createElement("code");
-      code.textContent = token.text;
-      pre.appendChild(code);
-      container.appendChild(pre);
-      return;
-    }
-    if (token.type === "list") {
-      const list = document.createElement(token.ordered ? "ol" : "ul");
-      list.className = "md-list";
-      token.items.forEach((spans) => {
-        const li = document.createElement("li");
-        appendSpans(li, spans);
-        list.appendChild(li);
-      });
-      container.appendChild(list);
-      return;
-    }
-    const el = document.createElement(
-      token.type === "heading" ? `h${Math.min(token.level + 2, 6)}` : "p"
-    );
-    if (token.type === "heading") el.className = "md-heading";
-    appendSpans(el, token.spans);
-    container.appendChild(el);
-  });
-}
+// renderMarkdown/appendSpans live in markdown.js, loaded above.
 
 function bubble(role, text) {
   const el = document.createElement("div");

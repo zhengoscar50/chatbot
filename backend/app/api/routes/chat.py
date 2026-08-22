@@ -14,12 +14,7 @@ from app.services.chatbot_service import ChatbotService, get_chatbot_service
 from app.services.chat_turn import TurnDeps, answer_turn
 from app.services.general_assistant import get_general_assistant_id
 from app.services.message_store import MessageStore, get_message_store
-# OrchestratorService itself is not called here — answer_turn constructs it —
-# but the import must stay: it is patched at the class level by tests
-# (chat_route.OrchestratorService.route), and that only reaches answer_turn's
-# own construction because it mutates the shared class rather than rebinding
-# a name.
-from app.services.orchestrator import OrchestratorService, get_orchestrator_agent_id
+from app.services.orchestrator import get_orchestrator_agent_id
 from app.services.scratch_kb import get_scratch_kb_id
 from app.services.chatbot_kb import ChatbotKbService, get_chatbot_kb_service
 from app.services.session_service import SessionService, get_session_service

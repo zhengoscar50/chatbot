@@ -1,4 +1,6 @@
 """Chatbots: a user's separate assistants, each owning its own agents and chats."""
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
@@ -104,10 +106,16 @@ def _share_response(request: Request, row: dict) -> ShareResponse:
         f'<iframe src="{url}" width="420" height="640" style="border:0"></iframe>'
         if token else None
     )
+    # A count from an earlier date is stale, not zero-but-forgotten: only
+    # `consume` applies today's reset when it writes, so a read-only response
+    # must apply the same reset itself or report yesterday's total as today's.
+    used_today = int(row.get("share_used_today") or 0)
+    if str(row.get("share_used_date") or "") != date.today().isoformat():
+        used_today = 0
     return ShareResponse(
         token=token, url=url, embed=embed,
         daily_limit=int(row.get("share_daily_limit") or 0),
-        used_today=int(row.get("share_used_today") or 0),
+        used_today=used_today,
     )
 
 

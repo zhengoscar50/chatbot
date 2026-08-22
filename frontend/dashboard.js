@@ -67,13 +67,21 @@ function wireShare() {
       `/chatbots/${encodeURIComponent(sharingBot.id)}/share`, { method: "DELETE" });
     if (res.ok) { paintShare(await res.json()); await loadDashboard(); }
   });
+  // The confirmation lands on the button itself, not on #share-usage — that
+  // line is showing "N / limit used today", and "Copied." replacing it would
+  // hide the usage count until the modal is reopened.
   [["share-copy", "share-url"], ["share-embed-copy", "share-embed"]].forEach(
     ([button, field]) => {
+      const btn = document.getElementById(button);
+      const original = btn.textContent;
       document.getElementById(button).addEventListener("click", () => {
         const el = document.getElementById(field);
         el.select();
         navigator.clipboard.writeText(el.value).catch(() => {});
-        document.getElementById("share-usage").textContent = "Copied.";
+        btn.textContent = "Copied.";
+        setTimeout(() => {
+          btn.textContent = original;
+        }, 1500);
       });
     });
 }

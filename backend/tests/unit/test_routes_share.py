@@ -69,6 +69,7 @@ class FakeClient:
         self.agent_rows = {"cb-shared": [SPECIALIST], "cb-other": []}
         self.messages = []
         self.citations = []
+        self.answer = "the answer"
         self.answered = []
 
     # --- ShareService -------------------------------------------------
@@ -121,7 +122,7 @@ class FakeChatService:
 
     def ask(self, query, message=None, retrieve=True):
         self.client.answered.append(query)
-        return {"answer": "the answer", "citations": self.client.citations}
+        return {"answer": self.client.answer, "citations": self.client.citations}
 
 
 def route_to(agent_id):
@@ -161,10 +162,12 @@ def client(fake, monkeypatch):
     return TestClient(app)
 
 
-def test_an_unknown_token_is_not_found(client):
+def test_an_unknown_token_is_not_found(client, fake):
     assert client.get("/s/nope/info").status_code == 404
     assert client.post("/s/nope/session").status_code == 404
     assert client.post("/s/nope/chat", json={"session_id": "v1", "query": "hi"}).status_code == 404
+    assert fake.answered == []
+    assert fake.chatbots["cb-shared"]["share_used_today"] == 0
 
 
 def test_info_exposes_only_the_name_and_description(client):
@@ -181,14 +184,32 @@ def test_a_visitor_cannot_use_an_owners_session(client, fake):
     assert fake.answered == []
 
 
-def test_a_visitor_cannot_use_a_session_from_another_chatbot(client):
+def test_a_visitor_cannot_use_a_session_from_another_chatbot(client, fake):
     res = client.post("/s/tok/chat", json={"session_id": "other-1", "query": "hi"})
     assert res.status_code == 404
+    assert fake.answered == []
+    assert fake.chatbots["cb-shared"]["share_used_today"] == 0
 
 
 def test_a_visitor_session_is_created_flagged_shared(client, fake):
     body = client.post("/s/tok/session").json()
     assert fake.sessions[body["session_id"]]["shared"] is True
+
+
+def test_session_creation_is_capped_at_the_daily_limit(client, fake):
+    """The reviewer's finding: an uncapped /session let 50 requests create 50
+    session rows with no LLM spend involved, poisoning the "N visitor chats"
+    dashboard readout. has_room refuses without writing anything."""
+    from datetime import date
+
+    fake.chatbots["cb-shared"]["share_daily_limit"] = 1
+    fake.chatbots["cb-shared"]["share_used_today"] = 1
+    fake.chatbots["cb-shared"]["share_used_date"] = date.today().isoformat()
+    sessions_before = set(fake.sessions)
+    res = client.post("/s/tok/session")
+    assert res.status_code == 429
+    assert res.json()["detail"] == "This demo has reached its limit for today — try again tomorrow."
+    assert set(fake.sessions) == sessions_before
 
 
 def test_the_answer_contains_no_filename(client, fake):
@@ -198,6 +219,20 @@ def test_the_answer_contains_no_filename(client, fake):
     assert "Q3_confidential.pdf" not in raw
     assert "u-1" not in raw
     assert "Source 1" in raw
+
+
+def test_the_answer_text_itself_is_redacted(client, fake):
+    """prompts.py tells every agent to cite its sources, so the model's own
+    prose can name a document even though `citations` is already redacted.
+    This is the cheap partial fix: a filename the model just cited is scrubbed
+    from the answer too, using the same label the citation list shows."""
+    fake.answer = "That's from Q3_confidential.pdf, page 2."
+    fake.citations = [{"key": 1, "source_id": "u-1",
+                       "source_name": "Q3_confidential.pdf", "text_excerpt": "x"}]
+    body = client.post("/s/tok/chat", json={"session_id": "v1", "query": "hi"}).json()
+    assert "Q3_confidential.pdf" not in body["answer"]
+    assert "Source 1" in body["answer"]
+    assert body["citations"][0]["source_name"] == "Source 1"
 
 
 def test_the_answer_exposes_no_agent_id(client, fake):

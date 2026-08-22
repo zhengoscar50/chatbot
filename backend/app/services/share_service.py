@@ -1,6 +1,15 @@
 """Sharing a chatbot: tokens, the daily cap, and public-view redaction."""
 from __future__ import annotations
 
+import secrets
+from datetime import date
+
+from fastapi import Request
+
+# 32 bytes of urlsafe randomness. The link is unlisted rather than secret, but
+# it must not be guessable by anyone who finds one other link.
+TOKEN_BYTES = 32
+
 
 def redact_citations(citations: list) -> list:
     """Citations as a stranger may see them: markers and excerpts, no filename.
@@ -75,14 +84,42 @@ def redact_citations(citations: list) -> list:
     return out
 
 
-import secrets
-from datetime import date
+def redact_turn(answer: str, citations: list) -> tuple:
+    """Answer and citations as a stranger may see them, redacted together.
 
-from fastapi import Request
+    They share one label map on purpose: if the prose says "Q3.pdf" and the
+    citation list calls that document "Source 2", the answer must say
+    "Source 2" as well, or the two disagree in front of the visitor.
 
-# 32 bytes of urlsafe randomness. The link is unlisted rather than secret, but
-# it must not be guessable by anyone who finds one other link.
-TOKEN_BYTES = 32
+    This closes the COMMON case — a filename the model mentions because it
+    just cited it. It cannot close the general one: a model may name a
+    document it did not cite this turn, and no post-processing here can know
+    that name. That needs a design of its own.
+    """
+    redacted_citations = redact_citations(citations)
+    if not redacted_citations:
+        return answer, redacted_citations
+
+    # Build the same identity->label map redact_citations just used, so the
+    # answer's replacements agree with the citation list's labels.
+    label_by_name: dict = {}
+    for original, redacted in zip(citations or [], redacted_citations):
+        if not isinstance(original, dict):
+            continue
+        source_name = original.get("source_name")
+        if source_name:
+            label_by_name[str(source_name)] = redacted["source_name"]
+
+    if not label_by_name or not isinstance(answer, str):
+        return answer, redacted_citations
+
+    # Longest name first: "report.pdf" inside "annual_report.pdf" must not
+    # corrupt the longer name by replacing its suffix first.
+    redacted_answer = answer
+    for name in sorted(label_by_name, key=len, reverse=True):
+        redacted_answer = redacted_answer.replace(name, label_by_name[name])
+
+    return redacted_answer, redacted_citations
 
 
 class ShareService:
@@ -116,29 +153,46 @@ class ShareService:
             return None
         return self.client.get_chatbot_by_share_token(token)
 
+    @staticmethod
+    def _usage(chatbot_row: dict, today: date) -> tuple[int, int]:
+        """(used, limit) for `today`.
+
+        A counter stamped with an earlier date is treated as zero — this is
+        the whole of "resets at midnight"; no scheduled job needed.
+        """
+        used = int(chatbot_row.get("share_used_today") or 0)
+        limit = int(chatbot_row.get("share_daily_limit") or 0)
+        if str(chatbot_row.get("share_used_date") or "") != today.isoformat():
+            used = 0
+        return used, limit
+
+    def has_room(self, chatbot_row: dict, today: date | None = None) -> bool:
+        """Whether one more message would fit inside today's allowance.
+
+        Applies the same date-reset logic as `consume` but writes nothing —
+        safe for a caller that only wants to check before doing anything
+        stateful, such as refusing to create a session once the cap is spent.
+        """
+        used, limit = self._usage(chatbot_row, today or date.today())
+        return used < limit
+
     def consume(self, chatbot_row: dict, today: date | None = None) -> bool:
         """Claim one message against today's allowance.
 
         Returns False when the cap is reached, having changed nothing.
-
-        A counter from an earlier date is treated as zero and overwritten in
-        the same write, so "resets at midnight" needs no scheduled job.
+        Asks `has_room` for the cap check so the two can never drift apart.
 
         Two simultaneous requests can both read the same count and both
         proceed. At this scale that costs one extra message, not a breach, and
         locking is not worth its complexity here.
         """
         today = today or date.today()
-        stamp = today.isoformat()
-        used = int(chatbot_row.get("share_used_today") or 0)
-        limit = int(chatbot_row.get("share_daily_limit") or 0)
-        if str(chatbot_row.get("share_used_date") or "") != stamp:
-            used = 0
-        if used >= limit:
+        if not self.has_room(chatbot_row, today):
             return False
+        used, _ = self._usage(chatbot_row, today)
         self.client.update_chatbot_row(chatbot_row["id"], {
             "share_used_today": used + 1,
-            "share_used_date": stamp,
+            "share_used_date": today.isoformat(),
         })
         return True
 

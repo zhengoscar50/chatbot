@@ -29,11 +29,12 @@ from app.services.message_store import MessageStore, get_message_store
 from app.services.orchestrator import get_orchestrator_agent_id
 from app.services.scratch_kb import get_scratch_kb_id
 from app.services.session_service import SessionService, get_session_service
-from app.services.share_service import ShareService, get_share_service, redact_citations
+from app.services.share_service import ShareService, get_share_service, redact_turn
 
 router = APIRouter(prefix="/s", tags=["share"])
 
 NOT_FOUND = "Not found"
+CAP_REACHED = "This demo has reached its limit for today — try again tomorrow."
 
 
 def _chatbot_or_404(share: ShareService, token: str) -> dict:
@@ -66,6 +67,8 @@ async def public_session(
 ):
     """A visitor's own conversation, so two visitors never share one."""
     row = await run_in_threadpool(_chatbot_or_404, share, token)
+    if not await run_in_threadpool(share.has_room, row):
+        raise HTTPException(status_code=429, detail=CAP_REACHED)
     created = await run_in_threadpool(
         sessions.create_session, row["owner_id"], row["id"], None, True,
     )
@@ -99,10 +102,7 @@ async def public_chat(
         raise HTTPException(status_code=404, detail=NOT_FOUND)
 
     if not await run_in_threadpool(share.consume, chatbot):
-        raise HTTPException(
-            status_code=429,
-            detail="This demo has reached its limit for today — try again tomorrow.",
-        )
+        raise HTTPException(status_code=429, detail=CAP_REACHED)
 
     deps = TurnDeps(
         client=client, sessions=sessions, agents=agents, messages=messages,
@@ -121,10 +121,13 @@ async def public_chat(
         raise HTTPException(status_code=503, detail="Sorry — that didn't work. Try again.")
 
     # Redact on the way out: markers and excerpts, never a filename, and never
-    # the internal agent id.
+    # the internal agent id. The answer text is redacted too — the prompts
+    # tell every agent to cite its sources, so its prose can name a document
+    # by itself; redact_turn closes that for a name the model just cited.
+    redacted_answer, redacted_citations = redact_turn(result.answer, result.citations)
     return ChatResponse(
-        answer=result.answer,
-        citations=redact_citations(result.citations),
+        answer=redacted_answer,
+        citations=redacted_citations,
         # The agent NAME is worth showing; its id is an internal identifier a
         # stranger has no use for and no business holding.
         answered_by=None if result.answered_by is None

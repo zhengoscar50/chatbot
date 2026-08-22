@@ -139,7 +139,7 @@ def test_chat_returns_the_answer(monkeypatch):
 
 def test_chat_persists_both_turns_and_autonames_on_the_first_message(monkeypatch):
     monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to("ag-1"))
+    monkeypatch.setattr(OrchestratorService, "route", route_to("ag-1"))
     svc = FakeSessionService()
     app = build_app(svc)
 
@@ -159,7 +159,7 @@ def test_chat_persists_both_turns_and_autonames_on_the_first_message(monkeypatch
 def test_chat_carries_recent_turns_into_the_agents_message(monkeypatch):
     # Agents run statelessly, so prior turns must reach them in the message.
     monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to("ag-1"))
+    monkeypatch.setattr(OrchestratorService, "route", route_to("ag-1"))
     app = build_app(FakeSessionService())
     app.state.message_client.rows = [
         {"session_id": "s1", "role": "user", "content": "where is the eyewash?"},
@@ -276,7 +276,7 @@ def test_chat_routes_to_the_agent_the_orchestrator_picked(monkeypatch):
     # The picked specialist answers, retrieving from its permanent KBs plus
     # this chat's scratch KB.
     monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to("ag-1"))
+    monkeypatch.setattr(OrchestratorService, "route", route_to("ag-1"))
     LAST_CHAT_ARGS.clear()
 
     r = post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "q"})
@@ -288,7 +288,7 @@ def test_chat_routes_to_the_agent_the_orchestrator_picked(monkeypatch):
 
 def test_chat_falls_back_to_the_general_assistant(monkeypatch):
     monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to(None))
+    monkeypatch.setattr(OrchestratorService, "route", route_to(None))
     LAST_CHAT_ARGS.clear()
 
     r = post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "hi"})
@@ -304,7 +304,7 @@ def test_chat_always_retrieves_and_lets_the_scope_decide(monkeypatch):
     # Retrieval is no longer predicted by the router; ChatService skips it when
     # the scope is empty, which is a fact rather than a guess.
     monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to(None))
+    monkeypatch.setattr(OrchestratorService, "route", route_to(None))
     LAST_CHAT_ARGS.clear()
 
     post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "hi"})
@@ -325,7 +325,7 @@ def test_a_chat_can_exclude_an_agent_from_answering(monkeypatch):
         seen["roster"] = [a["id"] for a in roster]
         return Decision(None)
 
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", record)
+    monkeypatch.setattr(OrchestratorService, "route", record)
     monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
     svc = FakeSessionService()
     svc.row = dict(svc.row, excluded_agent_ids=["ag-1"])
@@ -346,7 +346,7 @@ def test_a_chat_with_no_exclusions_sees_every_agent(monkeypatch):
         seen["roster"] = [a["id"] for a in roster]
         return Decision(None)
 
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", record)
+    monkeypatch.setattr(OrchestratorService, "route", record)
     monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
     svc = FakeSessionService()
     agents = FakeAgentService(row={"id": "ag-1", "name": "Chem", "powabase_agent_id": "pa-1",
@@ -368,7 +368,7 @@ def test_the_roster_comes_from_the_chats_chatbot(monkeypatch):
         seen["roster"] = [a["id"] for a in roster]
         return Decision(None)
 
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", record)
+    monkeypatch.setattr(OrchestratorService, "route", record)
     monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
     svc = FakeSessionService()
     svc.row = dict(svc.row, chatbot_id="cb-1")
