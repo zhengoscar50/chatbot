@@ -8,6 +8,7 @@ from app.api.deps import get_current_user
 from app.api.routes import chat as chat_route
 from app.clients.powabase_client import get_powabase_client
 from app.core.config import get_settings
+from app.services import chat_turn
 from app.services.agent_service import get_agent_service
 from app.services.general_assistant import get_general_assistant_id
 from app.services.scratch_kb import get_scratch_kb_id
@@ -124,7 +125,7 @@ def post(client, body):
 
 
 def test_chat_returns_the_answer(monkeypatch):
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
     svc = FakeSessionService()
 
     response = post(TestClient(build_app(svc)), {"session_id": "s1", "query": "hi"})
@@ -137,8 +138,8 @@ def test_chat_returns_the_answer(monkeypatch):
 
 
 def test_chat_persists_both_turns_and_autonames_on_the_first_message(monkeypatch):
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to("ag-1"))
+    monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
+    monkeypatch.setattr(OrchestratorService, "route", route_to("ag-1"))
     svc = FakeSessionService()
     app = build_app(svc)
 
@@ -157,8 +158,8 @@ def test_chat_persists_both_turns_and_autonames_on_the_first_message(monkeypatch
 
 def test_chat_carries_recent_turns_into_the_agents_message(monkeypatch):
     # Agents run statelessly, so prior turns must reach them in the message.
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to("ag-1"))
+    monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
+    monkeypatch.setattr(OrchestratorService, "route", route_to("ag-1"))
     app = build_app(FakeSessionService())
     app.state.message_client.rows = [
         {"session_id": "s1", "role": "user", "content": "where is the eyewash?"},
@@ -175,7 +176,7 @@ def test_chat_carries_recent_turns_into_the_agents_message(monkeypatch):
 
 
 def test_chat_404_for_missing_session(monkeypatch):
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
 
     response = post(TestClient(build_app(FakeSessionService())), {"session_id": "missing", "query": "hi"})
 
@@ -186,13 +187,13 @@ def test_chat_404_for_non_owned_session(monkeypatch):
     # get_owned_session returns None -> 404
     svc = FakeSessionService()
     svc.get_owned_session = lambda sid, oid: None
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
     r = post(TestClient(build_app(svc)), {"session_id": "s1", "query": "hi"})
     assert r.status_code == 404
 
 
 def test_chat_requires_session_id(monkeypatch):
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
 
     response = post(TestClient(build_app(FakeSessionService())), {"query": "hi"})
 
@@ -204,7 +205,7 @@ def test_chat_returns_402_on_insufficient_credits(monkeypatch):
         def ask(self, query, message=None, retrieve=True):
             raise chat_route.InsufficientCreditsError("no credits left")
 
-    monkeypatch.setattr(chat_route, "ChatService", Insufficient)
+    monkeypatch.setattr(chat_turn, "ChatService", Insufficient)
 
     response = post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "hi"})
 
@@ -217,7 +218,7 @@ def test_chat_returns_503_when_model_busy(monkeypatch):
         def ask(self, query, message=None, retrieve=True):
             raise chat_route.ModelBusyError("The model is busy right now. Please wait a few seconds and try again.")
 
-    monkeypatch.setattr(chat_route, "ChatService", Busy)
+    monkeypatch.setattr(chat_turn, "ChatService", Busy)
 
     response = post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "hi"})
 
@@ -230,7 +231,7 @@ def test_chat_returns_424_on_provider_key_error(monkeypatch):
         def ask(self, query, message=None, retrieve=True):
             raise chat_route.ProviderKeyError("bad key")
 
-    monkeypatch.setattr(chat_route, "ChatService", ProviderError)
+    monkeypatch.setattr(chat_turn, "ChatService", ProviderError)
 
     response = post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "hi"})
 
@@ -245,7 +246,7 @@ def test_chat_returns_502_when_agent_run_fails(monkeypatch):
         def ask(self, query, message=None, retrieve=True):
             raise RuntimeError("litellm.APIError: insufficient OpenRouter credits")
 
-    monkeypatch.setattr(chat_route, "ChatService", FailedRun)
+    monkeypatch.setattr(chat_turn, "ChatService", FailedRun)
 
     response = post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "hi"})
 
@@ -256,7 +257,7 @@ def test_chat_returns_502_when_agent_run_fails(monkeypatch):
 def test_chat_returns_answer_even_if_session_persist_fails(monkeypatch):
     # The answer is already computed; a session-row write failure must not
     # fail the request (best-effort persistence).
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
 
     class TouchFailsService(FakeSessionService):
         def touch(self, session_id, **fields):
@@ -274,8 +275,8 @@ def test_chat_returns_answer_even_if_session_persist_fails(monkeypatch):
 def test_chat_routes_to_the_agent_the_orchestrator_picked(monkeypatch):
     # The picked specialist answers, retrieving from its permanent KBs plus
     # this chat's scratch KB.
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to("ag-1"))
+    monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
+    monkeypatch.setattr(OrchestratorService, "route", route_to("ag-1"))
     LAST_CHAT_ARGS.clear()
 
     r = post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "q"})
@@ -286,8 +287,8 @@ def test_chat_routes_to_the_agent_the_orchestrator_picked(monkeypatch):
 
 
 def test_chat_falls_back_to_the_general_assistant(monkeypatch):
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to(None))
+    monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
+    monkeypatch.setattr(OrchestratorService, "route", route_to(None))
     LAST_CHAT_ARGS.clear()
 
     r = post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "hi"})
@@ -302,8 +303,8 @@ def test_chat_falls_back_to_the_general_assistant(monkeypatch):
 def test_chat_always_retrieves_and_lets_the_scope_decide(monkeypatch):
     # Retrieval is no longer predicted by the router; ChatService skips it when
     # the scope is empty, which is a fact rather than a guess.
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", route_to(None))
+    monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
+    monkeypatch.setattr(OrchestratorService, "route", route_to(None))
     LAST_CHAT_ARGS.clear()
 
     post(TestClient(build_app(FakeSessionService())), {"session_id": "s1", "query": "hi"})
@@ -324,8 +325,8 @@ def test_a_chat_can_exclude_an_agent_from_answering(monkeypatch):
         seen["roster"] = [a["id"] for a in roster]
         return Decision(None)
 
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", record)
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(OrchestratorService, "route", record)
+    monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
     svc = FakeSessionService()
     svc.row = dict(svc.row, excluded_agent_ids=["ag-1"])
     agents = FakeAgentService(row={"id": "ag-1", "name": "Chem", "powabase_agent_id": "pa-1",
@@ -345,8 +346,8 @@ def test_a_chat_with_no_exclusions_sees_every_agent(monkeypatch):
         seen["roster"] = [a["id"] for a in roster]
         return Decision(None)
 
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", record)
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(OrchestratorService, "route", record)
+    monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
     svc = FakeSessionService()
     agents = FakeAgentService(row={"id": "ag-1", "name": "Chem", "powabase_agent_id": "pa-1",
                                    "kb_id": "kb-1", "kb_full_id": None, "model": "gpt-4o-mini"})
@@ -367,8 +368,8 @@ def test_the_roster_comes_from_the_chats_chatbot(monkeypatch):
         seen["roster"] = [a["id"] for a in roster]
         return Decision(None)
 
-    monkeypatch.setattr(chat_route.OrchestratorService, "route", record)
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(OrchestratorService, "route", record)
+    monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
     svc = FakeSessionService()
     svc.row = dict(svc.row, chatbot_id="cb-1")
 
@@ -389,7 +390,7 @@ def test_the_roster_comes_from_the_chats_chatbot(monkeypatch):
 def test_chat_retrieves_from_the_chats_own_chatbot(monkeypatch):
     # Two chatbots, one owner. The chat belongs to A, so B's knowledge must
     # never appear in the scope passed to retrieval.
-    monkeypatch.setattr(chat_route, "ChatService", FakeChatService)
+    monkeypatch.setattr(chat_turn, "ChatService", FakeChatService)
     LAST_CHAT_ARGS.clear()
     svc = FakeSessionService()
     svc.row = dict(svc.row, chatbot_id="cb-a")

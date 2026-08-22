@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response
 from fastapi.responses import JSONResponse
 from starlette.concurrency import run_in_threadpool
 
@@ -104,6 +104,7 @@ async def delete_session(
 @router.get("/sessions", response_model=list[SessionSummary])
 async def list_sessions(
     chatbot_id: str,
+    shared: bool = Query(False),
     user: dict = Depends(get_current_user),
     sessions: SessionService = Depends(get_session_service),
     chatbots: ChatbotService = Depends(get_chatbot_service),
@@ -111,7 +112,7 @@ async def list_sessions(
     if await run_in_threadpool(chatbots.get_owned, chatbot_id, user["id"]) is None:
         raise HTTPException(status_code=404, detail="Chatbot not found")
     try:
-        return await run_in_threadpool(sessions.list, chatbot_id)
+        return await run_in_threadpool(sessions.list, chatbot_id, shared=shared)
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except PowabaseAPIError as e:

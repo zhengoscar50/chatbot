@@ -15,6 +15,7 @@ from app.api.routes.ingest import router as ingest_router
 from app.api.routes.knowledge import router as knowledge_router
 from app.api.routes.models import router as models_router
 from app.api.routes.sessions import router as sessions_router
+from app.api.routes.share import router as share_router
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient
 from app.core.config import FRONTEND_DIR, get_settings
 from app.services.agent_service import AgentService
@@ -25,6 +26,7 @@ from app.services.orchestrator import ensure_orchestrator_agent
 from app.services.retrieval import reranker_retrieval_config
 from app.services.scratch_kb import ensure_scratch_kb
 from app.services.session_service import SessionService
+from app.services.share_service import ShareService
 
 
 @asynccontextmanager
@@ -67,6 +69,7 @@ async def lifespan(app: FastAPI):
         app.state.session_service = SessionService(
             client, reranker_config, scratch_kb_id
         )
+        app.state.share_service = ShareService(client)
         yield
     finally:
         client.close()
@@ -129,6 +132,7 @@ def create_app() -> FastAPI:
     app.include_router(chatbots_router)
     app.include_router(knowledge_router)
     app.include_router(models_router)
+    app.include_router(share_router)
     # The StaticFiles mount at "/" swallows anything registered after it.
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
     return app

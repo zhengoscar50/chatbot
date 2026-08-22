@@ -18,6 +18,72 @@ function wireDashboard() {
   document.getElementById("to-dashboard").addEventListener("click", showDashboard);
   document.getElementById("dashboard-logout").addEventListener("click", doLogout);
   document.addEventListener("click", closeAllCardMenus);
+  wireShare();
+}
+
+const shareModal = document.getElementById("share-modal");
+let sharingBot = null;
+
+async function openShare(bot) {
+  sharingBot = bot;
+  shareModal.hidden = false;
+  await refreshShare();
+}
+
+async function refreshShare() {
+  const res = await authFetch(`/chatbots/${encodeURIComponent(sharingBot.id)}/share`);
+  if (!res.ok) {
+    document.getElementById("share-usage").textContent = "Could not load sharing.";
+    return;
+  }
+  paintShare(await res.json());
+}
+
+function paintShare(state) {
+  const on = Boolean(state.token);
+  document.getElementById("share-url").value = state.url || "";
+  document.getElementById("share-embed").value = state.embed || "";
+  document.getElementById("share-usage").textContent = on
+    ? `${state.used_today} / ${state.daily_limit} messages used today`
+    : "Not shared yet.";
+  document.getElementById("share-regenerate").textContent =
+    on ? "Regenerate link" : "Create link";
+  document.getElementById("share-stop").hidden = !on;
+}
+
+function wireShare() {
+  document.getElementById("share-close").addEventListener("click", () => {
+    shareModal.hidden = true;
+  });
+  document.getElementById("share-regenerate").addEventListener("click", async () => {
+    const res = await authFetch(
+      `/chatbots/${encodeURIComponent(sharingBot.id)}/share`, { method: "POST" });
+    if (res.ok) { paintShare(await res.json()); await loadDashboard(); }
+  });
+  document.getElementById("share-stop").addEventListener("click", async () => {
+    // Regenerating leaves the old link dead; stopping leaves no link at all.
+    if (!confirm("Stop sharing? The existing link will stop working.")) return;
+    const res = await authFetch(
+      `/chatbots/${encodeURIComponent(sharingBot.id)}/share`, { method: "DELETE" });
+    if (res.ok) { paintShare(await res.json()); await loadDashboard(); }
+  });
+  // The confirmation lands on the button itself, not on #share-usage — that
+  // line is showing "N / limit used today", and "Copied." replacing it would
+  // hide the usage count until the modal is reopened.
+  [["share-copy", "share-url"], ["share-embed-copy", "share-embed"]].forEach(
+    ([button, field]) => {
+      const btn = document.getElementById(button);
+      const original = btn.textContent;
+      document.getElementById(button).addEventListener("click", () => {
+        const el = document.getElementById(field);
+        el.select();
+        navigator.clipboard.writeText(el.value).catch(() => {});
+        btn.textContent = "Copied.";
+        setTimeout(() => {
+          btn.textContent = original;
+        }, 1500);
+      });
+    });
 }
 
 function closeAllCardMenus() {
@@ -40,6 +106,7 @@ async function showDashboard() {
   agentListModal.hidden = true;
   scopeModal.hidden = true;
   knowledgeModal.hidden = true;
+  shareModal.hidden = true;
   await loadDashboard();
 }
 
@@ -206,11 +273,18 @@ async function loadCardDetail(bot) {
       return [];   // a card with no counts beats a grid that fails to draw
     }
   };
-  const [agentRows, sessionRows] = await Promise.all([get("/agents"), get("/sessions")]);
-  return { bot, agents: agentRows, chats: sessionRows.length };
+  const [agentRows, sessionRows, share, visitors] = await Promise.all([
+    get("/agents"),
+    get("/sessions"),
+    authFetch(`/chatbots/${encodeURIComponent(bot.id)}/share`)
+      .then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    authFetch(`/sessions?chatbot_id=${encodeURIComponent(bot.id)}&shared=true`)
+      .then((r) => (r.ok ? r.json() : [])).catch(() => []),
+  ]);
+  return { bot, agents: agentRows, chats: sessionRows.length, share, visitors };
 }
 
-function renderCard({ bot, agents: roster, chats }) {
+function renderCard({ bot, agents: roster, chats, share, visitors }) {
   const card = document.createElement("article");
   card.className = "bot-card";
   card.tabIndex = 0;
@@ -238,7 +312,8 @@ function renderCard({ bot, agents: roster, chats }) {
   actions.addEventListener("click", (event) => {
     event.stopPropagation();   // a click on the menu's own border must not fall through to the card
   });
-  [["Rename", () => renameChatbot(bot)],
+  [["Share", () => openShare(bot)],
+   ["Rename", () => renameChatbot(bot)],
    ["Delete", () => deleteChatbotFromDashboard(bot)]].forEach(([text, run]) => {
     const b = document.createElement("button");
     b.type = "button";
@@ -298,6 +373,20 @@ function renderCard({ bot, agents: roster, chats }) {
   count.className = "bot-card__count";
   count.textContent = chats === 1 ? "1 chat" : `${chats} chats`;
   card.appendChild(count);
+
+  if (share && share.token) {
+    const shared = document.createElement("p");
+    shared.className = "bot-card__shared";
+    shared.textContent = `Shared · ${share.used_today}/${share.daily_limit} today`;
+    card.appendChild(shared);
+  }
+
+  if (visitors && visitors.length > 0) {
+    const visited = document.createElement("p");
+    visited.className = "bot-card__visitors";
+    visited.textContent = `${visitors.length} visitor chats`;
+    card.appendChild(visited);
+  }
 
   card.addEventListener("click", () => enterChatbot(bot.id));
   card.addEventListener("keydown", (event) => {

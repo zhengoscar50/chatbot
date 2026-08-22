@@ -1,7 +1,7 @@
 from typing import Any, Optional
 import re
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
@@ -223,5 +223,30 @@ class ChatbotUpdateRequest(BaseModel):
 
 class ChatbotResponse(BaseModel):
     id: str
+    name: str
+    description: str = ""
+
+
+class ShareResponse(BaseModel):
+    token: Optional[str] = None       # None when the chatbot is not shared
+    url: Optional[str] = None
+    embed: Optional[str] = None
+    daily_limit: int = 0
+    used_today: int = 0
+
+
+class PublicChatRequest(BaseModel):
+    """Deliberately minimal: a session id and a question, nothing else.
+
+    No file, no chatbot id, no agent id, no scope. Anything a visitor could
+    otherwise use to widen what they reach simply has no field to arrive in.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    session_id: str = Field(..., min_length=1)
+    query: str = Field(..., min_length=1, max_length=4000)
+
+
+class PublicChatbotInfo(BaseModel):
     name: str
     description: str = ""

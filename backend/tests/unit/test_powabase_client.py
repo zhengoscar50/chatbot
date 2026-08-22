@@ -482,3 +482,30 @@ def test_run_agent_omits_the_budget_when_unset():
     client = PowabaseClient(BASE_URL, "test-key")
     client.run_agent("agent-1", "hi")
     assert "max_context_tokens" not in json.loads(route.calls[0].request.content)
+
+
+@respx.mock
+def test_get_chatbot_by_share_token_returns_the_row_when_present():
+    route = respx.get(f"{BASE_URL}/rest/v1/chatbots").mock(
+        return_value=httpx.Response(200, json=[{"id": "cb-1", "share_token": "tok"}])
+    )
+    row = PowabaseClient(BASE_URL, "k").get_chatbot_by_share_token("tok")
+    assert row["id"] == "cb-1"
+    assert route.calls[0].request.url.params["share_token"] == "eq.tok"
+
+
+@respx.mock
+def test_get_chatbot_by_share_token_returns_none_when_absent():
+    respx.get(f"{BASE_URL}/rest/v1/chatbots").mock(
+        return_value=httpx.Response(200, json=[])
+    )
+    assert PowabaseClient(BASE_URL, "k").get_chatbot_by_share_token("nope") is None
+
+
+@respx.mock
+def test_get_chatbot_by_share_token_makes_no_request_for_an_empty_token():
+    route = respx.get(f"{BASE_URL}/rest/v1/chatbots").mock(
+        return_value=httpx.Response(200, json=[{"id": "cb-1"}])
+    )
+    assert PowabaseClient(BASE_URL, "k").get_chatbot_by_share_token("") is None
+    assert not route.called

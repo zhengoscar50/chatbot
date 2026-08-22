@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -8,6 +9,7 @@ from app.api.routes.chatbots import router
 from app.services.agent_service import get_agent_service
 from app.services.chatbot_service import ChatbotService, LastChatbotError, get_chatbot_service
 from app.services.session_service import get_session_service
+from app.services.share_service import get_share_service
 
 
 class FakeChatbots:
@@ -38,13 +40,30 @@ class FakeChatbots:
         return self.get_owned(chatbot_id, owner_id) is not None
 
 
-def build_app(bots):
+class FakeShare:
+    """Stands in for ShareService. Records calls; mints a fixed token."""
+
+    def __init__(self, token="tok-abc123"):
+        self.token = token
+        self.enabled = []
+        self.disabled = []
+
+    def enable(self, chatbot_id):
+        self.enabled.append(chatbot_id)
+        return self.token
+
+    def disable(self, chatbot_id):
+        self.disabled.append(chatbot_id)
+
+
+def build_app(bots, share=None):
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
     app.dependency_overrides[get_chatbot_service] = lambda: bots
     app.dependency_overrides[get_agent_service] = lambda: SimpleNamespace()
     app.dependency_overrides[get_session_service] = lambda: SimpleNamespace()
+    app.dependency_overrides[get_share_service] = lambda: share or FakeShare()
     return app
 
 
@@ -94,3 +113,103 @@ def test_a_name_is_stored_trimmed():
     from app.models.schemas import ChatbotCreateRequest
 
     assert ChatbotCreateRequest(name="  Work  ").name == "Work"
+
+
+# --- share endpoints -----------------------------------------------------
+
+@pytest.fixture
+def bots():
+    return FakeChatbots()
+
+
+@pytest.fixture
+def share():
+    return FakeShare()
+
+
+@pytest.fixture
+def client(bots, share):
+    return TestClient(build_app(bots, share))
+
+
+@pytest.fixture
+def auth():
+    return {"Authorization": "Bearer test-token"}
+
+
+@pytest.fixture
+def my_chatbot(bots):
+    row = {"id": "cb-mine", "owner_id": "o1", "name": "Mine", "description": ""}
+    bots.rows.append(row)
+    return row["id"]
+
+
+@pytest.fixture
+def other_chatbot(bots):
+    row = {"id": "cb-theirs", "owner_id": "someone-else", "name": "Theirs",
+           "description": ""}
+    bots.rows.append(row)
+    return row["id"]
+
+
+def test_sharing_a_chatbot_returns_a_link_and_an_embed(client, auth, my_chatbot):
+    res = client.post(f"/chatbots/{my_chatbot}/share", headers=auth)
+    assert res.status_code == 200
+    body = res.json()
+    assert body["token"]
+    assert body["token"] in body["url"]
+    assert body["token"] in body["embed"]
+    assert "<iframe" in body["embed"]
+
+
+def test_sharing_another_users_chatbot_is_not_found(client, auth, other_chatbot, share):
+    res = client.post(f"/chatbots/{other_chatbot}/share", headers=auth)
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Chatbot not found"
+    # The ownership check must run before any token is minted: minting one
+    # here would both create a working public link into a stranger's
+    # chatbot and (since enable() replaces) destroy the real owner's link.
+    assert share.enabled == []
+
+
+def test_stopping_sharing_clears_the_token(client, auth, my_chatbot):
+    client.post(f"/chatbots/{my_chatbot}/share", headers=auth)
+    res = client.delete(f"/chatbots/{my_chatbot}/share", headers=auth)
+    assert res.status_code == 200
+    assert res.json()["token"] is None
+
+
+def test_stopping_sharing_on_another_users_chatbot_is_not_found(client, auth, other_chatbot, share):
+    res = client.delete(f"/chatbots/{other_chatbot}/share", headers=auth)
+    assert res.status_code == 404
+    assert res.json()["detail"] == "Chatbot not found"
+    assert share.disabled == []
+
+
+def test_reading_share_state_for_an_unshared_chatbot(client, auth, my_chatbot):
+    res = client.get(f"/chatbots/{my_chatbot}/share", headers=auth)
+    assert res.status_code == 200
+    assert res.json()["token"] is None
+
+
+def test_used_today_is_stale_across_a_date_change(client, auth, bots):
+    """`consume` is the only path that applies the date reset when it writes.
+    A read-only response must apply that same reset itself, or the morning
+    after 87 messages the modal still says 87 — a full day after the true
+    count reset to zero."""
+    from datetime import date, timedelta
+
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+    bots.rows.append({
+        "id": "cb-stale", "owner_id": "o1", "name": "Stale", "description": "",
+        "share_token": "tok-stale", "share_daily_limit": 100,
+        "share_used_today": 87, "share_used_date": yesterday,
+    })
+    res = client.get("/chatbots/cb-stale/share", headers=auth)
+    assert res.status_code == 200
+    assert res.json()["used_today"] == 0
+
+
+def test_reading_another_users_share_state_is_not_found(client, auth, other_chatbot):
+    res = client.get(f"/chatbots/{other_chatbot}/share", headers=auth)
+    assert res.status_code == 404

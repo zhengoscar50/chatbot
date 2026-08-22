@@ -219,10 +219,14 @@ class PowabaseClient:
         created = response.json()
         return created[0] if isinstance(created, list) else created
 
-    def list_sessions(self, chatbot_id: str) -> list:
+    def list_sessions(self, chatbot_id: str, shared: bool = False) -> list:
         response = self._client.get(
             "/rest/v1/sessions",
-            params={"chatbot_id": f"eq.{chatbot_id}", "order": "updated_at.desc"},
+            params={
+                "chatbot_id": f"eq.{chatbot_id}",
+                "shared": f"is.{'true' if shared else 'false'}",
+                "order": "updated_at.desc",
+            },
         )
         self._raise_for_status(response)
         return response.json()
@@ -449,6 +453,23 @@ class PowabaseClient:
             "/rest/v1/chatbots", params={"id": f"eq.{chatbot_id}"}, json=fields
         )
         self._raise_for_status(response)
+
+    def get_chatbot_by_share_token(self, token: str):
+        """The chatbot an unlisted share token belongs to, or None.
+
+        An empty token would become `share_token=eq.` and match rows with an
+        empty string, so it is refused before the request goes out.
+        """
+        if not token:
+            return None
+        response = self._client.get(
+            "/rest/v1/chatbots", params={"share_token": f"eq.{token}"}
+        )
+        if response.status_code == 400:
+            return None
+        self._raise_for_status(response)
+        rows = response.json()
+        return rows[0] if rows else None
 
     def delete_chatbot_row(self, chatbot_id: str) -> None:
         response = self._client.delete(

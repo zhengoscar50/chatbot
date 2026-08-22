@@ -151,6 +151,60 @@ function dedupeCitations(citations) {
   return groups;
 }
 
+// Renders parsed tokens as elements. Nothing here builds an HTML string, so
+// an answer — which summarises documents the user did not write, and can be
+// steered by a poisoned document — cannot introduce markup. Shared by
+// app.js and share.js so a markdown fix lands in both places at once.
+function appendSpans(parent, spans) {
+  spans.forEach((span) => {
+    if (span.type === "text") {
+      parent.appendChild(document.createTextNode(span.text));
+      return;
+    }
+    const tag = span.type === "strong" ? "strong" : span.type === "em" ? "em" : "code";
+    const el = document.createElement(tag);
+    el.textContent = span.text;
+    parent.appendChild(el);
+  });
+}
+
+function renderMarkdown(container, text) {
+  const tokens = parseMarkdown(text);
+  if (tokens.length === 0) {
+    const p = document.createElement("p");
+    p.textContent = text || "";
+    container.appendChild(p);
+    return;
+  }
+  tokens.forEach((token) => {
+    if (token.type === "code") {
+      const pre = document.createElement("pre");
+      const code = document.createElement("code");
+      code.textContent = token.text;
+      pre.appendChild(code);
+      container.appendChild(pre);
+      return;
+    }
+    if (token.type === "list") {
+      const list = document.createElement(token.ordered ? "ol" : "ul");
+      list.className = "md-list";
+      token.items.forEach((spans) => {
+        const li = document.createElement("li");
+        appendSpans(li, spans);
+        list.appendChild(li);
+      });
+      container.appendChild(list);
+      return;
+    }
+    const el = document.createElement(
+      token.type === "heading" ? `h${Math.min(token.level + 2, 6)}` : "p"
+    );
+    if (token.type === "heading") el.className = "md-heading";
+    appendSpans(el, token.spans);
+    container.appendChild(el);
+  });
+}
+
 if (typeof module !== "undefined" && module.exports) {
   module.exports = { parseMarkdown, parseInline, dedupeCitations };
 }
