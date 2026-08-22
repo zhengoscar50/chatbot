@@ -26,8 +26,26 @@ let sharingBot = null;
 
 async function openShare(bot) {
   sharingBot = bot;
+  // Blank the fields BEFORE the modal is visible. It used to appear already
+  // populated with the PREVIOUS chatbot's link and stay that way for a whole
+  // network round trip — long enough to copy the wrong link and be told it
+  // worked. A share link that silently belongs to another chatbot is worse
+  // than no link at all.
+  setShareFields(null, "Loading…");
   shareModal.hidden = false;
   await refreshShare();
+}
+
+// One place that decides what the fields hold and whether copying is allowed,
+// so "no link yet" and "link loaded" cannot disagree.
+function setShareFields(state, usageText) {
+  const url = (state && state.url) || "";
+  const embed = (state && state.embed) || "";
+  document.getElementById("share-url").value = url;
+  document.getElementById("share-embed").value = embed;
+  document.getElementById("share-usage").textContent = usageText;
+  document.getElementById("share-copy").disabled = !url;
+  document.getElementById("share-embed-copy").disabled = !embed;
 }
 
 async function refreshShare() {
@@ -41,21 +59,31 @@ async function refreshShare() {
 
 function paintShare(state) {
   const on = Boolean(state.token);
-  document.getElementById("share-url").value = state.url || "";
-  document.getElementById("share-embed").value = state.embed || "";
-  document.getElementById("share-usage").textContent = on
+  setShareFields(state, on
     ? `${state.used_today} / ${state.daily_limit} messages used today`
-    : "Not shared yet.";
+    : "Not shared yet.");
   document.getElementById("share-regenerate").textContent =
     on ? "Regenerate link" : "Create link";
   document.getElementById("share-stop").hidden = !on;
+  shareIsLive = on;
 }
+
+// Whether the chatbot currently in the modal already has a live link, so
+// "Regenerate" knows it is about to destroy one.
+let shareIsLive = false;
 
 function wireShare() {
   document.getElementById("share-close").addEventListener("click", () => {
     shareModal.hidden = true;
   });
   document.getElementById("share-regenerate").addEventListener("click", async () => {
+    // Creating a first link is harmless; replacing a live one is not — anyone
+    // already holding it loses access with no notice. Same button, very
+    // different consequence, so only the destructive case asks.
+    if (shareIsLive &&
+        !confirm("Replace this link? Anyone already using the current one will lose access.")) {
+      return;
+    }
     const res = await authFetch(
       `/chatbots/${encodeURIComponent(sharingBot.id)}/share`, { method: "POST" });
     if (res.ok) { paintShare(await res.json()); await loadDashboard(); }
@@ -74,14 +102,24 @@ function wireShare() {
     ([button, field]) => {
       const btn = document.getElementById(button);
       const original = btn.textContent;
-      document.getElementById(button).addEventListener("click", () => {
+      document.getElementById(button).addEventListener("click", async () => {
         const el = document.getElementById(field);
+        if (!el.value) return;          // nothing loaded yet; the button is disabled anyway
         el.select();
-        navigator.clipboard.writeText(el.value).catch(() => {});
-        btn.textContent = "Copied.";
+        // AWAIT the write and report what actually happened. Reporting
+        // "Copied." regardless meant a failed write left the previous
+        // clipboard contents in place while the UI said otherwise — you
+        // paste a stale link and blame the link.
+        let ok = true;
+        try {
+          await navigator.clipboard.writeText(el.value);
+        } catch (err) {
+          ok = false;
+        }
+        btn.textContent = ok ? "Copied." : "Press \u2318C to copy";
         setTimeout(() => {
           btn.textContent = original;
-        }, 1500);
+        }, ok ? 1500 : 3000);
       });
     });
 }
