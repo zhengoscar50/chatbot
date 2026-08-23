@@ -112,7 +112,7 @@ async function boot({ state, session = null, withCss = true } = {}) {
     html = html.replace("</head>", `<style>${css}</style></head>`);
   }
 
-  const dom = new JSDOM(html, { runScripts: "dangerously", url: "https://x.test/", virtualConsole: vc });
+  const dom = new JSDOM(html, { runScripts: "dangerously", url: "https://x.test/", virtualConsole: vc, pretendToBeVisual: true });
   const w = dom.window;
   w.matchMedia = (q) => ({ matches: false, media: q,
     addEventListener() {}, removeEventListener() {},

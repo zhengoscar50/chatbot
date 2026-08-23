@@ -1,7 +1,8 @@
-// The getting-started checklist panel and its Help toggle.
+// The getting-started checklist panel, and the ? button that now launches
+// the guided tour instead of toggling it.
 //
 // Loads the real index.html, styles.css and all eight scripts into jsdom,
-// stubs the backend (including the new /onboarding endpoint), and drives the
+// stubs the backend (including the /onboarding endpoint), and drives the
 // UI. Copied shape from run.mjs: same boot() helper, same fake-server, same
 // check()/flush() helpers, plus a per-check-controlled /onboarding payload.
 //
@@ -126,7 +127,7 @@ async function boot({ state, dismissed = false, breakStorage = false } = {}) {
   const css = readFileSync(`${FE}/styles.css`, "utf8");
   html = html.replace("</head>", `<style>${css}</style></head>`);
 
-  const dom = new JSDOM(html, { runScripts: "dangerously", url: "https://x.test/", virtualConsole: vc });
+  const dom = new JSDOM(html, { runScripts: "dangerously", url: "https://x.test/", virtualConsole: vc, pretendToBeVisual: true });
   const w = dom.window;
   w.matchMedia = (q) => ({ matches: false, media: q,
     addEventListener() {}, removeEventListener() {},
@@ -183,132 +184,59 @@ console.log("\n=== onboarding: the getting-started panel ===");
   check(panel.hidden === true, "3. stays shut when dismissed", `hidden=${panel.hidden}`);
 }
 
-// 4. Help opens it when the account is complete
+// 4. Clicking ? opens the tour, not the checklist panel
 {
   const state = freshState(payload(5));
   const { w, d } = await boot({ state });
   const panel = d.getElementById("onboarding");
   click(w, d.getElementById("onboarding-help"));
-  await flush(5);
-  check(panel.hidden === false, "4. Help opens it when the account is complete", `hidden=${panel.hidden}`);
+  await flush(10);
+  const tourEl = d.getElementById("tour");
+  check(tourEl.hidden === false && panel.hidden === true,
+        "4. clicking ? opens the tour and does not open the checklist panel",
+        `tourHidden=${tourEl.hidden} panelHidden=${panel.hidden}`);
 }
 
-// 5. Help re-opens it after dismissal in the same page load
-{
-  const state = freshState(payload(1));
-  const { w, d } = await boot({ state });
-  const panel = d.getElementById("onboarding");
-  check(panel.hidden === false, "5a. auto-shown before dismissal", `hidden=${panel.hidden}`);
-  click(w, d.getElementById("onboarding-close"));
-  await flush(5);
-  check(panel.hidden === true, "5b. hidden after close", `hidden=${panel.hidden}`);
-  click(w, d.getElementById("onboarding-help"));
-  await flush(5);
-  check(panel.hidden === false, "5. Help re-opens it after dismissal in the same page load", `hidden=${panel.hidden}`);
-}
-
-// 6. Help mode shows a hint under a completed step
-{
-  const state = freshState(payload(5));
-  const { w, d } = await boot({ state });
-  click(w, d.getElementById("onboarding-help"));
-  await flush(5);
-  const steps = $$(d, ".onboard__step");
-  const hasHint = !!steps[0] && !!steps[0].querySelector(".onboard__hint");
-  check(hasHint, "6. Help mode shows a hint under a completed step");
-}
-
-// 7. Auto mode shows no hint under a completed step (and does under an unfinished one)
-{
-  const state = freshState(payload(4));
-  const { d } = await boot({ state });
-  const steps = $$(d, ".onboard__step");
-  const firstHasHint = !!steps[0] && !!steps[0].querySelector(".onboard__hint");
-  const lastHasHint = !!steps[4] && !!steps[4].querySelector(".onboard__hint");
-  check(!firstHasHint, "7a. auto mode shows no hint under a completed step");
-  check(lastHasHint, "7b. auto mode shows a hint under an unfinished step");
-}
-
-// 8. Every step renders
+// 5. Every step renders
 {
   const state = freshState(payload(2));
   const { d } = await boot({ state });
   const steps = $$(d, ".onboard__step");
   const order = steps.map((s) => s.dataset.step).join(",");
   check(steps.length === 5 && order === STEPS.join(","),
-        "8. every step renders in order", `count=${steps.length} order=${order}`);
+        "5. every step renders in order", `count=${steps.length} order=${order}`);
 }
 
-// 9. Done steps are marked
+// 6. Done steps are marked
 {
   const state = freshState(payload(2));
   const { d } = await boot({ state });
   const done = $$(d, ".onboard__step--done");
-  check(done.length === 2, "9. done steps are marked", `${done.length}`);
+  check(done.length === 2, "6. done steps are marked", `${done.length}`);
 }
 
-// 10. Hiding while steps remain writes the flag
+// 7. No hint under a completed step (and one shows under an unfinished step) — the only mode now
+{
+  const state = freshState(payload(4));
+  const { d } = await boot({ state });
+  const steps = $$(d, ".onboard__step");
+  const firstHasHint = !!steps[0] && !!steps[0].querySelector(".onboard__hint");
+  const lastHasHint = !!steps[4] && !!steps[4].querySelector(".onboard__hint");
+  check(!firstHasHint, "7a. no hint under a completed step");
+  check(lastHasHint, "7b. a hint shows under an unfinished step");
+}
+
+// 8. Hiding while steps remain writes the flag
 {
   const state = freshState(payload(1));
   const { w, d } = await boot({ state });
   click(w, d.getElementById("onboarding-close"));
   await flush(5);
   const flag = w.localStorage.getItem("rag-chat-onboarding-dismissed");
-  check(flag === "1", "10. hiding while steps remain writes the flag", `flag=${flag}`);
+  check(flag === "1", "8. hiding while steps remain writes the flag", `flag=${flag}`);
 }
 
-// 11. Hiding when complete writes nothing
-{
-  const state = freshState(payload(5));
-  const { w, d } = await boot({ state });
-  click(w, d.getElementById("onboarding-help"));
-  await flush(5);
-  click(w, d.getElementById("onboarding-close"));
-  await flush(5);
-  const flag = w.localStorage.getItem("rag-chat-onboarding-dismissed");
-  check(flag === null, "11. hiding when complete writes nothing", `flag=${flag}`);
-}
-
-// 12. aria-expanded tracks both directions
-{
-  const state = freshState(payload(5));
-  const { w, d } = await boot({ state });
-  const help = d.getElementById("onboarding-help");
-  check(help.getAttribute("aria-expanded") === "false", "12a. aria-expanded false at boot",
-        help.getAttribute("aria-expanded"));
-  click(w, help);
-  await flush(5);
-  check(help.getAttribute("aria-expanded") === "true", "12b. aria-expanded true after Help",
-        help.getAttribute("aria-expanded"));
-  click(w, d.getElementById("onboarding-close"));
-  await flush(5);
-  check(help.getAttribute("aria-expanded") === "false", "12. aria-expanded tracks both directions (false after close)",
-        help.getAttribute("aria-expanded"));
-}
-
-// 13. The note appears only in help-mode-when-complete
-{
-  const state5 = freshState(payload(5));
-  const b5 = await boot({ state: state5 });
-  click(b5.w, b5.d.getElementById("onboarding-help"));
-  await flush(5);
-  const note5 = b5.d.getElementById("onboarding-note");
-  check(note5.hidden === false, "13a. note visible: help-mode, complete", `hidden=${note5.hidden}`);
-
-  const state4 = freshState(payload(4));
-  const b4 = await boot({ state: state4 });
-  click(b4.w, b4.d.getElementById("onboarding-help"));
-  await flush(5);
-  const note4 = b4.d.getElementById("onboarding-note");
-  check(note4.hidden === true, "13b. note hidden: help-mode, incomplete", `hidden=${note4.hidden}`);
-
-  const state1 = freshState(payload(1));
-  const b1 = await boot({ state: state1 });
-  const note1 = b1.d.getElementById("onboarding-note");
-  check(note1.hidden === true, "13. note hidden: auto-shown", `hidden=${note1.hidden}`);
-}
-
-// 14. A failing /onboarding leaves the dashboard usable
+// 9. A failing /onboarding leaves the dashboard usable
 {
   const state = freshState(payload(1));
   state.failOnboarding = true;
@@ -316,22 +244,22 @@ console.log("\n=== onboarding: the getting-started panel ===");
   const cards = $$(d, ".bot-card:not(.bot-card--new)");
   const panel = d.getElementById("onboarding");
   check(cards.length === 1 && panel.hidden === true && consoleErrors.length === 0,
-        "14. a failing /onboarding leaves the dashboard usable",
+        "9. a failing /onboarding leaves the dashboard usable",
         `cards=${cards.length} hidden=${panel.hidden} errors=${consoleErrors.length}`);
 }
 
-// 15. Storage that throws does not break the dashboard
+// 10. Storage that throws does not break the dashboard
 {
   const state = freshState(payload(1));
   const { d } = await boot({ state, breakStorage: true });
   const cards = $$(d, ".bot-card:not(.bot-card--new)");
   const panel = d.getElementById("onboarding");
   check(cards.length === 1 && panel.hidden === false && consoleErrors.length === 0,
-        "15. storage that throws does not break the dashboard",
+        "10. storage that throws does not break the dashboard",
         `cards=${cards.length} hidden=${panel.hidden} errors=${consoleErrors.length}`);
 }
 
-// 16. A 200 with no steps key leaves the dashboard usable and the panel shut
+// 11. A 200 with no steps key leaves the dashboard usable and the panel shut
 {
   const state = freshState(payload(1));
   state.malformedOnboarding = {};
@@ -339,11 +267,11 @@ console.log("\n=== onboarding: the getting-started panel ===");
   const cards = $$(d, ".bot-card:not(.bot-card--new)");
   const panel = d.getElementById("onboarding");
   check(cards.length === 1 && panel.hidden === true && consoleErrors.length === 0,
-        "16. a 200 with no steps key leaves the dashboard usable",
+        "11. a 200 with no steps key leaves the dashboard usable",
         `cards=${cards.length} hidden=${panel.hidden} errors=${consoleErrors.length}`);
 }
 
-// 17. A 200 with a non-array steps value leaves the dashboard usable and the panel shut
+// 12. A 200 with a non-array steps value leaves the dashboard usable and the panel shut
 {
   const state = freshState(payload(1));
   state.malformedOnboarding = { steps: null, complete: false };
@@ -351,7 +279,7 @@ console.log("\n=== onboarding: the getting-started panel ===");
   const cards = $$(d, ".bot-card:not(.bot-card--new)");
   const panel = d.getElementById("onboarding");
   check(cards.length === 1 && panel.hidden === true && consoleErrors.length === 0,
-        "17. a 200 with a non-array steps value leaves the dashboard usable",
+        "12. a 200 with a non-array steps value leaves the dashboard usable",
         `cards=${cards.length} hidden=${panel.hidden} errors=${consoleErrors.length}`);
 }
 

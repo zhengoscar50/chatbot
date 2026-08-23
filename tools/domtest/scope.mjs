@@ -58,7 +58,7 @@ vc.on("jsdomError", (e) => errors.push(String(e.message || e)));
 
 let html = readFileSync(`${FE}/index.html`, "utf8").replace(/<script src="[^"]*"><\/script>/g, "");
 html = html.replace("</head>", `<style>${readFileSync(`${FE}/styles.css`, "utf8")}</style></head>`);
-const dom = new JSDOM(html, { runScripts: "dangerously", url: "https://x.test/", virtualConsole: vc });
+const dom = new JSDOM(html, { runScripts: "dangerously", url: "https://x.test/", virtualConsole: vc, pretendToBeVisual: true });
 const w = dom.window, d = w.document;
 w.matchMedia = (q) => ({ matches: false, media: q, addEventListener() {}, removeEventListener() {}, addListener() {}, removeListener() {}, onchange: null, dispatchEvent: () => false });
 w.fetch = server;

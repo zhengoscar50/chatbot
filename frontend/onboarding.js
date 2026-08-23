@@ -1,10 +1,9 @@
 // The dashboard's getting-started checklist.
 //
-// Two jobs in one panel. While steps remain it shows itself and reads as "what
-// to do next". Pressing Help reopens it at any time — including long after
-// everything is ticked — and it reads as "what each part does". Same five
-// steps, same server-owned copy; `helpMode` decides how much of the hint text
-// renders.
+// A passive progress view: while steps remain it shows itself and reads as
+// "what to do next," dismissible with its own close button. It no longer has
+// a Help-driven mode — the ? button launches the guided tour instead (see
+// tour.js). Same five steps, same server-owned copy.
 //
 // Visibility is ONE boolean. The render path never re-checks `complete` or the
 // dismissal flag: two opinions about when a panel is on screen is how a Help
@@ -13,13 +12,11 @@
 const ONBOARD_DISMISS_KEY = "rag-chat-onboarding-dismissed";
 
 const onboardPanel = document.getElementById("onboarding");
-const onboardNote = document.getElementById("onboarding-note");
 const onboardSteps = document.getElementById("onboarding-steps");
 const onboardHelp = document.getElementById("onboarding-help");
 
 let onboardState = null;   // last payload from GET /onboarding
 let helpOpen = false;      // the single source of truth for visibility
-let helpMode = false;      // opened deliberately, so show every hint
 
 // Storage throws outright in some contexts (site data blocked, private mode),
 // and a dashboard that fails to paint because of a dismissal flag would be a
@@ -42,15 +39,9 @@ function rememberOnboardDismissed() {
 
 function renderOnboarding() {
   onboardPanel.hidden = !helpOpen;
-  onboardHelp.setAttribute("aria-expanded", helpOpen ? "true" : "false");
   if (!helpOpen || !onboardState) return;
 
   const steps = onboardState.steps || [];
-  // A wall of ticks needs a line saying what it is now for, or it reads as a
-  // checklist with nothing left in it.
-  const allDone = onboardState.complete;
-  onboardNote.hidden = !(helpMode && allDone);
-  onboardNote.textContent = "All set. Here is what each part does.";
 
   onboardSteps.innerHTML = "";
   steps.forEach((step) => {
@@ -73,7 +64,7 @@ function renderOnboarding() {
 
     // The hint is the reason the step matters. Noise while you are working down
     // the list; the whole point when you came back to read.
-    if (helpMode || !step.done) {
+    if (!step.done) {
       const hint = document.createElement("span");
       hint.className = "onboard__hint";
       hint.textContent = step.hint;
@@ -89,17 +80,6 @@ function hideOnboarding() {
   // Once complete the panel never opens itself, so there is nothing to suppress.
   if (onboardState && !onboardState.complete) rememberOnboardDismissed();
   helpOpen = false;
-  helpMode = false;
-  renderOnboarding();
-}
-
-function toggleOnboarding() {
-  if (helpOpen) {
-    hideOnboarding();
-    return;
-  }
-  helpOpen = true;
-  helpMode = true;
   renderOnboarding();
 }
 
@@ -117,12 +97,11 @@ async function refreshOnboarding() {
   // A body without a steps array is as useless as no body at all — auto-opening
   // on it would show an empty panel and call it a checklist.
   if (!loaded || !Array.isArray(loaded.steps)) {
-    // The Help button is clickable before this fetch lands. If someone opened
-    // the panel during that window there is now nothing to put in it, and an
-    // empty shell that never fills is worse than no panel — so close it.
+    // If the panel opened during the window before this fetch landed there is
+    // now nothing to put in it, and an empty shell that never fills is worse
+    // than no panel — so close it.
     if (helpOpen && !onboardState) {
       helpOpen = false;
-      helpMode = false;
       renderOnboarding();
     }
     return;
@@ -130,7 +109,6 @@ async function refreshOnboarding() {
   onboardState = loaded;
   if (!helpOpen) {
     helpOpen = !onboardState.complete && !onboardDismissed();
-    helpMode = false;
   }
   renderOnboarding();
 }

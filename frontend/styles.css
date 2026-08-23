@@ -1531,16 +1531,6 @@ body {
   background: var(--accent-hover);
 }
 
-.onboard__note {
-  margin: 0;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-
-.onboard__note[hidden] {
-  display: none;
-}
-
 .onboard__steps {
   display: flex;
   flex-direction: column;
