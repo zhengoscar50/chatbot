@@ -19,6 +19,7 @@ function wireDashboard() {
   document.getElementById("dashboard-logout").addEventListener("click", doLogout);
   document.addEventListener("click", closeAllCardMenus);
   wireShare();
+  wireOnboarding();
 }
 
 const shareModal = document.getElementById("share-modal");
@@ -203,6 +204,9 @@ async function loadDashboard() {
   dashboardGrid.innerHTML = "";
   details.forEach((detail) => dashboardGrid.appendChild(renderCard(detail)));
   dashboardGrid.appendChild(renderNewTile());
+  // After the grid, not before: the checklist is a footnote to the dashboard,
+  // and its fetch must never delay the cards. Deliberately not awaited.
+  refreshOnboarding();
 }
 
 function showDashboardError(message) {
