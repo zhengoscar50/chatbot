@@ -18,8 +18,9 @@ difference between "working" and "not set up yet".
 ## What this adds
 
 A **Getting started** panel at the top of the dashboard: five steps, each
-ticked from the account's real data, which disappears permanently once all five
-are done.
+ticked from the account's real data. It shows itself while there is still
+something to do, and a **Help** button in the dashboard header brings it back
+at any time — including long after all five are done.
 
 Dashboard only. That is where the journey starts and where four of the five
 actions begin.
@@ -105,27 +106,62 @@ account that most needs this panel.
 description step: that routing matches on it). The server owns the copy so the
 panel is not a second place the same explanation can drift.
 
-## Dismissal
+## Showing, hiding, and the Help button
 
-Completion is derived, so nothing about it needs storing. The only state is
-whether the user dismissed the panel early, and `localStorage` is enough.
+A **Help** button sits in `.dashboard__head-actions`, beside the theme toggle
+and Log out. It toggles the panel, and it is the only control — the panel's own
+close button does the same thing, so there are not two mechanisms to keep in
+agreement. It carries `aria-expanded` and `aria-controls` so the relationship
+is not conveyed by position alone.
 
-If someone dismisses it on one machine and opens another, either they have
-finished the steps — in which case it does not render at all — or they genuinely
-have not, and showing it again is the correct behaviour rather than a bug.
+Visibility is one boolean, `helpOpen`, decided at page load and flipped by the
+button:
+
+    helpOpen = !complete && !dismissed
+
+Hiding the panel while steps remain sets `dismissed` in `localStorage`, so it
+stays out of the way on later visits. Once complete, nothing needs storing —
+the panel does not open itself, so there is nothing to suppress.
+
+Dismissal is per-browser, which is correct rather than a compromise. Someone
+who dismissed it elsewhere either finished the steps — in which case it stays
+shut anyway — or has not, and a reminder on a machine that has never shown one
+is the right behaviour.
 
 That means **no migration**.
+
+### Two modes, one panel
+
+The Help button makes the panel outlive its checklist, so it has to read well
+when every box is ticked. The steps and their hints are the same; what changes
+is how much of the hint text is on screen.
+
+| | Opened by itself (steps remain) | Opened from Help |
+|---|---|---|
+| Hints | under unfinished steps only | under **every** step |
+| Reads as | what to do next | what each part does and why |
+
+A finished step does not need its reason restated while you are working
+through the list — but that reason is exactly what you came back for when you
+press Help. Same five steps, same server-owned copy, one flag deciding how much
+of it renders.
+
+When the panel is opened from Help with everything done, it leads with a single
+line — "All set. Here is what each part does." — so a wall of ticks reads as a
+reference rather than a checklist with nothing left in it.
 
 ## The panel
 
 Above the dashboard grid, styled from the existing custom properties so it
-follows the theme. A heading, a `hide` link, and five rows: a tick or an empty
-box, the label, and the hint beneath unfinished steps only — a completed step
-does not need its reason restated.
+follows the theme. A heading, a close button, and five rows: a tick or an empty
+box, the label, and the hint — on every step in help mode, on unfinished steps
+only otherwise.
 
-It renders only when `complete` is false and the user has not dismissed it. It
-does not block, cover or dim anything; the dashboard behaves identically with
-it present.
+Rendering is governed by `helpOpen` alone, per the section above; the panel
+itself holds no second opinion about when it should be on screen. It does not
+block, cover or dim anything, and the dashboard behaves identically with it
+present — which is what lets Help open it over a working dashboard without
+taking the page over.
 
 ## Testing
 
@@ -145,6 +181,23 @@ working implementation:
 Plus a route test proving another user's chatbots, agents and messages never
 count toward the caller's progress.
 
+DOM tests in the existing jsdom harness for the toggle, which is where the
+mistakes will be:
+
+- Help opens the panel when the account is complete — the case the panel's own
+  auto-show logic deliberately refuses, so it is the one most easily broken by
+  a stray `complete` check in the render path;
+- Help re-opens it after dismissal, in the same page load;
+- opening from Help renders a hint under a **completed** step, and opening it
+  automatically does not — the visible difference between the two modes;
+- hiding while steps remain writes the dismissal flag; hiding when complete
+  writes nothing;
+- `aria-expanded` tracks the panel across a toggle in both directions.
+
+The harness cannot model the `[hidden]` cascade — a documented trap in
+`tools/domtest/README.md` — so panel visibility is asserted on the attribute
+and on a static cascade audit, never on `getComputedStyle`.
+
 ## Out of scope
 
 - Coach marks, tooltips, overlays, or anything that dims the page.
@@ -152,4 +205,5 @@ count toward the caller's progress.
   context budget, reasoning effort, or promoting a chat upload. They are
   discoverable once the basics work and meaningless before.
 - Any tutorial content inside a chatbot, or on the public share page.
-- Re-showing the panel once complete.
+- A Help control anywhere but the dashboard header, and any second
+  help surface (docs page, FAQ, searchable help).
