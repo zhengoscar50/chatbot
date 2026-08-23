@@ -63,13 +63,13 @@ turns an invisible failure into a visible checkbox.
 **"Ask a question it can answer."** Deliberately not "send a message".
 `messages.answered_by_id` is null for user turns *and* for the general
 assistant, so this ticks only when a **specialist actually answered** — the
-moment routing and retrieval both did their jobs.
+moment routing and retrieval both did their jobs. It is the difference between
+"you used the app" and "the app did the thing it exists to do".
 
 Verified against the live project on 2026-08-22: of 51 assistant turns, 20
 carry an `answered_by_id` and 31 do not, and every one of the 31 has
 `answered_by_name = "General assistant"`. The discriminator is real, not
-assumed. It is the difference between
-"you used the app" and "the app did the thing it exists to do".
+assumed.
 
 ## Derivation, not stored flags
 
