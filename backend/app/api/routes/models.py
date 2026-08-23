@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 
 from app.api.deps import get_current_user
 from app.core.config import get_settings
+from app.services.reasoning import supports_effort
 from app.services.context_budget import (
     DEFAULT_CONTEXT_TOKENS,
     MIN_CONTEXT_TOKENS,
@@ -37,4 +38,8 @@ def list_models(user: dict = Depends(get_current_user), settings=Depends(get_set
         },
         "context_default": DEFAULT_CONTEXT_TOKENS,
         "context_min": MIN_CONTEXT_TOKENS,
+        # Which models honour a reasoning-effort setting — same reasoning as
+        # context_limits above. The form hides the control for the rest, and
+        # the server drops the value anyway, so the two cannot disagree.
+        "effort_models": [m for m in choices if supports_effort(m)],
     }

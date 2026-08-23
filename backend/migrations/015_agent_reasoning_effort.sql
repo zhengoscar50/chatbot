@@ -1,0 +1,17 @@
+-- backend/migrations/015_agent_reasoning_effort.sql
+-- Run once in the Powabase Studio SQL Editor.
+--
+-- Per-agent reasoning effort, for the models that honour it.
+--
+-- NULL means "Default": send no setting and take the vendor's own choice.
+-- That is a genuinely distinct third state, not a synonym for medium —
+-- measured on gpt-5-mini with one question:
+--     low     33 completion tokens
+--     unset  970 completion tokens
+--     high   182 completion tokens, 128 of them reasoning
+--
+-- TEXT and nullable, with no CHECK constraint: the set of valid levels is
+-- decided in app/services/reasoning.py, which also decides WHICH MODELS may
+-- carry one at all. A database constraint would encode half that rule and
+-- drift from the other half the first time a model is added or removed.
+alter table public.agents add column if not exists reasoning_effort text;
