@@ -83,6 +83,53 @@ print("\n=== authentication ===")
 r = httpx.get(f"{BASE}/onboarding", timeout=30)
 check(r.status_code == 401, "unauthenticated access is refused", str(r.status_code))
 
+print("\n=== the answer step's discriminator, against live data ===")
+# The step that proves the app worked ticks on answered_by_id alone. Every
+# other test of it runs against fakes, which agree with whatever we believed.
+# This asks the real service.
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "backend"))
+from app.clients.powabase_client import PowabaseClient  # noqa: E402
+
+pb_base = os.environ.get("POWABASE_BASE_URL", "").rstrip("/")
+pb_key = os.environ.get("POWABASE_SERVICE_ROLE_KEY", "")
+if not pb_base or not pb_key:
+    print("  [skip] POWABASE_BASE_URL / POWABASE_SERVICE_ROLE_KEY not set")
+else:
+    pb = httpx.Client(base_url=pb_base, timeout=30,
+                      headers={"apikey": pb_key, "Authorization": f"Bearer {pb_key}"})
+    client = PowabaseClient.__new__(PowabaseClient)
+    client._client = pb
+
+    check(client.has_specialist_answer([]) is False,
+          "no sessions returns False without a query")
+
+    rows = pb.get("/rest/v1/messages",
+                  params={"select": "session_id", "answered_by_id": "not.is.null",
+                          "limit": 1}).json()
+    if rows:
+        sid = rows[0]["session_id"]
+        check(client.has_specialist_answer([sid]) is True,
+              "a session a specialist answered returns True", sid)
+    else:
+        print("  [skip] no specialist-answered message exists in this project yet")
+
+    # The negative polarity is the one that matters: a chat the general
+    # assistant handled must NOT tick the step.
+    allm = pb.get("/rest/v1/messages",
+                  params={"select": "session_id,answered_by_id"}).json()
+    by_session = {}
+    for m in allm:
+        by_session.setdefault(m["session_id"], []).append(m["answered_by_id"])
+    general_only = [s for s, ids in by_session.items() if not any(ids)]
+    if general_only:
+        check(client.has_specialist_answer([general_only[0]]) is False,
+              "a chat only the general assistant answered returns False",
+              general_only[0])
+    else:
+        print("  [skip] no general-assistant-only session exists in this project")
+    pb.close()
+
+
 print("\n" + "=" * 60)
 if failures:
     print(f"FAILED — {len(failures)} check(s):")
