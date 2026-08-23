@@ -76,7 +76,7 @@ async function boot() {
     configurable: true,
   });
 
-  for (const f of ["theme.js", "markdown.js", "agents.js", "knowledge.js", "scope.js", "chatbots.js", "onboarding.js", "dashboard.js", "app.js"]) {
+  for (const f of ["theme.js", "markdown.js", "agents.js", "knowledge.js", "scope.js", "chatbots.js", "onboarding.js", "tour-spotlight.js", "tour-steps.js", "dashboard.js", "app.js"]) {
     const el = d.createElement("script");
     el.textContent = readFileSync(`${FE}/${f}`, "utf8");
     d.body.appendChild(el);

@@ -237,6 +237,24 @@
       </form>
     </div>
 
+    <div class="tour" id="tour" hidden>
+      <div class="tour__pane" id="tour-pane-top" aria-hidden="true"></div>
+      <div class="tour__pane" id="tour-pane-right" aria-hidden="true"></div>
+      <div class="tour__pane" id="tour-pane-bottom" aria-hidden="true"></div>
+      <div class="tour__pane" id="tour-pane-left" aria-hidden="true"></div>
+      <div class="tour__box" id="tour-box" role="dialog" aria-live="polite"
+           aria-labelledby="tour-title" tabindex="-1">
+        <h2 class="tour__title" id="tour-title"></h2>
+        <p class="tour__body" id="tour-body"></p>
+        <div class="tour__foot">
+          <span class="tour__progress" id="tour-progress"></span>
+          <button type="button" class="tour__skip" id="tour-skip">Skip</button>
+          <button type="button" class="tour__action" id="tour-action" hidden></button>
+          <button type="button" class="tour__next" id="tour-next">Next</button>
+        </div>
+      </div>
+    </div>
+
     <script src="/theme.js"></script>
     <script src="/markdown.js"></script>
     <script src="/agents.js"></script>
@@ -244,6 +262,8 @@
     <script src="/scope.js"></script>
     <script src="/chatbots.js"></script>
     <script src="/onboarding.js"></script>
+    <script src="/tour-spotlight.js"></script>
+    <script src="/tour-steps.js"></script>
     <script src="/dashboard.js"></script>
     <script src="/app.js"></script>
   </body>

@@ -1584,3 +1584,120 @@ body {
   line-height: 1.45;
   color: var(--text-muted);
 }
+
+/* Guided tour. Four panes dim the page and leave the target uncovered, so the
+   highlighted control is the only clickable thing — geometry, not
+   pointer-events juggling. */
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  /* The container must not intercept anything: the panes below are the only
+     part that blocks, and the gap between them IS the interactive target. */
+  pointer-events: none;
+}
+
+/* The author rule above sets no display, but the guard is not optional here:
+   the UA [hidden] rule loses to any author display, and this exact bug has
+   shipped twice in this codebase (.app, then .bot-card__actions). */
+.tour[hidden] {
+  display: none;
+}
+
+.tour__pane {
+  position: fixed;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+  transition: all 120ms ease;
+}
+
+.tour__box {
+  position: fixed;
+  width: min(20rem, calc(100vw - 2rem));
+  pointer-events: auto;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--accent-border);
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.28);
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+}
+
+.tour__title {
+  margin: 0 0 0.35rem;
+  font-size: 0.98rem;
+  font-weight: 600;
+}
+
+.tour__body {
+  margin: 0 0 0.75rem;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.tour__foot {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.tour__progress {
+  flex: 1;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.tour__skip {
+  border: none;
+  background: none;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.tour__skip:hover {
+  color: var(--text);
+  background: var(--accent-hover);
+}
+
+.tour__next {
+  border: none;
+  border-radius: 8px;
+  padding: 0.35rem 0.8rem;
+  font-size: 0.82rem;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  cursor: pointer;
+}
+
+.tour__next:hover {
+  filter: brightness(1.06);
+}
+
+/* Shown only when a step hits a state worth explaining — step 8 when the
+   general assistant answered rather than a specialist. */
+.tour__action {
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.8rem;
+  background: var(--accent-surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.tour__action[hidden] {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tour__pane {
+    transition: none;
+  }
+}
