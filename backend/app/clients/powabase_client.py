@@ -496,6 +496,33 @@ class PowabaseClient:
         self._raise_for_status(response)
         return response.json()
 
+    def has_specialist_answer(self, session_ids: list) -> bool:
+        """Whether any of these chats has a turn a SPECIALIST agent answered.
+
+        `answered_by_id` is null for user turns and for the general assistant,
+        so a non-null one is proof that routing picked a specialist and it
+        replied — the difference between "sent a message" and "the app did the
+        thing it exists to do".
+
+        One `in.()` query for every session rather than one per session, and no
+        query at all when there are none: an account with no chats cannot have
+        an answer, and that is the account most likely to be looking at the
+        checklist this feeds.
+        """
+        if not session_ids:
+            return False
+        response = self._client.get(
+            "/rest/v1/messages",
+            params={
+                "session_id": f"in.({','.join(session_ids)})",
+                "answered_by_id": "not.is.null",
+                "select": "id",
+                "limit": 1,
+            },
+        )
+        self._raise_for_status(response)
+        return bool(response.json())
+
     def create_provider_key(self, provider: str, api_key: str) -> dict:
         response = self._client.post(
             "/api/ai-provider-keys", json={"provider": provider, "api_key": api_key}
