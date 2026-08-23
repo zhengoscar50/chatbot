@@ -19,7 +19,7 @@ class FakeAgentService:
         self._n = 0
 
     def create(self, chatbot_id, owner_id, name, instructions, description, model,
-               grounding, max_context_tokens=None):
+               grounding, max_context_tokens=None, reasoning_effort=None):
         self._n += 1
         row = {
             "id": f"ag-{self._n}", "chatbot_id": chatbot_id, "owner_id": owner_id,
@@ -463,3 +463,20 @@ def test_list_agents_includes_descriptions_for_routing():
     app = build_app(svc)
     body = TestClient(app).get("/agents?chatbot_id=cb-1").json()
     assert body[0]["description"] == "Answers chemistry questions."
+
+
+def test_setting_effort_back_to_default_actually_clears_it():
+    """`exclude_none=True` on the request dump silently drops an explicit null,
+    so without special handling you could set an effort but never unset it —
+    a control with a state it cannot reach."""
+    from app.models.schemas import AgentUpdateRequest
+    from app.api.routes.agents import _update_fields
+
+    explicit = AgentUpdateRequest(reasoning_effort=None)
+    assert _update_fields(explicit) == {"reasoning_effort": None}
+
+    untouched = AgentUpdateRequest(name="Renamed")
+    assert "reasoning_effort" not in _update_fields(untouched)
+
+    other_nulls = AgentUpdateRequest(name="Renamed", model=None)
+    assert "model" not in _update_fields(other_nulls)

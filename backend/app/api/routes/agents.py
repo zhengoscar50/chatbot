@@ -26,6 +26,7 @@ from app.models.schemas import (
 from app.services.agent_service import AgentService, ModelRejectedError, get_agent_service
 from app.services.chatbot_service import ChatbotService, get_chatbot_service
 from app.services.context_budget import clamp_context_tokens, max_context_for
+from app.services.reasoning import supports_effort
 from app.services.ingest_service import (
     AttentionRequiredError,
     ExtractionFailedError,
@@ -86,6 +87,10 @@ def _to_response(row: dict) -> AgentResponse:
             row.get("max_context_tokens"), row.get("model")
         ),
         max_context_ceiling=max_context_for(row.get("model")),
+        reasoning_effort=row.get("reasoning_effort"),
+        # The server decides which models offer the control, so the form never
+        # has to carry its own copy of that list.
+        supports_effort=supports_effort(row.get("model")),
     )
 
 
@@ -103,7 +108,7 @@ async def create_agent(
         row = await run_in_threadpool(
             agents.create, req.chatbot_id, user["id"], req.name, req.instructions, req.description,
             req.model or settings.default_agent_model, req.grounding,
-            req.max_context_tokens,
+            req.max_context_tokens, req.reasoning_effort,
         )
     except ModelRejectedError as e:
         raise HTTPException(
@@ -153,6 +158,21 @@ async def get_agent(
     return _to_response(row)
 
 
+def _update_fields(req) -> dict:
+    """The fields an edit actually changes.
+
+    `exclude_none=True` protects every other field from being clobbered by a
+    null the client did not mean to send. But reasoning_effort's None is a
+    REAL value — it is the Default level — so dropping it would leave the
+    control able to set an effort and never unset it. Explicitly-sent nulls
+    are restored for that one field only.
+    """
+    fields = req.model_dump(exclude_unset=True, exclude_none=True)
+    if "reasoning_effort" in req.model_fields_set:
+        fields["reasoning_effort"] = req.reasoning_effort
+    return fields
+
+
 @router.patch("/{agent_id}", response_model=AgentResponse)
 async def update_agent(
     agent_id: str,
@@ -163,7 +183,7 @@ async def update_agent(
     row = await run_in_threadpool(agents.get_owned, agent_id, user["id"])
     if row is None:
         raise HTTPException(status_code=404, detail="Agent not found")
-    fields = req.model_dump(exclude_unset=True, exclude_none=True)
+    fields = _update_fields(req)
     if not fields:
         return _to_response(row)
     try:

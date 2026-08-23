@@ -7,11 +7,12 @@ from fastapi import Request
 
 from app.clients.powabase_client import PowabaseAPIError
 from app.services.context_budget import clamp_context_tokens
+from app.services.reasoning import effort_for_model, effort_settings
 from app.services.prompts import compose_system_prompt
 
 # Changing any of these requires patching the remote agent, because they feed
 # its model or its system prompt. Everything else on an agent row is local-only.
-REMOTE_FIELDS = ("instructions", "grounding", "model")
+REMOTE_FIELDS = ("instructions", "grounding", "model", "reasoning_effort")
 
 logger = logging.getLogger(__name__)
 
@@ -76,11 +77,17 @@ class AgentService:
         model: str,
         grounding: str,
         max_context_tokens=None,
+        reasoning_effort=None,
     ) -> dict:
         self.probe_model(model)
         prompt = compose_system_prompt(instructions, grounding)
+        # Dropped for a model that does not honour it. Powabase stores any
+        # settings key without validating it, so an inert value would look
+        # saved and change nothing.
+        effort = effort_for_model(model, reasoning_effort)
         agent = self.client.create_agent(
-            f"user-agent-{name}", model=model, system_prompt=prompt
+            f"user-agent-{name}", model=model, system_prompt=prompt,
+            settings=effort_settings(model, effort),
         )
         return self.client.insert_agent_row({
             "chatbot_id": chatbot_id,
@@ -96,6 +103,7 @@ class AgentService:
             # Clamped here, never trusted from the caller: the slider is a
             # convenience and a client can post anything.
             "max_context_tokens": clamp_context_tokens(max_context_tokens, model),
+            "reasoning_effort": effort,
         })
 
     def list(self, chatbot_id: str) -> list:
@@ -130,11 +138,24 @@ class AgentService:
             if clamped != row.get("max_context_tokens"):
                 fields = dict(fields, max_context_tokens=clamped)
             merged["max_context_tokens"] = clamped
+        # Re-derive on every edit, for the same reason the budget is
+        # re-clamped: changing ONLY the model must drop an effort the new model
+        # cannot use, rather than leaving it to ride along invisibly.
+        if "model" in fields or "reasoning_effort" in fields:
+            effort = effort_for_model(merged["model"], merged.get("reasoning_effort"))
+            if effort != row.get("reasoning_effort"):
+                fields = dict(fields, reasoning_effort=effort)
+            merged["reasoning_effort"] = effort
         if any(field in fields for field in REMOTE_FIELDS):
             self.client.update_agent(row["powabase_agent_id"], {
                 "model": merged["model"],
                 "system_prompt": compose_system_prompt(
                     merged["instructions"], merged["grounding"]
+                ),
+                # Always sent, so clearing an effort actually clears it
+                # remotely rather than leaving the old value in place.
+                "settings": effort_settings(
+                    merged["model"], merged.get("reasoning_effort")
                 ),
             })
         self.client.update_agent_row(row["id"], fields)

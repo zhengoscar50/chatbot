@@ -8,6 +8,7 @@ from app.services.prompts import OPEN_CLAUSE, STRICT_CLAUSE
 class FakeClient:
     def __init__(self):
         self.created_agents = []
+        self.created_settings = []
         self.updated_agents = []
         self.rows = {}
         self.kbs = []
@@ -32,6 +33,7 @@ class FakeClient:
             self.probe_agents.append((name, model))
             return {"id": f"probe-{len(self.probe_agents)}"}
         self.created_agents.append((name, model, system_prompt))
+        self.created_settings.append(settings)
         return {"id": f"pa-{len(self.created_agents)}"}
 
     def run_agent_sync(self, agent_id, message, response_format=None):
@@ -480,3 +482,69 @@ def test_listing_is_scoped_to_one_chatbot():
     svc.create("cb-2", "o1", "B", "", "", "gpt-4o-mini", "strict")
 
     assert [a["name"] for a in svc.list("cb-1")] == ["A"]
+
+
+# --- reasoning effort --------------------------------------------------
+
+def _stored(client):
+    return list(client.rows.values())[-1]
+
+
+def test_creating_an_agent_sends_the_effort_setting():
+    client = FakeClient()
+    AgentService(client).create(
+        "cb-1", "u1", "Thinker", "instructions", "desc", "gpt-5-mini", "strict",
+        reasoning_effort="high",
+    )
+    assert client.created_settings[-1] == {"reasoning_effort": "high"}
+    assert _stored(client)["reasoning_effort"] == "high"
+
+
+def test_creating_with_no_effort_sends_no_settings():
+    """Default is a real third state — the vendor's own choice, measurably
+    different from both low and high."""
+    client = FakeClient()
+    AgentService(client).create(
+        "cb-1", "u1", "Plain", "i", "d", "gpt-5-mini", "strict",
+    )
+    assert client.created_settings[-1] is None
+    assert _stored(client)["reasoning_effort"] is None
+
+
+def test_an_unsupported_model_stores_and_sends_nothing():
+    """Powabase stores any settings key without validating it, so a value that
+    reaches the wire for a model that ignores it looks saved and does nothing."""
+    client = FakeClient()
+    AgentService(client).create(
+        "cb-1", "u1", "Claude", "i", "d", "claude-sonnet-5", "strict",
+        reasoning_effort="high",
+    )
+    assert client.created_settings[-1] is None
+    assert _stored(client)["reasoning_effort"] is None
+
+
+def test_changing_to_a_model_without_support_clears_the_stored_effort():
+    """Otherwise the value rides along forever — inert, invisible, and
+    confusing to whoever reads the row next."""
+    client = FakeClient()
+    client.rows["ag-1"] = {
+        "id": "ag-1", "powabase_agent_id": "pa-1", "model": "gpt-5-mini",
+        "instructions": "i", "grounding": "strict", "reasoning_effort": "high",
+        "max_context_tokens": 4000,
+    }
+    merged = AgentService(client).update(client.rows["ag-1"], {"model": "claude-sonnet-5"})
+
+    assert merged["reasoning_effort"] is None
+    assert client.rows["ag-1"]["reasoning_effort"] is None
+
+
+def test_changing_the_effort_patches_the_remote_agent():
+    client = FakeClient()
+    client.rows["ag-1"] = {
+        "id": "ag-1", "powabase_agent_id": "pa-1", "model": "gpt-5-mini",
+        "instructions": "i", "grounding": "strict", "reasoning_effort": None,
+        "max_context_tokens": 4000,
+    }
+    AgentService(client).update(client.rows["ag-1"], {"reasoning_effort": "low"})
+
+    assert client.updated_agents[-1][1]["settings"] == {"reasoning_effort": "low"}

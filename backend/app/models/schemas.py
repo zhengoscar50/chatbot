@@ -3,6 +3,11 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+# The one definition of the valid levels. reasoning.py imports nothing,
+# so this cannot cycle — and duplicating the tuple here would let the two
+# drift the first time a level is added.
+from app.services.reasoning import EFFORT_LEVELS
+
 
 _USERNAME_RE = re.compile(r"^[A-Za-z0-9_.-]{3,32}$")
 
@@ -131,6 +136,20 @@ class MeResponse(BaseModel):
     username: str
 
 
+def _known_effort(v):
+    """Reject a level the app does not recognise rather than passing it on.
+
+    Powabase stores any settings value without validating it, so a typo would
+    be saved happily and do nothing. Refusing here is the only place it fails
+    loudly.
+    """
+    if v is None or v == "":
+        return None
+    if v not in EFFORT_LEVELS:
+        raise ValueError("reasoning_effort must be one of: " + ", ".join(EFFORT_LEVELS))
+    return v
+
+
 # NOTE: this module has no `from __future__ import annotations` and must not get
 # one (Pydantic resolves these at class-definition time). On Python 3.9 that
 # makes PEP 604 unions (`str | None`) a TypeError at import — use Optional[X].
@@ -144,6 +163,10 @@ class AgentCreateRequest(BaseModel):
     # Clamped server-side to the model's ceiling; the bound here only rejects
     # obvious nonsense early.
     max_context_tokens: Optional[int] = Field(default=None, ge=0, le=2_000_000)
+    # None means Default — the vendor's own choice.
+    reasoning_effort: Optional[str] = Field(default=None)
+
+    _check_effort = field_validator("reasoning_effort")(_known_effort)
 
     @field_validator("grounding")
     @classmethod
@@ -160,6 +183,9 @@ class AgentUpdateRequest(BaseModel):
     model: Optional[str] = None
     grounding: Optional[str] = None
     max_context_tokens: Optional[int] = Field(default=None, ge=0, le=2_000_000)
+    reasoning_effort: Optional[str] = Field(default=None)
+
+    _check_effort = field_validator("reasoning_effort")(_known_effort)
 
     @field_validator("grounding")
     @classmethod
@@ -179,6 +205,10 @@ class AgentResponse(BaseModel):
     trained: bool
     max_context_tokens: int = 0
     max_context_ceiling: int = 0
+    reasoning_effort: Optional[str] = None
+    # Lets the form decide whether to draw the control, instead of hard-coding
+    # the model list in JavaScript where it would drift from the server's.
+    supports_effort: bool = False
 
 
 class AgentSummary(BaseModel):
