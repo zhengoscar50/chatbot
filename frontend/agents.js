@@ -24,6 +24,9 @@ let defaultModel = "";
 let contextLimits = {};
 let contextDefault = 32000;
 let contextMin = 1000;
+// Served by /models for the same reason context limits are: the form must
+// not keep its own copy of which models honour an effort setting.
+let effortModels = [];
 const agentGroundingInput = document.getElementById("agent-grounding");
 const agentDocsSection = document.getElementById("agent-docs");
 const agentDocList = document.getElementById("agent-doc-list");
@@ -35,6 +38,8 @@ const agentModalTitle = document.getElementById("agent-modal-title");
 const agentSaveButton = document.getElementById("agent-save");
 const agentDescriptionInput = document.getElementById("agent-description");
 const agentContextInput = document.getElementById("agent-context");
+const agentEffortRow = document.getElementById("agent-effort-row");
+const agentEffortSelect = document.getElementById("agent-effort");
 const agentContextReadout = document.getElementById("agent-context-readout");
 const agentListModal = document.getElementById("agent-list-modal");
 const agentList = document.getElementById("agent-list");
@@ -53,6 +58,7 @@ function wireAgents() {
   agentDeleteButton.addEventListener("click", deleteAgent);
   agentTrainFile.addEventListener("change", trainAgent);
   agentModelSelect.addEventListener("change", () => {
+    renderEffortRow(agentModelSelect.value);
     const custom = agentModelSelect.value === OTHER_MODEL;
     agentModelCustomRow.hidden = !custom;
     if (custom) agentModelInput.focus();
@@ -171,6 +177,7 @@ async function loadModelChoices() {
     contextLimits = body.context_limits || {};
     contextDefault = body.context_default || contextDefault;
     contextMin = body.context_min || contextMin;
+    effortModels = body.effort_models || [];
   } catch (err) {
     modelChoices = [];
   }
@@ -247,6 +254,8 @@ async function loadAgentDetail(agentId) {
   renderModelSelect(a.model || "");
   // The server sends the stored value already clamped to this model's ceiling.
   applyContextCeiling(a.max_context_tokens);
+  renderEffortRow(a.model || "");
+  agentEffortSelect.value = a.reasoning_effort || "";
 }
 
 async function saveAgent(event) {
@@ -262,6 +271,9 @@ async function saveAgentRequest() {
     instructions: agentInstructionsInput.value,
     grounding: agentGroundingInput.value,
     max_context_tokens: Number(agentContextInput.value),
+    // "" is the Default level. Sent as null so the server can tell an explicit
+    // reset apart from a field the form never touched.
+    reasoning_effort: agentEffortSelect.value || null,
   };
   const model = chosenModel();
   if (agentModelSelect.value === OTHER_MODEL && !model) {
@@ -461,4 +473,14 @@ function applyContextCeiling(preferred) {
   const wanted = Number(preferred != null ? preferred : agentContextInput.value) || contextDefault;
   agentContextInput.value = Math.max(contextMin, Math.min(wanted, max));
   renderContextReadout();
+}
+
+
+// Shown only for models measured to honour it. A control that saves a value
+// the provider ignores is worse than no control: Powabase stores any setting
+// without validating it, so it would look saved and do nothing.
+function renderEffortRow(model) {
+  const supported = effortModels.includes(model);
+  agentEffortRow.hidden = !supported;
+  if (!supported) agentEffortSelect.value = "";
 }

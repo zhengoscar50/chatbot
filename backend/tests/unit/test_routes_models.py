@@ -71,3 +71,16 @@ def test_default_settings_ship_a_non_empty_verified_list(monkeypatch):
 
     assert len(choices) >= 5
     assert "gpt-4o-mini" in choices and "claude-sonnet-5" in choices
+
+
+def test_the_model_list_says_which_models_support_effort():
+    """The form must not carry its own copy of that list — it would drift from
+    the server's, and the server is the one that actually drops the value."""
+    app = build_app(
+        agent_model_choices=["gpt-5-mini", "claude-sonnet-5", "gpt-4o"],
+        default_agent_model="gpt-5-mini",
+    )
+    body = TestClient(app).get("/models").json()
+
+    assert body["effort_models"] == ["gpt-5-mini"]
+    assert set(body["effort_models"]) <= set(body["models"])
