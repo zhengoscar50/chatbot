@@ -105,17 +105,32 @@ console.log("\n=== the box never leaves the viewport, wherever the target is ===
 
 console.log("\n=== a box larger than the viewport pins to the origin ===");
 {
-  // Cannot fit what does not fit. What matters is that it degrades from 0,0
-  // rather than to a negative offset that pushes the heading off the top.
-  const tiny = { width: 300, height: 100 };
   const big = { width: 320, height: 160 };
 
-  const b = boxPlacement({ x: 10, y: 10, width: 40, height: 40 }, tiny, big, 16);
-  check(b.x >= 0 && b.y >= 0, "never negative when the box exceeds the viewport",
-        `${b.x},${b.y}`);
+  // Wide enough to skip docking, short enough that the box exceeds the height.
+  // This is the case that actually reaches the clamps — a viewport narrow
+  // enough to dock returns before them and proves nothing about clamping.
+  const shortWide = { width: 1000, height: 100 };
+  const b = boxPlacement({ x: 10, y: 10, width: 40, height: 40 }, shortWide, big, 16);
+  check(b.side === "right", "a short wide viewport takes a side branch, not docking", b.side);
+  check(b.y >= 0, "the vertical clamp never goes negative when the box is taller than the viewport",
+        String(b.y));
 
-  // And the ordinary invariant must still hold whenever the box DOES fit,
-  // which is the case every real viewport produces.
+  // The mirror: tall and narrow, so the horizontal clamp is the one under test.
+  // Docking is bypassed by keeping the target wide enough that the threshold
+  // does not trip.
+  const tallNarrow = { width: 400, height: 1000 };
+  const c = boxPlacement({ x: 10, y: 480, width: 40, height: 40 }, tallNarrow,
+                         { width: 380, height: 160 }, 16);
+  check(c.x >= 0, "the horizontal clamp never goes negative", String(c.x));
+
+  // And a viewport too small in both directions still degrades from 0,0
+  // rather than to a negative offset.
+  const d = boxPlacement({ x: 10, y: 10, width: 40, height: 40 },
+                         { width: 300, height: 100 }, big, 16);
+  check(d.x >= 0 && d.y >= 0, "docked mode also never goes negative", `${d.x},${d.y}`);
+
+  // The ordinary invariant still holds whenever the box does fit.
   const fits = boxPlacement({ x: 10, y: 10, width: 40, height: 40 },
                             { width: 1000, height: 800 }, big, 16);
   check(fits.x + big.width <= 1000 && fits.y + big.height <= 800,
