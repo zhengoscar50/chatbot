@@ -1478,3 +1478,109 @@ body {
   border: 1px solid var(--accent-border);
   border-radius: 0.5rem;
 }
+
+/* Getting-started checklist. Shows itself while steps remain; the header's
+   Help button reopens it afterwards as a reference. */
+.onboard {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin: 0 0 1.25rem;
+  padding: 1rem 1.15rem;
+  border: 1px solid var(--accent-border);
+  border-radius: 12px;
+  background: var(--accent-surface);
+}
+
+/* The UA rule for [hidden] is display:none, but the author rule above outranks
+   it — without this guard the panel renders even when hidden is set. This exact
+   bug has shipped twice in this codebase (.app, then .bot-card__actions), and
+   jsdom cannot catch it: see tools/domtest/README.md. */
+.onboard[hidden] {
+  display: none;
+}
+
+.onboard__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.onboard__title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.onboard__close {
+  flex: none;
+  border: none;
+  background: none;
+  padding: 0.15rem 0.4rem;
+  font-size: 1.15rem;
+  line-height: 1;
+  color: var(--text-muted);
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.onboard__close:hover {
+  color: var(--text);
+  background: var(--accent-hover);
+}
+
+.onboard__note {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.onboard__note[hidden] {
+  display: none;
+}
+
+.onboard__steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.onboard__step {
+  display: grid;
+  grid-template-columns: 1.35rem 1fr;
+  gap: 0.15rem 0.55rem;
+  align-items: start;
+}
+
+.onboard__tick {
+  grid-row: 1 / span 2;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+.onboard__step--done .onboard__tick {
+  color: var(--ok);
+}
+
+.onboard__label {
+  font-size: 0.92rem;
+  color: var(--text);
+}
+
+.onboard__step--done .onboard__label {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.onboard__hint {
+  grid-column: 2;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+}

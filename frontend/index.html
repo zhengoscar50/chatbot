@@ -35,6 +35,7 @@
       <header class="dashboard__head">
         <h1 class="dashboard__title">Your chatbots</h1>
         <div class="dashboard__head-actions">
+          <button type="button" id="onboarding-help" class="icon-btn" aria-label="Getting started" title="Getting started" aria-expanded="false" aria-controls="onboarding">?</button>
           <button type="button" id="dashboard-theme-toggle" class="icon-btn theme-toggle" aria-label="Toggle dark mode" title="Toggle theme">
             <svg class="theme-ico theme-ico--moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" /></svg>
             <svg class="theme-ico theme-ico--sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41" /></svg>
@@ -43,6 +44,14 @@
         </div>
       </header>
       <p class="dashboard__status" id="dashboard-status"></p>
+      <section class="onboard" id="onboarding" hidden aria-labelledby="onboarding-title">
+        <div class="onboard__head">
+          <h2 class="onboard__title" id="onboarding-title">Getting started</h2>
+          <button type="button" class="onboard__close" id="onboarding-close" aria-label="Hide getting started">×</button>
+        </div>
+        <p class="onboard__note" id="onboarding-note" hidden></p>
+        <ul class="onboard__steps" id="onboarding-steps"></ul>
+      </section>
       <div class="dashboard__grid" id="dashboard-grid"></div>
     </div>
     <div class="app" id="app-view" hidden>
