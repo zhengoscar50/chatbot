@@ -14,6 +14,7 @@ from app.api.routes.health import router as health_router
 from app.api.routes.ingest import router as ingest_router
 from app.api.routes.knowledge import router as knowledge_router
 from app.api.routes.models import router as models_router
+from app.api.routes.onboarding import router as onboarding_router
 from app.api.routes.sessions import router as sessions_router
 from app.api.routes.share import router as share_router
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient
@@ -133,6 +134,7 @@ def create_app() -> FastAPI:
     app.include_router(knowledge_router)
     app.include_router(models_router)
     app.include_router(share_router)
+    app.include_router(onboarding_router)
     # The StaticFiles mount at "/" swallows anything registered after it.
     app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
     return app
