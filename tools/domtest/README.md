@@ -11,8 +11,9 @@ no dependency manifest and keeps none, so jsdom is installed *outside* it:
 mkdir -p /tmp/domtest && cd /tmp/domtest
 npm init -y && npm install jsdom
 cp <repo>/tools/domtest/*.mjs .
-node run.mjs      # 48 checks: boot, cards, navigation, resume, menus, CRUD, failure states
-node scope.mjs    # 14 checks: per-chat agent exclusion, end to end
+node run.mjs         # 48 checks: boot, cards, navigation, resume, menus, CRUD, failure states
+node scope.mjs       # 14 checks: per-chat agent exclusion, end to end
+node onboarding.mjs  # 15 checks: the getting-started panel, its Help toggle, and both hint modes
 ```
 
 Both exit non-zero on failure and print a per-check line.

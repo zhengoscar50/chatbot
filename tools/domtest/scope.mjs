@@ -66,7 +66,7 @@ w.localStorage.setItem("rag-chat-token", "tok");
 w.localStorage.setItem("rag-chat-username", "oscar");
 w.confirm = () => true;
 w.prompt = () => null;
-for (const f of ["theme.js", "markdown.js", "agents.js", "knowledge.js", "scope.js", "chatbots.js", "dashboard.js", "app.js"]) {
+for (const f of ["theme.js", "markdown.js", "agents.js", "knowledge.js", "scope.js", "chatbots.js", "onboarding.js", "dashboard.js", "app.js"]) {
   const el = d.createElement("script");
   el.textContent = readFileSync(`${FE}/${f}`, "utf8");
   d.body.appendChild(el);

@@ -127,7 +127,7 @@ async function boot({ state, session = null, withCss = true } = {}) {
   w.alert = (msg) => { w.__alertText = msg; };
 
   for (const f of ["theme.js", "markdown.js", "agents.js", "knowledge.js",
-                   "scope.js", "chatbots.js", "dashboard.js", "app.js"]) {
+                   "scope.js", "chatbots.js", "onboarding.js", "dashboard.js", "app.js"]) {
     const el = w.document.createElement("script");
     el.textContent = readFileSync(`${FE}/${f}`, "utf8");
     w.document.body.appendChild(el);
