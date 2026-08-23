@@ -103,6 +103,25 @@ console.log("\n=== the box never leaves the viewport, wherever the target is ===
   check(!escaped, "box stays on screen for every target position", escaped || "");
 }
 
+console.log("\n=== a box larger than the viewport pins to the origin ===");
+{
+  // Cannot fit what does not fit. What matters is that it degrades from 0,0
+  // rather than to a negative offset that pushes the heading off the top.
+  const tiny = { width: 300, height: 100 };
+  const big = { width: 320, height: 160 };
+
+  const b = boxPlacement({ x: 10, y: 10, width: 40, height: 40 }, tiny, big, 16);
+  check(b.x >= 0 && b.y >= 0, "never negative when the box exceeds the viewport",
+        `${b.x},${b.y}`);
+
+  // And the ordinary invariant must still hold whenever the box DOES fit,
+  // which is the case every real viewport produces.
+  const fits = boxPlacement({ x: 10, y: 10, width: 40, height: 40 },
+                            { width: 1000, height: 800 }, big, 16);
+  check(fits.x + big.width <= 1000 && fits.y + big.height <= 800,
+        "stays fully on screen whenever the box fits");
+}
+
 const failed = results.filter((r) => !r).length;
 console.log(`\n${results.length} checks, ${results.length - failed} passed, ${failed} FAILED`);
 process.exit(failed ? 1 : 0);

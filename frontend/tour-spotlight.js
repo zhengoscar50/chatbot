@@ -32,6 +32,12 @@ function panesFor(rect, viewport, pad) {
   };
 }
 
+// Precondition: the box fits the viewport. `.tour__box` caps itself with
+// max-height and overflow-y so this holds in practice. When it is violated
+// anyway, the clamps below pin the origin to 0 rather than going negative —
+// the box then overflows, but from the top-left, where its heading is
+// readable and its buttons are reachable by scrolling, rather than from an
+// arbitrary offset where they are not.
 function boxPlacement(rect, viewport, box, gap) {
   const g = gap || 0;
 
