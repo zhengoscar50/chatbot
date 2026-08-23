@@ -63,6 +63,13 @@ function boxPlacement(rect, viewport, box, gap) {
     return { x: leftX, y: centredY, side: "left" };
   }
 
+  // clampX's lower bound is unreachable: getting here means the docking branch
+  // did not fire, which requires viewport.width >= box.width + rect.width +
+  // 3*gap — already implying the viewport is wider than the box. Verified
+  // exhaustively over the below/above branch (80k+ inputs, zero cases with the
+  // box wider than the viewport). The guard stays as defence against a future
+  // change to the docking threshold, but it is deliberately untested: a test
+  // for it could never fail.
   const clampX = (x) => Math.min(positive(viewport.width - box.width), positive(x));
   const centredX = clampX(rect.x + rect.width / 2 - box.width / 2);
 

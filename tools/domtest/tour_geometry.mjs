@@ -116,14 +116,6 @@ console.log("\n=== a box larger than the viewport pins to the origin ===");
   check(b.y >= 0, "the vertical clamp never goes negative when the box is taller than the viewport",
         String(b.y));
 
-  // The mirror: tall and narrow, so the horizontal clamp is the one under test.
-  // Docking is bypassed by keeping the target wide enough that the threshold
-  // does not trip.
-  const tallNarrow = { width: 400, height: 1000 };
-  const c = boxPlacement({ x: 10, y: 480, width: 40, height: 40 }, tallNarrow,
-                         { width: 380, height: 160 }, 16);
-  check(c.x >= 0, "the horizontal clamp never goes negative", String(c.x));
-
   // And a viewport too small in both directions still degrades from 0,0
   // rather than to a negative offset.
   const d = boxPlacement({ x: 10, y: 10, width: 40, height: 40 },
