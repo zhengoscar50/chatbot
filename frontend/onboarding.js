@@ -106,14 +106,28 @@ function toggleOnboarding() {
 // Called on every dashboard load. Decides whether the panel shows itself, and
 // leaves an already-open panel open so a refresh mid-read does not shut it.
 async function refreshOnboarding() {
+  let loaded = null;
   try {
     const res = await authFetch("/onboarding");
-    if (!res.ok) return;
-    onboardState = await res.json();
+    if (res.ok) loaded = await res.json();
   } catch (err) {
     // A checklist is not worth breaking the dashboard over.
+    loaded = null;
+  }
+  // A body without a steps array is as useless as no body at all — auto-opening
+  // on it would show an empty panel and call it a checklist.
+  if (!loaded || !Array.isArray(loaded.steps)) {
+    // The Help button is clickable before this fetch lands. If someone opened
+    // the panel during that window there is now nothing to put in it, and an
+    // empty shell that never fills is worse than no panel — so close it.
+    if (helpOpen && !onboardState) {
+      helpOpen = false;
+      helpMode = false;
+      renderOnboarding();
+    }
     return;
   }
+  onboardState = loaded;
   if (!helpOpen) {
     helpOpen = !onboardState.complete && !onboardDismissed();
     helpMode = false;
