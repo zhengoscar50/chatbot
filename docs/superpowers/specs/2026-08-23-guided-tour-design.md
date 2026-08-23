@@ -82,6 +82,27 @@ answered, step 8 says so and offers to go back to step 5, because that is
 exactly the failure the tour exists to prevent and the user is now looking
 straight at it.
 
+## Two calls I made, so the plan has a complete spec to argue from
+
+**Step 8's wrong-answer branch is worth building, as a message and a button —
+not an automatic rewind.** If `answered_by_id` is null, the general assistant
+answered, and the user is looking straight at the failure this whole tour
+exists to prevent. Saying nothing there wastes the best teaching moment the
+app will ever get. But silently yanking them back to step 5 would be
+disorienting, so step 8 offers "The general assistant answered, not a
+specialist — check your agent's description?" with a button back to step 5 and
+a Next that accepts it. One branch, no state machine change.
+
+**Eight steps is acceptable because the tour is already resumable.** The
+concern is real — eight steps including a document upload is a long first run.
+It is mitigated by a property the design already has rather than by cutting
+steps: because each step reads its `done` flag from `GET /onboarding`, a user
+who bails after step 5 and later presses **?** starts at step 6, since steps
+1-5 now derive as done. Abandoning the tour costs nothing, and no step is ever
+demanded twice. Skip is visible from step 1 onward, and steps in show-it mode
+advance on a single Next, so a partially set-up account moves through the
+early steps in seconds.
+
 ## How the spotlight works
 
 Four positioned `<div>`s — above, below, left, right of the target's bounding
