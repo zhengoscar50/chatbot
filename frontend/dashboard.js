@@ -207,6 +207,9 @@ async function loadDashboard() {
   // After the grid, not before: the checklist is a footnote to the dashboard,
   // and its fetch must never delay the cards. Deliberately not awaited.
   refreshOnboarding();
+  // After the grid exists — the tour's first steps target cards that
+  // renderCard has only just created.
+  tourAutoplayIfFlagged();
 }
 
 function showDashboardError(message) {

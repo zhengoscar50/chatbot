@@ -57,6 +57,7 @@ function init() {
   wireKnowledge();
   wireScope();
   wireDashboard();
+  wireTour();
   newSessionButton.addEventListener("click", createSession);
   sidebarToggle.addEventListener("click", () => sidebar.classList.toggle("open"));
   document.getElementById("logout-btn").addEventListener("click", doLogout);
@@ -136,6 +137,15 @@ function wireAuthForm() {
       currentUsername = body.username || username;
       localStorage.setItem(TOKEN_KEY, authToken);
       localStorage.setItem(NAME_KEY, currentUsername);
+      // A brand-new account has never seen the app. Hand the tour a one-shot
+      // flag rather than a durable one — first visit is implied by signup.
+      if (authMode === "register") {
+        try {
+          sessionStorage.setItem(TOUR_AUTOPLAY_FLAG, "1");
+        } catch (err) {
+          /* the tour simply does not autoplay; ? still starts it */
+        }
+      }
       authPasswordInput.value = "";
       enterApp();
     } catch (err) {
