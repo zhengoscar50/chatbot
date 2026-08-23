@@ -66,6 +66,7 @@ function makeServer(state) {
 
     if (path === "/onboarding") {
       if (state.failOnboarding) return json(500, { detail: "boom" });
+      if (state.malformedOnboarding) return json(200, state.malformedOnboarding);
       return json(200, state.onboardPayload);
     }
 
@@ -103,6 +104,7 @@ function freshState(onboardPayload = payload(0)) {
     calls: [],
     failChatbots: false,
     failOnboarding: false,
+    malformedOnboarding: null,
     onboardPayload,
     chatbots: [
       { id: "cb-1", name: "My chatbot", description: "Everything from before",
@@ -325,6 +327,30 @@ console.log("\n=== onboarding: the getting-started panel ===");
   const panel = d.getElementById("onboarding");
   check(cards.length === 1 && panel.hidden === false && consoleErrors.length === 0,
         "15. storage that throws does not break the dashboard",
+        `cards=${cards.length} hidden=${panel.hidden} errors=${consoleErrors.length}`);
+}
+
+// 16. A 200 with no steps key leaves the dashboard usable and the panel shut
+{
+  const state = freshState(payload(1));
+  state.malformedOnboarding = {};
+  const { d } = await boot({ state });
+  const cards = $$(d, ".bot-card:not(.bot-card--new)");
+  const panel = d.getElementById("onboarding");
+  check(cards.length === 1 && panel.hidden === true && consoleErrors.length === 0,
+        "16. a 200 with no steps key leaves the dashboard usable",
+        `cards=${cards.length} hidden=${panel.hidden} errors=${consoleErrors.length}`);
+}
+
+// 17. A 200 with a non-array steps value leaves the dashboard usable and the panel shut
+{
+  const state = freshState(payload(1));
+  state.malformedOnboarding = { steps: null, complete: false };
+  const { d } = await boot({ state });
+  const cards = $$(d, ".bot-card:not(.bot-card--new)");
+  const panel = d.getElementById("onboarding");
+  check(cards.length === 1 && panel.hidden === true && consoleErrors.length === 0,
+        "17. a 200 with a non-array steps value leaves the dashboard usable",
         `cards=${cards.length} hidden=${panel.hidden} errors=${consoleErrors.length}`);
 }
 
