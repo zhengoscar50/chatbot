@@ -32,6 +32,7 @@ let tourOnboarding = null;
 let tourRunning = false;
 let tourFrame = null;
 let tourDeadline = 0;
+let tourFallbackShown = false;
 
 function tourStorage(fn, fallback) {
   try {
@@ -83,6 +84,13 @@ function paintPanes(rect) {
 }
 
 function showStep(index) {
+  // tick() is about to be called synchronously below. Any frame already
+  // queued would then run a SECOND loop against the new step — and two loops
+  // in one frame can both see a doing-predicate flip and both advance,
+  // skipping a step the user never saw. Every path into a new step goes
+  // through here, so one cancel covers all of them.
+  if (tourFrame) cancelAnimationFrame(tourFrame);
+  tourFrame = null;
   tourIndex = index;
   const step = TOUR_STEPS[index];
   const mode = stepMode(step, tourOnboarding);
@@ -92,6 +100,7 @@ function showStep(index) {
   tourBody.textContent = copy.body;
   tourProgress.textContent = `${index + 1} of ${TOUR_STEPS.length}`;
   tourAction.hidden = true;
+  tourFallbackShown = false;
   tourDeadline = Date.now() + STEP_TIMEOUT_MS;
   tourBox.focus();
   tick();
@@ -161,27 +170,34 @@ function lastStepOnSurface(surface) {
 function showFallback(step) {
   const target = document.querySelector(step.fallbackTarget);
   paintPanes(target.getBoundingClientRect());
-  tourTitle.textContent = step.fallbackTitle;
-  tourBody.textContent = step.fallbackBody;
-  if (step.fallbackAction) {
-    tourAction.hidden = false;
-    tourAction.textContent = step.fallbackAction.label;
-    tourAction.onclick = () => {
-      const i = TOUR_STEPS.findIndex((x) => x.id === step.fallbackAction.stepId);
-      tourAction.hidden = true;
-      // Send them back to fix it rather than yanking them there silently —
-      // they asked for this by pressing the button.
-      showStep(i === -1 ? 0 : i);
-    };
+  if (!tourFallbackShown) {
+    tourFallbackShown = true;
+    tourTitle.textContent = step.fallbackTitle;
+    tourBody.textContent = step.fallbackBody;
+    if (step.fallbackAction) {
+      tourAction.hidden = false;
+      tourAction.textContent = step.fallbackAction.label;
+      tourAction.onclick = () => {
+        const i = TOUR_STEPS.findIndex((x) => x.id === step.fallbackAction.stepId);
+        tourAction.hidden = true;
+        // Send them back to fix it rather than yanking them there silently —
+        // they asked for this by pressing the button.
+        showStep(i === -1 ? 0 : i);
+      };
+    }
   }
   tourFrame = requestAnimationFrame(tick);
 }
 
 function advance() {
+  const from = tourIndex;
   if (tourIndex + 1 >= TOUR_STEPS.length) {
     endTour();
     return;
   }
+  // Belt and braces against the leak above: if two callers race, only the one
+  // that still sees the step it was called for gets to move.
+  if (from !== tourIndex) return;
   showStep(tourIndex + 1);
 }
 
@@ -193,6 +209,9 @@ function firstIncompleteStep() {
 }
 
 async function startTour() {
+  // The ? button calls this; pressing it mid-tour must restart cleanly rather
+  // than layering a second loop over the running one.
+  if (tourRunning) endTour();
   tourOnboarding = null;
   try {
     const res = await authFetch("/onboarding");
