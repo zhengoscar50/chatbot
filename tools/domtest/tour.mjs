@@ -540,6 +540,41 @@ console.log("\n=== tour: the guided tour engine ===");
         `before=${before} after=${after} nextDisabled=${stuck}`);
 }
 
+// 23. The knowledge step is finished by CLOSING the panel, not by opening it,
+// and while it is open the step keeps its own instructions. Reported from a
+// real session: "there is no change from the step 6 add text to the chatbot
+// part" — the step completed the instant the panel appeared, so "Upload a PDF"
+// was satisfied by merely looking at it. And because the panel then covers
+// #my-knowledge, the generic occlusion notice would have replaced the upload
+// instructions with "close this window" at the exact moment the user was meant
+// to be reading them.
+{
+  const state = freshState(payload(1));
+  const { w, d } = await boot({ state });
+  await enterChatbot(w, d);
+  const panel = d.getElementById("knowledge-modal");
+
+  await w.startTour();
+  w.showStep(5);                       // knowledge
+  await flush(20);
+  const shut = d.getElementById("tour-progress").textContent;
+
+  panel.hidden = false;                // opened: must NOT complete
+  await flush(25);
+  const openProgress = d.getElementById("tour-progress").textContent;
+  const openBody = d.getElementById("tour-body").textContent;
+
+  panel.hidden = true;                 // finished with it
+  await flush(30);
+  const afterProgress = d.getElementById("tour-progress").textContent;
+
+  check(shut === "6 of 8" && openProgress === "6 of 8"
+        && /upload/i.test(openBody) && !/close this window/i.test(openBody)
+        && afterProgress === "7 of 8",
+        "23. the knowledge step holds while its panel is open, then advances",
+        `shut=${shut} open=${openProgress} after=${afterProgress} body="${openBody.slice(0, 30)}"`);
+}
+
 // 11. Step 8's fallback -- the engine's own comments call this "the tour's
 // most valuable moment". The server ALWAYS sends answered_by; what varies is
 // its id, which is null for the general assistant and set for a specialist.

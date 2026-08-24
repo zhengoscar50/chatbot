@@ -34,7 +34,7 @@ let tourRunning = false;
 let tourFrame = null;
 let tourDeadline = 0;
 let tourFallbackShown = false;
-let tourFormSeenOpen = false;  // latch for the description step; reset per step
+let tourPanelSeenOpen = false;  // latch for `opens` steps; reset per step
 
 function tourStorage(fn, fallback) {
   try {
@@ -57,23 +57,9 @@ const TOUR_DONE = {
   enter: () => !document.getElementById("app-view").hidden,
   agents: () => !document.getElementById("agent-list-modal").hidden,
   "new-agent": () => !document.getElementById("agent-modal").hidden,
-  // Done when the FORM is done, not on the first keystroke — that fired on one
-  // character and marched the user out of a half-filled form into a step
-  // pointing at the sidebar behind it.
-  //
-  // "Modal is closed" alone is not enough either: arriving at this step with
-  // the form already shut — a replay landing here, or the step-8 fallback
-  // jumping back — would satisfy it instantly and skip the step. So it
-  // latches: the form has to be seen open, and then closed.
-  description: () => {
-    const modal = document.getElementById("agent-modal");
-    if (!modal.hidden) {
-      tourFormSeenOpen = true;
-      return false;
-    }
-    return tourFormSeenOpen;
-  },
-  knowledge: () => !document.getElementById("knowledge-modal").hidden,
+  // "description" and "knowledge" are not listed: a step that declares `opens`
+  // is finished by CLOSING that panel, handled by panelCycled below. Opening it
+  // is not the step — the step is what you do inside it.
   ask: () => document.querySelectorAll(".row--assistant").length > 0,
 };
 
@@ -89,6 +75,24 @@ function tourOccluded(el) {
     if (m.contains(el)) return false;
   }
   return true;
+}
+
+// A step that declares `opens` is working inside a panel. It completes when
+// that panel has been seen open and is then closed — not when it opens.
+//
+// Both halves matter. Completing on OPEN meant "Upload a PDF" was satisfied by
+// merely looking at the panel, and "Write what this agent is for" by the first
+// keystroke. Completing on CLOSED alone would satisfy the step instantly for
+// anyone arriving with the panel already shut — a replay, or the step-8
+// fallback jumping back — skipping the very step they were sent to.
+function panelCycled(selector) {
+  const el = document.querySelector(selector);
+  if (!el) return false;
+  if (!el.hidden) {
+    tourPanelSeenOpen = true;
+    return false;
+  }
+  return tourPanelSeenOpen;
 }
 
 function tourVisible(el) {
@@ -133,7 +137,7 @@ function showStep(index) {
   tourProgress.textContent = `${index + 1} of ${TOUR_STEPS.length}`;
   tourAction.hidden = true;
   tourFallbackShown = false;
-  tourFormSeenOpen = false;
+  tourPanelSeenOpen = false;
   tourDeadline = Date.now() + STEP_TIMEOUT_MS;
   tourBox.focus();
   tick();
@@ -154,8 +158,9 @@ function tick() {
   // asks for often destroys that step's own target — clicking a chatbot card
   // hides the whole dashboard — so a completion test gated on the target still
   // being on screen can never fire for exactly the steps that matter most.
-  const satisfied = TOUR_DONE[step.id];
-  if (satisfied && satisfied()) {
+  const predicate = TOUR_DONE[step.id];
+  const done = step.opens ? panelCycled(step.opens) : !!(predicate && predicate());
+  if (done) {
     advance();
     return;
   }
@@ -212,6 +217,16 @@ function tick() {
   //    nothing else on the page will tell them so — waiting out the timeout
   //    in silence is exactly how a tour comes to feel broken.
   if (target && tourOccluded(target)) {
+    // If the thing covering the target is the panel THIS step asked them to
+    // open, they are doing the step, not blocked by something unrelated.
+    // Keep the instructions up rather than telling them to close it.
+    const own = step.opens && document.querySelector(step.opens);
+    if (own && !own.hidden) {
+      const copy = stepCopy(step, stepMode(step, tourOnboarding));
+      if (tourBody.textContent !== copy.body) tourBody.textContent = copy.body;
+      tourFrame = requestAnimationFrame(tick);
+      return;
+    }
     tourBody.textContent = "Close this window to carry on with the tour.";
     tourFrame = requestAnimationFrame(tick);
     return;

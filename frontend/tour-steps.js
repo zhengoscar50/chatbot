@@ -51,6 +51,9 @@ const TOUR_STEPS = [
     id: "description",
     surface: "chat",
     target: "#agent-description",
+    // The panel this step works inside. Opening it is not the step; finishing
+    // with it is. See `opens` handling in tour.js.
+    opens: "#agent-modal",
     needs: "description",
     title: "Describe it",
     doing: "Write what this agent is for. Routing matches your question against "
@@ -62,6 +65,7 @@ const TOUR_STEPS = [
     id: "knowledge",
     surface: "chat",
     target: "#my-knowledge",
+    opens: "#knowledge-modal",
     needs: "knowledge",
     title: "Give it something to read",
     doing: "Upload a PDF. Anything here is readable by every agent in this chatbot.",
