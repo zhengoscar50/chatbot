@@ -78,7 +78,7 @@ const TOUR_STEPS = [
   },
   {
     id: "who-answered",
-    target: ".agent-badge",
+    target: ".agent-badge:not(.agent-badge--general)",
     needs: null,
     surface: "chat",
     title: "A specialist answered",
@@ -90,7 +90,7 @@ const TOUR_STEPS = [
     // this tour was built to prevent, and the user is looking straight at it.
     // Falling back to the generic "can't find that" would waste the best
     // teaching moment the app ever gets.
-    fallbackTarget: ".row--assistant:last-of-type",
+    fallbackTarget: ".agent-badge--general",
     fallbackTitle: "The general assistant answered",
     fallbackBody: "No specialist was picked, so no document was searched. "
                 + "That almost always means an agent's description does not "

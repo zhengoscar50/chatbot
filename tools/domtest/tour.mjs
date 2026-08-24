@@ -327,18 +327,19 @@ console.log("\n=== tour: the guided tour engine ===");
 }
 
 // 11. Step 8's fallback -- the engine's own comments call this "the tour's
-// most valuable moment": no .agent-badge exists when the general assistant
-// (not a specialist) answered, so the step falls back to naming that and
-// offering #tour-action as a route back to the description step. Render a
-// .row--assistant with no agent badge the same way appendMessage() does for
-// an answer with no answeredBy, force the tour onto the last step, and
-// assert the fallback title, the visible action button, and that clicking
-// it lands on the description step.
+// most valuable moment". The server ALWAYS sends answered_by; what varies is
+// its id, which is null for the general assistant and set for a specialist.
+// So the badge always renders, and the discriminator is the
+// agent-badge--general class, not the badge's absence. An earlier version of
+// this check rendered a row with no badge at all -- a state the app cannot
+// produce -- which is why it passed against an implementation whose fallback
+// could never fire. Feed appendMessage exactly what the server sends.
 {
   const state = freshState(payload(5));
   const { w, d } = await boot({ state });
   await enterChatbot(w, d);
-  w.appendMessage("assistant", "AI", "General answer, no specialist matched.");
+  w.appendMessage("assistant", "AI", "General answer, no specialist matched.",
+                  [], { id: null, name: "General assistant" });
   await w.startTour();
   w.showStep(7); // last step, "who-answered" (TOUR_STEPS has 8 entries)
   await flush(15);
@@ -362,7 +363,8 @@ console.log("\n=== tour: the guided tour engine ===");
   const state = freshState(payload(5));
   const { w, d } = await boot({ state });
   await enterChatbot(w, d);
-  w.appendMessage("assistant", "AI", "Specialist answer.", null, { name: "Chem Tutor" });
+  w.appendMessage("assistant", "AI", "Specialist answer.", [],
+                  { id: "a1", name: "Chem Tutor" });
   await w.startTour();
   w.showStep(7); // last step, "who-answered" (TOUR_STEPS has 8 entries)
   await flush(15);

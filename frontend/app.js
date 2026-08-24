@@ -711,7 +711,10 @@ function appendMessage(role, avatarText, text, citations, answeredBy) {
     }
     if (answeredBy && answeredBy.name) {
       const badge = document.createElement("span");
-      badge.className = "agent-badge";
+      // answered_by.id is null for the general assistant and set for a
+      // specialist, so the class carries the distinction the name cannot:
+      // "General assistant" is a perfectly truthy name.
+      badge.className = "agent-badge" + (answeredBy.id ? "" : " agent-badge--general");
       badge.textContent = answeredBy.name;
       content.appendChild(badge);
     }
