@@ -138,6 +138,23 @@ async function boot({ state } = {}) {
   w.localStorage.setItem("rag-chat-token", "tok");
   w.localStorage.setItem("rag-chat-username", "oscar");
 
+  // jsdom has no layout engine: every getBoundingClientRect is 0x0, which
+  // pins the tour's tourVisible() gate permanently closed and means tick()
+  // never runs its main branch (paintPanes, the "doing" auto-advance). Give
+  // non-hidden elements a plausible rect so the engine actually executes;
+  // keep 0x0 for hidden ones so the visibility logic still discriminates.
+  // Must be installed before the scripts run, since tour.js reads elements
+  // that exist from first load.
+  w.Element.prototype.getBoundingClientRect = function () {
+    const zero = { x: 0, y: 0, width: 0, height: 0, top: 0, left: 0, right: 0, bottom: 0 };
+    if (this.hidden || (this.closest && this.closest("[hidden]"))) return zero;
+    return { x: 100, y: 100, width: 200, height: 40,
+             top: 100, left: 100, right: 300, bottom: 140 };
+  };
+  if (!w.HTMLElement.prototype.scrollIntoView) {
+    w.HTMLElement.prototype.scrollIntoView = function () {};
+  }
+
   for (const f of ["theme.js", "markdown.js", "agents.js", "knowledge.js",
                    "scope.js", "chatbots.js", "onboarding.js", "tour-spotlight.js",
                    "tour-steps.js", "tour.js", "dashboard.js", "app.js"]) {
