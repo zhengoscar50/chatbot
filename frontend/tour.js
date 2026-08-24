@@ -134,6 +134,21 @@ function paintPanes(rect) {
 // everything except the hole unclickable, so leaving them at the last step's
 // geometry locks the user out of the very control the box is telling them to
 // press. This is the difference between "waiting" and "frozen".
+// Title and body always move together. They used to be set independently, so a
+// waiting state replaced the body and left the previous step's title above it —
+// "Ask it something" sitting over "Close this window to carry on", which reads
+// as two steps at once. Writes are skipped when unchanged: this runs on every
+// animation frame.
+function setBox(title, body) {
+  if (tourTitle.textContent !== title) tourTitle.textContent = title;
+  if (tourBody.textContent !== body) tourBody.textContent = body;
+}
+
+function stepBox(step) {
+  const copy = stepCopy(step, stepMode(step, tourOnboarding));
+  setBox(copy.title, copy.body);
+}
+
 function clearPanes() {
   Object.keys(tourPanes).forEach((k) => {
     const el = tourPanes[k];
@@ -155,8 +170,7 @@ function showStep(index) {
   const mode = stepMode(step, tourOnboarding);
   const copy = stepCopy(step, mode);
 
-  tourTitle.textContent = copy.title;
-  tourBody.textContent = copy.body;
+  setBox(copy.title, copy.body);
   tourProgress.textContent = `${index + 1} of ${TOUR_STEPS.length}`;
   tourNext.textContent = isLastStep() ? "Done" : "Next";
   tourAction.hidden = true;
@@ -197,8 +211,7 @@ function tick() {
     // The waiting messages below overwrite the body. Once the target is
     // reachable again the step's own copy has to come back, or the box keeps
     // telling the user to close a window they already closed.
-    const copy = stepCopy(step, stepMode(step, tourOnboarding));
-    if (tourBody.textContent !== copy.body) tourBody.textContent = copy.body;
+    stepBox(step);
     tourFrame = requestAnimationFrame(tick);
     return;
   }
@@ -232,8 +245,7 @@ function tick() {
   //    window" here would be advice for the opposite problem.
   if (target && target.closest("[hidden]")) {
     clearPanes();
-    const copy = stepCopy(step, stepMode(step, tourOnboarding));
-    if (tourBody.textContent !== copy.body) tourBody.textContent = copy.body;
+    stepBox(step);
     tourFrame = requestAnimationFrame(tick);
     return;
   }
@@ -250,14 +262,13 @@ function tick() {
     // Keep the instructions up rather than telling them to close it.
     const own = step.opens && document.querySelector(step.opens);
     if (own && !own.hidden) {
-      const copy = stepCopy(step, stepMode(step, tourOnboarding));
-      if (tourBody.textContent !== copy.body) tourBody.textContent = copy.body;
+      stepBox(step);
       tourFrame = requestAnimationFrame(tick);
       return;
     }
-    tourBody.textContent = isLastStep()
+    setBox("When you're done here", isLastStep()
       ? "Close this window to finish the tour."
-      : "Close this window to carry on with the tour.";
+      : "Close this window to carry on with the tour.");
     tourFrame = requestAnimationFrame(tick);
     return;
   }
@@ -268,15 +279,12 @@ function tick() {
   // A step can declare what it means for its subject not to exist yet. That is
   // a normal state to walk through, not a missing selector to apologise for.
   if (!target && step.emptyBody) {
-    if (tourTitle.textContent !== step.emptyTitle) {
-      tourTitle.textContent = step.emptyTitle;
-      tourBody.textContent = step.emptyBody;
-    }
+    setBox(step.emptyTitle, step.emptyBody);
     tourFrame = requestAnimationFrame(tick);
     return;
   }
   if (Date.now() > tourDeadline) {
-    tourBody.textContent = "Can't find that on screen — skip this step?";
+    setBox("Can't find that", "It may have moved. Skip this step?");
   }
   tourFrame = requestAnimationFrame(tick);
 }
@@ -309,8 +317,7 @@ function showFallback(step) {
   paintPanes(target.getBoundingClientRect());
   if (!tourFallbackShown) {
     tourFallbackShown = true;
-    tourTitle.textContent = step.fallbackTitle;
-    tourBody.textContent = step.fallbackBody;
+    setBox(step.fallbackTitle, step.fallbackBody);
     if (step.fallbackAction) {
       tourAction.hidden = false;
       tourAction.textContent = step.fallbackAction.label;

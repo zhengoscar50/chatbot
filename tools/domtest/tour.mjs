@@ -624,6 +624,35 @@ console.log("\n=== tour: the guided tour engine ===");
         `title="${title}" body="${body.slice(0, 34)}"`);
 }
 
+// 28. A waiting state never leaves the previous title above a new body.
+// Reported from a real session: "step 7 is duplicated. it says ask it something
+// while in the chatbot knowledge tab". Opening the knowledge panel advances to
+// the ask step, whose target is behind that panel — and the waiting state
+// replaced only the body, so "Ask it something" sat above "Close this window to
+// carry on". Two instructions at once, neither of them followable.
+{
+  const state = freshState(payload(3));   // knowledge and answer still to do
+  const { w, d } = await boot({ state });
+  await enterChatbot(w, d);
+
+  await w.startTour();
+  w.showStep(5);                                          // knowledge
+  await flush(20);
+  d.getElementById("knowledge-modal").hidden = false;     // the click lands
+  await flush(30);
+  const waitTitle = d.getElementById("tour-title").textContent;
+  const waitBody = d.getElementById("tour-body").textContent;
+
+  d.getElementById("knowledge-modal").hidden = true;
+  await flush(30);
+  const backTitle = d.getElementById("tour-title").textContent;
+
+  check(!/ask it something/i.test(waitTitle) && /close this window/i.test(waitBody)
+        && /ask it something/i.test(backTitle),
+        "28. a waiting box replaces its title too, then restores it",
+        `waiting="${waitTitle}" back="${backTitle}"`);
+}
+
 // 11. Step 8's fallback -- the engine's own comments call this "the tour's
 // most valuable moment". The server ALWAYS sends answered_by; what varies is
 // its id, which is null for the general assistant and set for a specialist.
