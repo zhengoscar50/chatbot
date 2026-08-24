@@ -120,6 +120,26 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
 
+class RevalidatingStatics(StaticFiles):
+    """StaticFiles that always makes the browser check before reusing a file.
+
+    The frontend has no build step and no cache-busting in its script tags, so
+    every file is served under a stable URL forever. Without a Cache-Control
+    header a browser is free to apply heuristic freshness and reuse a script
+    for minutes without asking — which shows up as "I deployed a fix and I do
+    not see any change", and costs far more than the revalidation does.
+
+    `no-cache` does not mean "do not cache". It means "cache it, but revalidate
+    every time", so the ETag StaticFiles already sends still turns an unchanged
+    file into a 304 with no body.
+    """
+
+    async def get_response(self, path, scope):
+        response = await super().get_response(path, scope)
+        response.headers.setdefault("Cache-Control", "no-cache")
+        return response
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="RAG Chatbot on Powabase", version="1.0.0", lifespan=lifespan)
     register_exception_handlers(app)
@@ -136,7 +156,8 @@ def create_app() -> FastAPI:
     app.include_router(share_router)
     app.include_router(onboarding_router)
     # The StaticFiles mount at "/" swallows anything registered after it.
-    app.mount("/", StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
+    app.mount("/", RevalidatingStatics(directory=str(FRONTEND_DIR), html=True),
+              name="frontend")
     return app
 
 

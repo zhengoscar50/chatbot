@@ -68,3 +68,23 @@ def test_health_models_default_when_unset(monkeypatch):
         "default_agent": "gpt-4o-mini",
         "general_assistant": "gpt-4o-mini",
     }
+
+
+def test_static_files_are_always_revalidated():
+    """The frontend has no build step and no cache-busting in its script tags,
+    so every file lives at a stable URL forever. Without this header a browser
+    may apply heuristic freshness and reuse a script without asking — which
+    presents as "the fix is deployed and I see no change", and costs far more
+    than revalidation does."""
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    client = TestClient(create_app())
+    response = client.get("/tour.js")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "no-cache"
+    # no-cache still allows a 304 on an unchanged file, which is the point:
+    # revalidation is cheap, silently serving stale JavaScript is not.
+    assert response.headers.get("etag")
