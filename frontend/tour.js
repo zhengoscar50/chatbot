@@ -11,6 +11,12 @@
 const TOUR_SKIP_KEY = "rag-chat-tour-skipped";
 const TOUR_AUTOPLAY_FLAG = "rag-chat-tour-autoplay";
 const STEP_TIMEOUT_MS = 15000;
+
+// The last step has nothing after it, so "carry on with the tour" is a promise
+// the tour cannot keep. Everything the user reads at the end should say so.
+function isLastStep() {
+  return tourIndex === TOUR_STEPS.length - 1;
+}
 const PANE_PAD = 6;
 const BOX_GAP = 16;
 
@@ -152,6 +158,7 @@ function showStep(index) {
   tourTitle.textContent = copy.title;
   tourBody.textContent = copy.body;
   tourProgress.textContent = `${index + 1} of ${TOUR_STEPS.length}`;
+  tourNext.textContent = isLastStep() ? "Done" : "Next";
   tourAction.hidden = true;
   tourFallbackShown = false;
   tourPanelSeenOpen = false;
@@ -248,7 +255,9 @@ function tick() {
       tourFrame = requestAnimationFrame(tick);
       return;
     }
-    tourBody.textContent = "Close this window to carry on with the tour.";
+    tourBody.textContent = isLastStep()
+      ? "Close this window to finish the tour."
+      : "Close this window to carry on with the tour.";
     tourFrame = requestAnimationFrame(tick);
     return;
   }
@@ -256,6 +265,16 @@ function tick() {
   // 5. Genuinely missing — usually a renamed selector. Offer a way out; a tour
   //    that quietly stalls is the thing that makes tours feel broken.
   clearPanes();
+  // A step can declare what it means for its subject not to exist yet. That is
+  // a normal state to walk through, not a missing selector to apologise for.
+  if (!target && step.emptyBody) {
+    if (tourTitle.textContent !== step.emptyTitle) {
+      tourTitle.textContent = step.emptyTitle;
+      tourBody.textContent = step.emptyBody;
+    }
+    tourFrame = requestAnimationFrame(tick);
+    return;
+  }
   if (Date.now() > tourDeadline) {
     tourBody.textContent = "Can't find that on screen — skip this step?";
   }

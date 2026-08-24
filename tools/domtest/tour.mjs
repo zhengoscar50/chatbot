@@ -576,6 +576,54 @@ console.log("\n=== tour: the guided tour engine ===");
         `before=${before} after=${after}`);
 }
 
+// 26. The last step knows it is last. Reported from a real session: "step 10
+// says close the window to carry on with the tour. its the last step, the tour
+// is over after it." Both the button and the waiting copy now say so.
+{
+  const state = freshState(payload(5));
+  const { w, d } = await boot({ state });
+  await enterChatbot(w, d);
+  d.getElementById("scope-button").hidden = false;   // a chat is open
+  await w.startTour();
+  w.showStep(9);                                     // last step
+  await flush(20);
+  const label = d.getElementById("tour-next").textContent;
+
+  d.getElementById("knowledge-modal").hidden = false;  // something covers it
+  await flush(25);
+  const waiting = d.getElementById("tour-body").textContent;
+  d.getElementById("knowledge-modal").hidden = true;
+  await flush(15);
+
+  click(w, d.getElementById("tour-next"));
+  await flush(15);
+  const ended = d.getElementById("tour").hidden;
+
+  check(label === "Done" && /finish the tour/i.test(waiting)
+        && !/carry on/i.test(waiting) && ended === true,
+        "26. the final step says Done and promises no more tour",
+        `label="${label}" waiting="${waiting}" ended=${ended}`);
+}
+
+// 27. Step 8 does not claim a specialist answered when nothing was asked.
+// Walking past the ask step with Next leaves an empty chat, and the step's
+// normal copy ("that badge names the agent that answered") would be asserting
+// something that plainly did not happen.
+{
+  const state = freshState(payload(5));
+  const { w, d } = await boot({ state });
+  await enterChatbot(w, d);
+  await w.startTour();
+  w.showStep(7);                                     // who-answered, empty chat
+  await flush(30);
+  const title = d.getElementById("tour-title").textContent;
+  const body = d.getElementById("tour-body").textContent;
+
+  check(/nothing asked/i.test(title) && !/can't find/i.test(body),
+        "27. step 8 says nothing was asked rather than claiming an answer",
+        `title="${title}" body="${body.slice(0, 34)}"`);
+}
+
 // 11. Step 8's fallback -- the engine's own comments call this "the tour's
 // most valuable moment". The server ALWAYS sends answered_by; what varies is
 // its id, which is null for the general assistant and set for a specialist.

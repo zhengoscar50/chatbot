@@ -101,6 +101,12 @@ const TOUR_STEPS = [
                 + "That almost always means an agent's description does not "
                 + "match the question.",
     fallbackAction: { label: "Check the description", stepId: "description" },
+    // And when nothing has been asked at all — someone walked past the ask
+    // step with Next. Claiming "a specialist answered" over an empty chat
+    // would be the tour asserting something that plainly did not happen.
+    emptyTitle: "Nothing asked yet",
+    emptyBody: "Send a question and a badge under the answer names whichever "
+             + "agent handled it. That badge is how you tell routing worked.",
   },
   {
     id: "attach",
