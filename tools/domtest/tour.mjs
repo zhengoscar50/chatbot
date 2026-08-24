@@ -678,9 +678,15 @@ console.log("\n=== tour: the guided tour engine ===");
   click(w, d.getElementById("tour-action"));
   await flush(10);
   const progress = d.getElementById("tour-progress").textContent;
-  check(progress === "5 of 10",
-        "11b. tour-action from the fallback lands on the description step",
-        progress);
+  // Lands on "Manage agents", not the description step. The description field
+  // lives inside the agent form, which is shut at this point — jumping there
+  // gave a lesson with nothing to highlight and no route to the thing it was
+  // talking about. This is the first move the user actually has to make, and
+  // the jump carries the reason they were sent.
+  const note = d.getElementById("tour-body").textContent;
+  check(progress === "3 of 10" && /description/i.test(note),
+        "11b. the fallback lands on a reachable control, carrying its reason",
+        `${progress} note="${note.slice(0, 40)}"`);
 }
 
 // 12. The same step shows its normal copy when a specialist DID answer --

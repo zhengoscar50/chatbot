@@ -40,6 +40,8 @@ let tourRunning = false;
 let tourFrame = null;
 let tourDeadline = 0;
 let tourFallbackShown = false;
+let tourNote = null;         // one-step message carried by a fallback jump
+let tourPendingNote = null;  // consumed by the next showStep
 let tourPanelSeenOpen = false;  // latch for `opens` steps; reset per step
 
 function tourStorage(fn, fallback) {
@@ -144,9 +146,12 @@ function setBox(title, body) {
   if (tourBody.textContent !== body) tourBody.textContent = body;
 }
 
+// A step's own copy, unless a jump left a note explaining why the user is
+// here. Being bounced to "Manage agents" from a failed answer deserves better
+// than the caption that step shows to somebody arriving in order.
 function stepBox(step) {
   const copy = stepCopy(step, stepMode(step, tourOnboarding));
-  setBox(copy.title, copy.body);
+  setBox(copy.title, tourNote || copy.body);
 }
 
 function clearPanes() {
@@ -173,6 +178,8 @@ function showStep(index) {
   setBox(copy.title, copy.body);
   tourProgress.textContent = `${index + 1} of ${TOUR_STEPS.length}`;
   tourNext.textContent = isLastStep() ? "Done" : "Next";
+  tourNote = tourPendingNote;
+  tourPendingNote = null;
   tourAction.hidden = true;
   tourFallbackShown = false;
   tourPanelSeenOpen = false;
@@ -324,6 +331,7 @@ function showFallback(step) {
       tourAction.onclick = () => {
         const i = TOUR_STEPS.findIndex((x) => x.id === step.fallbackAction.stepId);
         tourAction.hidden = true;
+        tourPendingNote = step.fallbackAction.note || null;
         // Send them back to fix it rather than yanking them there silently —
         // they asked for this by pressing the button.
         showStep(i === -1 ? 0 : i);

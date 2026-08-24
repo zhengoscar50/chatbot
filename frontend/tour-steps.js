@@ -97,10 +97,23 @@ const TOUR_STEPS = [
     // teaching moment the app ever gets.
     fallbackTarget: ".agent-badge--general",
     fallbackTitle: "The general assistant answered",
-    fallbackBody: "No specialist was picked, so no document was searched. "
-                + "That almost always means an agent's description does not "
-                + "match the question.",
-    fallbackAction: { label: "Check the description", stepId: "description" },
+    fallbackBody: "No specialist was picked, so no document was searched. That "
+                + "almost always means an agent's description does not cover "
+                + "the kind of question you asked. Open Manage agents, pick "
+                + "your agent, and read its description back against your "
+                + "question.",
+    // Sends them to "Manage agents", not straight to the description step.
+    // The description field lives inside the agent form, which is shut at this
+    // point, so jumping there lands on a step with nothing to highlight and no
+    // route to the thing it is talking about — a lesson with no way to act on
+    // it. Manage agents is on screen and is the first move they have to make.
+    fallbackAction: {
+      label: "Take me there",
+      stepId: "agents",
+      note: "Open this, choose the agent that should have answered, and check "
+          + "its description against the question you asked. Routing reads "
+          + "that description and nothing else.",
+    },
     // And when nothing has been asked at all — someone walked past the ask
     // step with Next. Claiming "a specialist answered" over an empty chat
     // would be the tour asserting something that plainly did not happen.
