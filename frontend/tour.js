@@ -20,6 +20,7 @@ const tourTitle = document.getElementById("tour-title");
 const tourBody = document.getElementById("tour-body");
 const tourProgress = document.getElementById("tour-progress");
 const tourAction = document.getElementById("tour-action");
+const tourNext = document.getElementById("tour-next");
 const tourPanes = {
   top: document.getElementById("tour-pane-top"),
   right: document.getElementById("tour-pane-right"),
@@ -46,8 +47,12 @@ function tourStorage(fn, fallback) {
 // Keyed by step id. Each returns true once the world has changed in the way
 // that step asked for. Kept here rather than in the step table so the table
 // stays declarative data with no DOM knowledge in it.
+// A step listed here advances itself the moment the user does the thing. A step
+// ABSENT from this map is orientation — a caption on something already on
+// screen — and waits for Next. Presence, not the copy mode, is what decides:
+// following the instructions has to carry you forward whether the step was
+// phrased as "click this" or "this is where that lives".
 const TOUR_DONE = {
-  grid: () => true,
   enter: () => !document.getElementById("app-view").hidden,
   agents: () => !document.getElementById("agent-list-modal").hidden,
   "new-agent": () => !document.getElementById("agent-modal").hidden,
@@ -57,7 +62,6 @@ const TOUR_DONE = {
   },
   knowledge: () => !document.getElementById("knowledge-modal").hidden,
   ask: () => document.querySelectorAll(".row--assistant").length > 0,
-  "who-answered": () => true,
 };
 
 function tourVisible(el) {
@@ -109,18 +113,29 @@ function showStep(index) {
 function tick() {
   if (!tourRunning) return;
   const step = TOUR_STEPS[tourIndex];
+
+  // Completion first, before anything about visibility. Doing the thing a step
+  // asks for often destroys that step's own target — clicking a chatbot card
+  // hides the whole dashboard — so a completion test gated on the target still
+  // being on screen can never fire for exactly the steps that matter most.
+  const satisfied = TOUR_DONE[step.id];
+  if (satisfied && satisfied()) {
+    advance();
+    return;
+  }
+
   const target = document.querySelector(step.target);
 
   if (tourVisible(target)) {
     target.scrollIntoView({ block: "center", behavior: "auto" });
     paintPanes(target.getBoundingClientRect());
-    const mode = stepMode(step, tourOnboarding);
-    // Only a "doing" step advances on its own. A "showing" step is a caption
-    // on something that already exists — the user reads it and presses Next.
-    if (mode === "doing" && (TOUR_DONE[step.id] || (() => true))()) {
-      advance();
-      return;
-    }
+    // Next cannot cross to a surface the user has not reached — the target
+    // does not exist there, and advancing would only trigger the rewind below
+    // and look like a dead button. Reflect that instead of pretending.
+    const next = TOUR_STEPS[tourIndex + 1];
+    const blocked = !!next && next.surface !== currentSurface();
+    tourNext.disabled = blocked;
+    tourNext.title = blocked ? "Do this step to continue" : "";
     tourFrame = requestAnimationFrame(tick);
     return;
   }
@@ -191,6 +206,13 @@ function showFallback(step) {
 
 function advance() {
   const from = tourIndex;
+  // Belt and braces over the rewind in tick(), which would return the user
+  // here anyway — so removing this changes no outcome a test can observe, and
+  // none is written for it. It earns its place by making the round trip not
+  // happen at all, and by covering the one case the rewind cannot: a step with
+  // no earlier same-surface step to fall back to.
+  const next = TOUR_STEPS[tourIndex + 1];
+  if (next && next.surface !== currentSurface()) return;
   if (tourIndex + 1 >= TOUR_STEPS.length) {
     endTour();
     return;
@@ -249,7 +271,7 @@ function tourAutoplayIfFlagged() {
 }
 
 function wireTour() {
-  document.getElementById("tour-next").addEventListener("click", advance);
+  tourNext.addEventListener("click", advance);
   document.getElementById("tour-skip").addEventListener("click", skipTour);
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && tourRunning) skipTour();

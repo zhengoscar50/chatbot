@@ -301,22 +301,30 @@ console.log("\n=== tour: the guided tour engine ===");
 // with counters (a full fake, not a passthrough, so nothing auto-fires and
 // only explicit clicks drive the engine) and assert cancelled === 5.
 //
-// Needs the chat surface for the same reason check 5 does: steps 2 through 7
-// all live on "chat", so five clicks from step 1 walk 0→1→2→3→4→5 with no
-// surface-mismatch rewind in the way, giving an exact, predictable count.
+// Needs the chat surface, and needs to START there: indices 2..7 (agents,
+// new-agent, description, knowledge, ask, who-answered) all live on "chat",
+// so five clicks from index 2 walk 2→3→4→5→6→7 entirely within one surface.
+// Index 1 ("enter") is a DASHBOARD step, and Next deliberately refuses to
+// cross a surface the user has not reached, so starting earlier would block
+// on the boundary rather than counting frames.
 {
   const state = freshState(payload(5));
   const { w, d } = await boot({ state });
   await enterChatbot(w, d);
 
+  await w.startTour();
+  w.showStep(2); // first step on the chat surface
+  await flush(10);
+
+  // Counters go in AFTER the setup: startTour and showStep each legitimately
+  // cancel a frame of their own, and this check is about what the five clicks
+  // do, not about the walk to the starting line.
   let requested = 0;
   let cancelled = 0;
   let nextId = 1;
   w.requestAnimationFrame = () => { requested += 1; return nextId++; };
   w.cancelAnimationFrame = () => { cancelled += 1; };
 
-  await w.startTour();
-  await flush(10);
   for (let i = 0; i < 5; i += 1) {
     click(w, d.getElementById("tour-next"));
     await flush(5);
@@ -324,6 +332,56 @@ console.log("\n=== tour: the guided tour engine ===");
   check(cancelled === 5,
         "10. five Next clicks leave exactly one live rAF loop",
         `cancelled=${cancelled} requested=${requested}`);
+}
+
+// 15. Doing what a step asks carries you forward, even when the step was
+// phrased as a caption rather than an instruction. Reported from a real
+// session: on step 2 the tour sat there after the user clicked into the
+// chatbot, still highlighting the dashboard. Two causes, both fixed —
+// advancing was gated on the copy mode ("showing" steps never advanced), and
+// the completion test ran only while the step's own target was still visible,
+// which entering a chatbot destroys. Whoever owns the chatbot already, so
+// step 2 renders in "showing" mode: that is the case that was broken.
+{
+  const state = freshState(payload(1)); // has a chatbot, nothing else
+  const { w, d } = await boot({ state });
+  await w.startTour();
+  w.showStep(1); // "enter" — Go inside
+  await flush(10);
+  const before = d.getElementById("tour-progress").textContent;
+
+  await enterChatbot(w, d);
+  await flush(20);
+  const after = d.getElementById("tour-progress").textContent;
+
+  check(before === "2 of 8" && after === "3 of 8",
+        "15. entering the chatbot advances the tour on its own",
+        `before=${before} after=${after}`);
+}
+
+// 16. Next refuses to cross onto a surface the user has not reached, and says
+// so instead of looking dead. Same session: pressing Next on step 2 appeared
+// to do nothing, because it advanced to a chat-surface step whose target does
+// not exist on the dashboard and the rewind pulled it straight back. Steps
+// 3-8 are genuinely unreachable until you enter a chatbot, so the honest
+// behaviour is a disabled button carrying the reason.
+{
+  const state = freshState(payload(1));
+  const { w, d } = await boot({ state });
+  await w.startTour();
+  w.showStep(1); // "enter" is the last dashboard step; step 3 is on "chat"
+  await flush(10);
+  const next = d.getElementById("tour-next");
+  const disabled = next.disabled;
+  const title = next.title;
+
+  click(w, next);
+  await flush(10);
+  const progress = d.getElementById("tour-progress").textContent;
+
+  check(disabled === true && title.length > 0 && progress === "2 of 8",
+        "16. Next is disabled at a surface boundary rather than silently dead",
+        `disabled=${disabled} title="${title}" progress=${progress}`);
 }
 
 // 11. Step 8's fallback -- the engine's own comments call this "the tour's
