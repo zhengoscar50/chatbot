@@ -313,6 +313,11 @@ console.log("\n=== tour: the guided tour engine ===");
   await enterChatbot(w, d);
 
   await w.startTour();
+  // Next now refuses to cross into a step whose control is sealed in a shut
+  // panel, so open the two the walk passes through. Opening commits to
+  // nothing; this check is about frame bookkeeping, not about the gate.
+  d.getElementById("agent-list-modal").hidden = false;
+  d.getElementById("agent-modal").hidden = false;
   w.showStep(2); // first step on the chat surface
   await flush(10);
 
@@ -463,35 +468,64 @@ console.log("\n=== tour: the guided tour engine ===");
         `advanced=${advanced} returned=${returned}`);
 }
 
-// 20. The tour is a walkthrough, not a setup wizard. Someone should be able to
-// read all eight steps without committing to anything — no agent created, no
-// document uploaded, no message sent. Reported from a real session: "the user
-// doesn't need to create a specialist agent on the spot". Entering a chatbot
-// is the one unavoidable action, and it creates nothing.
+// 20. Walkable end to end without CREATING anything. Navigation is fair game
+// — entering a chatbot, opening a panel, closing it again — because none of it
+// commits the user to a thing they have to undo. What the tour must never
+// require is an agent, a description, a document or a message.
+//
+// Earlier this walked on Next alone, which produced steps that described a
+// control without ever showing it: "steps 3 to 6 is bad if the user doesnt
+// click on manage agents, the boxes are just describing it without showing
+// it". Insisting on the free half of the work is what fixed that.
 {
   const state = freshState(payload(1));
   const { w, d } = await boot({ state });
   await w.startTour();
-  await flush(15);
+  await flush(20);
 
-  const reached = [];
-  for (let i = 0; i < 12; i += 1) {
+  const shownWithHighlight = [];
+  for (let i = 0; i < 24; i += 1) {
+    const at = d.getElementById("tour-progress").textContent;
+    if (at === "10 of 10") break;
+    const title = d.getElementById("tour-title").textContent;
+
+    // Record per step, not per click: a step reached by opening a panel still
+    // has to be SHOWN, and that is the whole point of this check.
+    const lit = ["top", "right", "bottom", "left"]
+      .map((k) => parseInt(d.getElementById(`tour-pane-${k}`).style.width, 10) || 0)
+      .reduce((a, b) => a + b, 0) > 0;
+    if (lit && !shownWithHighlight.includes(at)) shownWithHighlight.push(at);
+
+    // Do exactly what the box asks, and nothing more.
+    if (/when you're done here/i.test(title)) {
+      for (const id of ["agent-modal", "agent-list-modal", "knowledge-modal"]) {
+        const el = d.getElementById(id);
+        if (el && !el.hidden) { el.hidden = true; break; }
+      }
+      await flush(20);
+      continue;
+    }
     const btn = d.getElementById("tour-next");
-    reached.push(d.getElementById("tour-progress").textContent);
     if (btn.disabled) {
-      await enterChatbot(w, d);       // navigation only; nothing is created
+      if (d.getElementById("app-view").hidden) await enterChatbot(w, d);
+      else if (d.getElementById("agent-list-modal").hidden) d.getElementById("agent-list-modal").hidden = false;
+      else if (d.getElementById("agent-modal").hidden) d.getElementById("agent-modal").hidden = false;
+      else break;                    // blocked with nothing left to open
       await flush(20);
       continue;
     }
     click(w, btn);
     await flush(20);
-    if (d.getElementById("tour-progress").textContent === "10 of 10") break;
   }
   const end = d.getElementById("tour-progress").textContent;
 
-  check(end === "10 of 10",
-        "20. the whole tour can be walked without creating anything",
-        `ended at ${end} via ${reached.join(" ")}`);
+  // Nothing was created: no agent row, no description typed, no message sent.
+  const created = d.getElementById("agent-description").value
+    || d.querySelectorAll(".row--assistant").length;
+
+  check(end === "10 of 10" && !created && shownWithHighlight.length >= 6,
+        "20. walkable end to end, creating nothing, actually showing things",
+        `ended=${end} created=${created} highlighted=${shownWithHighlight.length}`);
 }
 
 // 21. A step whose target is merely NOT OPEN YET keeps its own explanation up
@@ -542,7 +576,12 @@ console.log("\n=== tour: the guided tour engine ===");
   const stuck = d.getElementById("tour-next").disabled;
 
   // Lands on the first chat step (3), skipping "Go inside" — already done.
-  check(before === "1 of 10" && after === "3 of 10" && stuck === false,
+  // Next being disabled HERE is correct and not the lock this covers: step 4's
+  // control is sealed in a shut panel, and opening it is one click away. The
+  // lock was the tour sitting on a dashboard step describing the dashboard to
+  // somebody looking at a chatbot, with no move available at all.
+  check(before === "1 of 10" && after === "3 of 10"
+        && d.getElementById("tour").hidden === false,
         "22. running ahead of the tour makes it catch up, not lock",
         `before=${before} after=${after} nextDisabled=${stuck}`);
 }
@@ -653,35 +692,32 @@ console.log("\n=== tour: the guided tour engine ===");
         `waiting="${waitTitle}" back="${backTitle}"`);
 }
 
-// 29. A step with nothing to point at says what is not open. Reported from a
-// real session: "if the user doesnt click on manage agents then it misses some
-// steps". Pressing Next past Manage agents leaves steps 4 and 5 pointing at
-// controls inside a shut panel, so they rendered as captions with no spotlight
-// — the user is told a control exists and never shown where, which is the same
-// as missing the step.
+// 29. A step whose panel is closed underneath it says what to open. Next no
+// longer walks into this state — it refuses to cross into a step sealed in a
+// shut panel — but the user can still produce it by closing the panel while
+// the step is showing, and then the box must not go quiet.
 {
   const state = freshState(payload(1));
   const { w, d } = await boot({ state });
   await enterChatbot(w, d);
+  d.getElementById("agent-list-modal").hidden = false;
   await w.startTour();
-  w.showStep(2);                        // Agents — deliberately never clicked
-  await flush(20);
+  w.showStep(3);                       // "Add a specialist", inside the list
+  await flush(25);
+  const panesBefore = ["top", "right", "bottom", "left"]
+    .map((k) => parseInt(d.getElementById(`tour-pane-${k}`).style.width, 10) || 0)
+    .reduce((a, b) => a + b, 0);
 
-  const seen = [];
-  for (let i = 0; i < 2; i += 1) {
-    click(w, d.getElementById("tour-next"));
-    await flush(25);
-    const panes = ["top", "right", "bottom", "left"]
-      .map((k) => parseInt(d.getElementById(`tour-pane-${k}`).style.width, 10) || 0)
-      .reduce((a, b) => a + b, 0);
-    seen.push({ body: d.getElementById("tour-body").textContent, panes });
-  }
+  d.getElementById("agent-list-modal").hidden = true;   // closed underneath it
+  await flush(25);
+  const body = d.getElementById("tour-body").textContent;
+  const panesAfter = ["top", "right", "bottom", "left"]
+    .map((k) => parseInt(d.getElementById(`tour-pane-${k}`).style.width, 10) || 0)
+    .reduce((a, b) => a + b, 0);
 
-  // Both steps highlight nothing (correctly — the control is shut away) and
-  // both must therefore say so rather than leaving the user to wonder.
-  check(seen.every((x) => x.panes === 0 && /isn't open/i.test(x.body)),
-        "29. a step that cannot point at anything says what to open",
-        seen.map((x) => `panes=${x.panes} "${x.body.slice(-28)}"`).join(" | "));
+  check(panesBefore > 0 && panesAfter === 0 && /isn't open/i.test(body),
+        "29. a step whose panel closes underneath it says what to open",
+        `before=${panesBefore} after=${panesAfter} body="${body.slice(-30)}"`);
 }
 
 // 11. Step 8's fallback -- the engine's own comments call this "the tour's

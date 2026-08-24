@@ -197,7 +197,7 @@ function tick() {
   // visible: a waiting step used to keep whatever state the button had last,
   // so it could sit there looking clickable while advance() silently refused.
   const upcoming = TOUR_STEPS[tourIndex + 1];
-  tourNext.disabled = !!upcoming && upcoming.surface !== currentSurface();
+  tourNext.disabled = !reachable(upcoming);
   tourNext.title = tourNext.disabled ? "Do this step to continue" : "";
 
   // Completion first, before anything about visibility. Doing the thing a step
@@ -300,6 +300,37 @@ function tick() {
   tourFrame = requestAnimationFrame(tick);
 }
 
+// Whether the tour could actually SHOW a step, as opposed to describing it.
+//
+// Two things make a step unshowable: it lives on a surface the user has not
+// navigated to, or its control is sealed inside a panel that is shut. Both are
+// fixed by navigating, and navigating commits to nothing — opening Manage
+// agents creates no agent, and it closes again. So the tour insists on those,
+// exactly as it insists on entering a chatbot.
+//
+// What it must never insist on is the committing half: creating an agent,
+// writing a description, uploading a document, sending a message. Those stay
+// optional, which is why a step is blocked by its SUCCESSOR being unshowable
+// rather than by its own work being undone.
+//
+// A target that does not exist at all is not blocking — the badge on the last
+// step is absent until someone asks a question, and nobody should be trapped
+// behind it.
+function reachable(step) {
+  if (!step) return true;
+  if (step.surface !== currentSurface()) return false;
+  const el = document.querySelector(step.target);
+  if (!el) return true;
+  // Only a shut PANEL counts as blocking, because a panel is something the
+  // user can open by clicking, at no cost. Anything else the app has hidden —
+  // the per-chat agent pill, which does not exist until a chat does — is state
+  // they could only reach by committing to something, and the tour never
+  // demands that. Blocking on it would strand anyone who walked the tour
+  // without sending a message.
+  const shut = el.closest("[hidden]");
+  return !(shut && shut.classList && shut.classList.contains("modal"));
+}
+
 function currentSurface() {
   return document.getElementById("app-view").hidden ? "dashboard" : "chat";
 }
@@ -352,8 +383,7 @@ function advance() {
   // none is written for it. It earns its place by making the round trip not
   // happen at all, and by covering the one case the rewind cannot: a step with
   // no earlier same-surface step to fall back to.
-  const next = TOUR_STEPS[tourIndex + 1];
-  if (next && next.surface !== currentSurface()) return;
+  if (!reachable(TOUR_STEPS[tourIndex + 1])) return;
   if (tourIndex + 1 >= TOUR_STEPS.length) {
     endTour();
     return;
