@@ -384,6 +384,84 @@ console.log("\n=== tour: the guided tour engine ===");
         `disabled=${disabled} title="${title}" progress=${progress}`);
 }
 
+// 17. A step whose target sits behind an open modal waits and says so, rather
+// than cutting a hole around a control the click cannot reach. Reported from a
+// real session: "step 6 and beyond doesn't work if the user is on the agent
+// screen". The tour paints above modals (z-index 60 vs 20), so #my-knowledge —
+// a sidebar button, not in any modal — still got highlighted while the agent
+// form covered it, and clicking the hole hit the modal.
+{
+  const state = freshState(payload(1));
+  const { w, d } = await boot({ state });
+  await enterChatbot(w, d);
+  d.getElementById("agent-list-modal").hidden = false;
+  d.getElementById("agent-modal").hidden = false;
+  await w.startTour();
+  w.showStep(5); // "knowledge" -> #my-knowledge, outside every modal
+  await flush(15);
+  const occludedBody = d.getElementById("tour-body").textContent;
+
+  d.getElementById("agent-modal").hidden = true;
+  d.getElementById("agent-list-modal").hidden = true;
+  await flush(15);
+  const freeBody = d.getElementById("tour-body").textContent;
+
+  check(/close this window/i.test(occludedBody) && /upload/i.test(freeBody),
+        "17. a target behind a modal waits, then recovers its own copy",
+        `occluded="${occludedBody.slice(0, 34)}" free="${freeBody.slice(0, 34)}"`);
+}
+
+// 18. The description step completes when the FORM is done, not on the first
+// keystroke. Same session: typing one character marched the user out of a
+// half-filled agent form into a step pointing at the sidebar behind it.
+{
+  const state = freshState(payload(1));
+  const { w, d } = await boot({ state });
+  await enterChatbot(w, d);
+  d.getElementById("agent-list-modal").hidden = false;
+  d.getElementById("agent-modal").hidden = false;
+  await w.startTour();
+  w.showStep(4); // "description"
+  await flush(15);
+
+  d.getElementById("agent-description").value = "Chemistry questions";
+  await flush(20);
+  const whileTyping = d.getElementById("tour-progress").textContent;
+
+  d.getElementById("agent-modal").hidden = true; // saved
+  await flush(20);
+  const afterSaving = d.getElementById("tour-progress").textContent;
+
+  check(whileTyping === "5 of 8" && afterSaving === "6 of 8",
+        "18. the description step holds until the agent form closes",
+        `typing=${whileTyping} saved=${afterSaving}`);
+}
+
+// 19. The description latch is per-step, not per-tour. Once step 5 has been
+// completed the latch is set; if it survived into a later step, coming BACK to
+// step 5 — which the step-8 fallback button does — would satisfy it instantly
+// against a closed form and skip the very step the user was sent to fix.
+{
+  const state = freshState(payload(1));
+  const { w, d } = await boot({ state });
+  await enterChatbot(w, d);
+  const modal = d.getElementById("agent-modal");
+
+  await w.startTour();
+  w.showStep(4);                       // description
+  modal.hidden = false; await flush(25);   // form opens: latch arms
+  modal.hidden = true;  await flush(35);   // form closes: step completes
+  const advanced = d.getElementById("tour-progress").textContent;
+
+  w.showStep(4);                       // sent back, form still closed
+  await flush(35);
+  const returned = d.getElementById("tour-progress").textContent;
+
+  check(advanced === "6 of 8" && returned === "5 of 8",
+        "19. returning to the description step does not skip on a stale latch",
+        `advanced=${advanced} returned=${returned}`);
+}
+
 // 11. Step 8's fallback -- the engine's own comments call this "the tour's
 // most valuable moment". The server ALWAYS sends answered_by; what varies is
 // its id, which is null for the general assistant and set for a specialist.

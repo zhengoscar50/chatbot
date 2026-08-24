@@ -34,6 +34,7 @@ let tourRunning = false;
 let tourFrame = null;
 let tourDeadline = 0;
 let tourFallbackShown = false;
+let tourFormSeenOpen = false;  // latch for the description step; reset per step
 
 function tourStorage(fn, fallback) {
   try {
@@ -56,18 +57,45 @@ const TOUR_DONE = {
   enter: () => !document.getElementById("app-view").hidden,
   agents: () => !document.getElementById("agent-list-modal").hidden,
   "new-agent": () => !document.getElementById("agent-modal").hidden,
+  // Done when the FORM is done, not on the first keystroke — that fired on one
+  // character and marched the user out of a half-filled form into a step
+  // pointing at the sidebar behind it.
+  //
+  // "Modal is closed" alone is not enough either: arriving at this step with
+  // the form already shut — a replay landing here, or the step-8 fallback
+  // jumping back — would satisfy it instantly and skip the step. So it
+  // latches: the form has to be seen open, and then closed.
   description: () => {
-    const el = document.getElementById("agent-description");
-    return !!el && el.value.trim().length > 0;
+    const modal = document.getElementById("agent-modal");
+    if (!modal.hidden) {
+      tourFormSeenOpen = true;
+      return false;
+    }
+    return tourFormSeenOpen;
   },
   knowledge: () => !document.getElementById("knowledge-modal").hidden,
   ask: () => document.querySelectorAll(".row--assistant").length > 0,
 };
 
+// Whether an open modal is covering the page with this element outside it.
+// The tour paints above modals (z-index 60 vs 20), so an occluded target still
+// gets a hole cut around it — a hole the user cannot click through, because the
+// modal is what receives the click. Highlighting an unreachable control is
+// worse than waiting for it to become reachable.
+function tourOccluded(el) {
+  const open = document.querySelectorAll(".modal:not([hidden])");
+  if (!open.length) return false;
+  for (const m of open) {
+    if (m.contains(el)) return false;
+  }
+  return true;
+}
+
 function tourVisible(el) {
   if (!el) return false;
   const r = el.getBoundingClientRect();
-  return r.width > 0 && r.height > 0;
+  if (!(r.width > 0 && r.height > 0)) return false;
+  return !tourOccluded(el);
 }
 
 function paintPanes(rect) {
@@ -105,6 +133,7 @@ function showStep(index) {
   tourProgress.textContent = `${index + 1} of ${TOUR_STEPS.length}`;
   tourAction.hidden = true;
   tourFallbackShown = false;
+  tourFormSeenOpen = false;
   tourDeadline = Date.now() + STEP_TIMEOUT_MS;
   tourBox.focus();
   tick();
@@ -129,6 +158,11 @@ function tick() {
   if (tourVisible(target)) {
     target.scrollIntoView({ block: "center", behavior: "auto" });
     paintPanes(target.getBoundingClientRect());
+    // The waiting messages below overwrite the body. Once the target is
+    // reachable again the step's own copy has to come back, or the box keeps
+    // telling the user to close a window they already closed.
+    const copy = stepCopy(step, stepMode(step, tourOnboarding));
+    if (tourBody.textContent !== copy.body) tourBody.textContent = copy.body;
     // Next cannot cross to a surface the user has not reached — the target
     // does not exist there, and advancing would only trigger the rewind below
     // and look like a dead button. Reflect that instead of pretending.
@@ -161,7 +195,16 @@ function tick() {
     return;
   }
 
-  // 3. Genuinely missing — usually a renamed selector. Offer a way out; a tour
+  // 3. On screen but behind an open window. The user has to close it, and
+  //    nothing else on the page will tell them so — waiting out the timeout
+  //    in silence is exactly how a tour comes to feel broken.
+  if (target && tourOccluded(target)) {
+    tourBody.textContent = "Close this window to carry on with the tour.";
+    tourFrame = requestAnimationFrame(tick);
+    return;
+  }
+
+  // 4. Genuinely missing — usually a renamed selector. Offer a way out; a tour
   //    that quietly stalls is the thing that makes tours feel broken.
   if (Date.now() > tourDeadline) {
     tourBody.textContent = "Can't find that on screen — skip this step?";
