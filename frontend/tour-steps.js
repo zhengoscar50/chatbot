@@ -40,6 +40,7 @@ const TOUR_STEPS = [
   },
   {
     id: "new-agent",
+    hiddenNote: "Manage agents isn't open, so there is nothing to point at — open it to see this button in place.",
     surface: "chat",
     target: "#agent-list-new",
     needs: "agent",
@@ -49,6 +50,7 @@ const TOUR_STEPS = [
   },
   {
     id: "description",
+    hiddenNote: "The agent form isn't open, so there is nothing to point at — open an agent to see this field in place.",
     surface: "chat",
     target: "#agent-description",
     // The panel this step works inside. Opening it is not the step; finishing
@@ -63,6 +65,7 @@ const TOUR_STEPS = [
   },
   {
     id: "knowledge",
+    hiddenNote: "Chatbot knowledge isn't open yet — open it to see this in place.",
     surface: "chat",
     target: "#my-knowledge",
     needs: "knowledge",

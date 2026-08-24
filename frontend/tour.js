@@ -149,9 +149,10 @@ function setBox(title, body) {
 // A step's own copy, unless a jump left a note explaining why the user is
 // here. Being bounced to "Manage agents" from a failed answer deserves better
 // than the caption that step shows to somebody arriving in order.
-function stepBox(step) {
+function stepBox(step, extra) {
   const copy = stepCopy(step, stepMode(step, tourOnboarding));
-  setBox(copy.title, tourNote || copy.body);
+  const body = tourNote || copy.body;
+  setBox(copy.title, extra ? `${body} ${extra}` : body);
 }
 
 function clearPanes() {
@@ -252,7 +253,10 @@ function tick() {
   //    window" here would be advice for the opposite problem.
   if (target && target.closest("[hidden]")) {
     clearPanes();
-    stepBox(step);
+    // Say what is not open. Without this the step reads as a caption with
+    // nothing to caption: the user walks past having been told a control
+    // exists but never shown where, which is the same as missing the step.
+    stepBox(step, step.hiddenNote);
     tourFrame = requestAnimationFrame(tick);
     return;
   }

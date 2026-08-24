@@ -653,6 +653,37 @@ console.log("\n=== tour: the guided tour engine ===");
         `waiting="${waitTitle}" back="${backTitle}"`);
 }
 
+// 29. A step with nothing to point at says what is not open. Reported from a
+// real session: "if the user doesnt click on manage agents then it misses some
+// steps". Pressing Next past Manage agents leaves steps 4 and 5 pointing at
+// controls inside a shut panel, so they rendered as captions with no spotlight
+// — the user is told a control exists and never shown where, which is the same
+// as missing the step.
+{
+  const state = freshState(payload(1));
+  const { w, d } = await boot({ state });
+  await enterChatbot(w, d);
+  await w.startTour();
+  w.showStep(2);                        // Agents — deliberately never clicked
+  await flush(20);
+
+  const seen = [];
+  for (let i = 0; i < 2; i += 1) {
+    click(w, d.getElementById("tour-next"));
+    await flush(25);
+    const panes = ["top", "right", "bottom", "left"]
+      .map((k) => parseInt(d.getElementById(`tour-pane-${k}`).style.width, 10) || 0)
+      .reduce((a, b) => a + b, 0);
+    seen.push({ body: d.getElementById("tour-body").textContent, panes });
+  }
+
+  // Both steps highlight nothing (correctly — the control is shut away) and
+  // both must therefore say so rather than leaving the user to wonder.
+  check(seen.every((x) => x.panes === 0 && /isn't open/i.test(x.body)),
+        "29. a step that cannot point at anything says what to open",
+        seen.map((x) => `panes=${x.panes} "${x.body.slice(-28)}"`).join(" | "));
+}
+
 // 11. Step 8's fallback -- the engine's own comments call this "the tour's
 // most valuable moment". The server ALWAYS sends answered_by; what varies is
 // its id, which is null for the general assistant and set for a specialist.
