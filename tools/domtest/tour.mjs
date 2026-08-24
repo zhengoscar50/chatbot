@@ -509,9 +509,15 @@ console.log("\n=== tour: the guided tour engine ===");
   await flush(25);
   const body = d.getElementById("tour-body").textContent;
 
-  check(/rout/i.test(body) && !/close this window/i.test(body),
-        "21. a not-yet-open target keeps the step's own explanation",
-        `body="${body.slice(0, 46)}"`);
+  // Same freeze hazard as check 24, by a different route: a step that cannot
+  // paint must not leave the previous step's panes covering the page.
+  const blocking = ["top", "right", "bottom", "left"]
+    .map((k) => parseInt(d.getElementById(`tour-pane-${k}`).style.width, 10) || 0)
+    .reduce((a, b) => a + b, 0);
+
+  check(/rout/i.test(body) && !/close this window/i.test(body) && blocking === 0,
+        "21. a not-yet-open target keeps its explanation and blocks nothing",
+        `body="${body.slice(0, 40)}" panes=${blocking}`);
 }
 
 // 22. The user can run AHEAD of the tour, and the tour has to catch up rather
@@ -573,6 +579,38 @@ console.log("\n=== tour: the guided tour engine ===");
         && afterProgress === "7 of 8",
         "23. the knowledge step holds while its panel is open, then advances",
         `shut=${shut} open=${openProgress} after=${afterProgress} body="${openBody.slice(0, 30)}"`);
+}
+
+// 24. When the tour is not highlighting anything it must not be BLOCKING
+// anything either. Reported from a real session: "for step 6 its locked so i
+// cant actually close out of the agent screen to continue". The four panes are
+// what make everything except the hole unclickable, and every non-painting
+// path returned without touching them — so they kept the previous step's
+// geometry and covered the very Close button the box was telling the user to
+// press. Waiting silently is bad; freezing the page is worse.
+{
+  const state = freshState(payload(1));
+  const { w, d } = await boot({ state });
+  await enterChatbot(w, d);
+  d.getElementById("agent-list-modal").hidden = false;
+
+  await w.startTour();
+  w.showStep(4);                                  // description
+  d.getElementById("agent-modal").hidden = false; // its own panel: painted
+  await flush(25);
+  const painting = ["top", "right", "bottom", "left"]
+    .map((k) => parseInt(d.getElementById(`tour-pane-${k}`).style.width, 10) || 0)
+    .reduce((a, b) => a + b, 0);
+
+  d.getElementById("agent-modal").hidden = true;  // -> step 6, target occluded
+  await flush(30);
+  const blocking = ["top", "right", "bottom", "left"]
+    .map((k) => parseInt(d.getElementById(`tour-pane-${k}`).style.width, 10) || 0)
+    .reduce((a, b) => a + b, 0);
+
+  check(painting > 0 && blocking === 0,
+        "24. panes collapse when nothing is highlighted, so the page stays usable",
+        `whilePainting=${painting} whileWaiting=${blocking}`);
 }
 
 // 11. Step 8's fallback -- the engine's own comments call this "the tour's

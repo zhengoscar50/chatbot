@@ -119,6 +119,19 @@ function paintPanes(rect) {
   tourBox.style.top = `${place.y}px`;
 }
 
+// Collapse the panes to nothing. Whenever the tour is not highlighting a live
+// target it must not be blocking the page either — the panes are what make
+// everything except the hole unclickable, so leaving them at the last step's
+// geometry locks the user out of the very control the box is telling them to
+// press. This is the difference between "waiting" and "frozen".
+function clearPanes() {
+  Object.keys(tourPanes).forEach((k) => {
+    const el = tourPanes[k];
+    el.style.width = "0px";
+    el.style.height = "0px";
+  });
+}
+
 function showStep(index) {
   // tick() is about to be called synchronously below. Any frame already
   // queued would then run a SECOND loop against the new step — and two loops
@@ -207,6 +220,7 @@ function tick() {
   //    highlight nothing, and let Next carry them on. Saying "close this
   //    window" here would be advice for the opposite problem.
   if (target && target.closest("[hidden]")) {
+    clearPanes();
     const copy = stepCopy(step, stepMode(step, tourOnboarding));
     if (tourBody.textContent !== copy.body) tourBody.textContent = copy.body;
     tourFrame = requestAnimationFrame(tick);
@@ -217,6 +231,9 @@ function tick() {
   //    nothing else on the page will tell them so — waiting out the timeout
   //    in silence is exactly how a tour comes to feel broken.
   if (target && tourOccluded(target)) {
+    // Whatever is covering the target, the user has to reach it — either to
+    // work in it or to close it. Stop blocking the page.
+    clearPanes();
     // If the thing covering the target is the panel THIS step asked them to
     // open, they are doing the step, not blocked by something unrelated.
     // Keep the instructions up rather than telling them to close it.
@@ -234,6 +251,7 @@ function tick() {
 
   // 5. Genuinely missing — usually a renamed selector. Offer a way out; a tour
   //    that quietly stalls is the thing that makes tours feel broken.
+  clearPanes();
   if (Date.now() > tourDeadline) {
     tourBody.textContent = "Can't find that on screen — skip this step?";
   }
