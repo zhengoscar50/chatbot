@@ -12,19 +12,17 @@
 // passes even with the guard rule deleted. Assert on `el.hidden` instead.
 //
 // A second jsdom limitation matters more here than anywhere else in this
-// harness: jsdom has no layout engine, so getBoundingClientRect() always
-// returns a zero-size rect, and tourVisible() — which gates every "doing"
-// step's auto-advance and the not-on-screen recovery branches in tick() — is
-// therefore never true here, regardless of real DOM state. That makes two
-// things true of every check below: (1) none of them can exercise a step's
-// TOUR_DONE predicate actually firing an auto-advance (that code path is
-// simply unreachable in jsdom without faking layout, which would test the
-// fake more than the engine); (2) the "not visible" branch's *surface*
-// mismatch/rewind logic runs on every tick regardless, so a check that opens
-// the tour while sitting on the wrong surface for its target step gets
-// silently rewound before the test ever sees the intended step. Check 5
-// and check 10 route around this by first navigating into a real chatbot
-// (so currentSurface() reads "chat"), matching every step in play.
+// harness: jsdom has no layout engine, so getBoundingClientRect() would
+// otherwise always return a zero-size rect, which pins tourVisible() —
+// gating every "doing" step's auto-advance and the not-on-screen recovery
+// branches in tick() — permanently false regardless of real DOM state, and
+// the engine's main loop would never run under test. boot() below stubs
+// Element.prototype.getBoundingClientRect (and scrollIntoView) to model
+// visibility instead: a plausible rect for anything not hidden, a zero rect
+// for anything hidden or under a [hidden] ancestor. That is what lets
+// tourVisible() actually discriminate and the engine's main loop — auto-
+// advance, paintPanes, the surface rewind, the step-8 fallback — run for
+// real here rather than being permanently unreachable.
 
 import { JSDOM, VirtualConsole } from "jsdom";
 import { readFileSync } from "fs";
@@ -326,6 +324,101 @@ console.log("\n=== tour: the guided tour engine ===");
   check(cancelled === 5,
         "10. five Next clicks leave exactly one live rAF loop",
         `cancelled=${cancelled} requested=${requested}`);
+}
+
+// 11. Step 8's fallback -- the engine's own comments call this "the tour's
+// most valuable moment": no .agent-badge exists when the general assistant
+// (not a specialist) answered, so the step falls back to naming that and
+// offering #tour-action as a route back to the description step. Render a
+// .row--assistant with no agent badge the same way appendMessage() does for
+// an answer with no answeredBy, force the tour onto the last step, and
+// assert the fallback title, the visible action button, and that clicking
+// it lands on the description step.
+{
+  const state = freshState(payload(5));
+  const { w, d } = await boot({ state });
+  await enterChatbot(w, d);
+  w.appendMessage("assistant", "AI", "General answer, no specialist matched.");
+  await w.startTour();
+  w.showStep(7); // last step, "who-answered" (TOUR_STEPS has 8 entries)
+  await flush(15);
+  const title = d.getElementById("tour-title").textContent;
+  const actionHidden = d.getElementById("tour-action").hidden;
+  check(title === "The general assistant answered" && actionHidden === false,
+        "11a. step 8 falls back when no specialist answered",
+        `title="${title}" actionHidden=${actionHidden}`);
+  click(w, d.getElementById("tour-action"));
+  await flush(10);
+  const progress = d.getElementById("tour-progress").textContent;
+  check(progress === "5 of 8",
+        "11b. tour-action from the fallback lands on the description step",
+        progress);
+}
+
+// 12. The same step shows its normal copy when a specialist DID answer --
+// without this, check 11 proves nothing (it could just be that #tour-action
+// is always shown on step 8).
+{
+  const state = freshState(payload(5));
+  const { w, d } = await boot({ state });
+  await enterChatbot(w, d);
+  w.appendMessage("assistant", "AI", "Specialist answer.", null, { name: "Chem Tutor" });
+  await w.startTour();
+  w.showStep(7); // last step, "who-answered" (TOUR_STEPS has 8 entries)
+  await flush(15);
+  const title = d.getElementById("tour-title").textContent;
+  const actionHidden = d.getElementById("tour-action").hidden;
+  check(title === "A specialist answered" && actionHidden === true,
+        "12. the same step shows normal copy when a specialist answered",
+        `title="${title}" actionHidden=${actionHidden}`);
+}
+
+// 13. Leaving the chat surface mid-tour rewinds to a dashboard-surface step
+// rather than sitting on a target that can no longer appear. Force the tour
+// onto "agents" (index 2, surface: chat), then use the real "Dashboard"
+// button -- not a direct hidden-attribute poke -- to leave chat.
+// lastStepOnSurface walks backward from the current index for a step whose
+// surface matches; from index 2 that lands on index 1 ("enter", surface:
+// dashboard), so tour-progress should read "2 of 8", not stay put or reset
+// to "1 of 8".
+{
+  const state = freshState(payload(5));
+  const { w, d } = await boot({ state });
+  await enterChatbot(w, d);
+  await w.startTour();
+  w.showStep(2); // "agents" -- surface: chat
+  await flush(10);
+  check(d.getElementById("tour-progress").textContent === "3 of 8",
+        "13 setup: tour is on the chat-surface step before leaving",
+        d.getElementById("tour-progress").textContent);
+  click(w, d.getElementById("to-dashboard"));
+  await flush(60);
+  const progress = d.getElementById("tour-progress").textContent;
+  check(progress === "2 of 8",
+        "13. leaving the chat surface rewinds to the last dashboard-surface step",
+        progress);
+}
+
+// 14. Autoplay is a one-shot handoff, consumed by tourAutoplayIfFlagged()'s
+// own removeItem -- nothing else clears the flag. Flag it, run
+// loadDashboard(), confirm the tour opened; end the tour, run loadDashboard()
+// again, and confirm it did NOT reopen (if removeItem were missing, the
+// still-set flag would fire startTour() on every single dashboard load).
+{
+  const state = freshState(payload(5));
+  const { w, d } = await boot({ state });
+  w.sessionStorage.setItem("rag-chat-tour-autoplay", "1");
+  await w.loadDashboard();
+  await flush(15);
+  const openedFirst = d.getElementById("tour").hidden === false;
+  w.endTour();
+  await flush(5);
+  await w.loadDashboard();
+  await flush(15);
+  const stayedClosedSecondTime = d.getElementById("tour").hidden === true;
+  check(openedFirst && stayedClosedSecondTime,
+        "14. autoplay fires once, not on every dashboard load",
+        `openedFirst=${openedFirst} reopenedOnSecondLoad=${!stayedClosedSecondTime}`);
 }
 
 // =====================================================================
