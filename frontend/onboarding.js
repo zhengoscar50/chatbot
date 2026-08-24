@@ -117,6 +117,9 @@ function wireOnboarding() {
   // The ? button now starts the guided tour. The checklist panel below still
   // auto-shows for someone mid-setup who does not want to be walked anywhere;
   // its close button remains the way to dismiss it.
-  onboardHelp.addEventListener("click", startTour);
+  // Wrapped, not passed directly: a listener receives the click event as its
+  // first argument, which would arrive as a truthy `fromStart` and make every
+  // replay restart from the beginning.
+  onboardHelp.addEventListener("click", () => startTour());
   document.getElementById("onboarding-close").addEventListener("click", hideOnboarding);
 }

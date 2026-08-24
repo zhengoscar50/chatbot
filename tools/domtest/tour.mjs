@@ -613,6 +613,32 @@ console.log("\n=== tour: the guided tour engine ===");
         `whilePainting=${painting} whileWaiting=${blocking}`);
 }
 
+// 25. The two entry points are not the same. Autoplay after signup shows a
+// person who has seen nothing the tour from step 1; pressing ? later is a
+// replay and resumes at the first step with work left. Checked against a real
+// fresh account: signup creates one starter chatbot, so "create a chatbot" is
+// already done and the resume logic would otherwise open at "Go inside" —
+// skipping the dashboard orientation for the newest possible user.
+{
+  const state = freshState(payload(1)); // exactly what a fresh signup derives
+  const { w, d } = await boot({ state });
+
+  w.sessionStorage.setItem("rag-chat-tour-autoplay", "1");
+  w.tourAutoplayIfFlagged();
+  await flush(30);
+  const autoplay = d.getElementById("tour-progress").textContent;
+
+  w.skipTour();
+  await flush(10);
+  click(w, d.getElementById("onboarding-help"));
+  await flush(30);
+  const replay = d.getElementById("tour-progress").textContent;
+
+  check(autoplay === "1 of 8" && replay === "2 of 8",
+        "25. signup starts at step 1; ? resumes where there is work left",
+        `autoplay=${autoplay} replay=${replay}`);
+}
+
 // 11. Step 8's fallback -- the engine's own comments call this "the tour's
 // most valuable moment". The server ALWAYS sends answered_by; what varies is
 // its id, which is null for the general assistant and set for a specialist.

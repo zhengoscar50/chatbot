@@ -329,7 +329,12 @@ function firstIncompleteStep() {
   return i === -1 ? 0 : i;
 }
 
-async function startTour() {
+// `fromStart` separates the two entry points. Autoplay after signup shows a
+// person who has seen nothing the whole tour from step 1 — skipping the
+// dashboard orientation for the newest possible user is exactly backwards.
+// Pressing ? later is a replay, and resumes at the first step with work left
+// so nobody is made to sit through what they have already done.
+async function startTour(fromStart) {
   // The ? button calls this; pressing it mid-tour must restart cleanly rather
   // than layering a second loop over the running one.
   if (tourRunning) endTour();
@@ -343,7 +348,7 @@ async function startTour() {
   }
   tourRunning = true;
   tourEl.hidden = false;
-  showStep(firstIncompleteStep());
+  showStep(fromStart ? 0 : firstIncompleteStep());
 }
 
 function endTour() {
@@ -366,7 +371,7 @@ function tourAutoplayIfFlagged() {
   if (flagged !== "1") return;
   tourStorage(() => sessionStorage.removeItem(TOUR_AUTOPLAY_FLAG), null);
   if (tourStorage(() => localStorage.getItem(TOUR_SKIP_KEY), null) === "1") return;
-  startTour();
+  startTour(true);   // a brand-new account starts at the beginning
 }
 
 function wireTour() {
