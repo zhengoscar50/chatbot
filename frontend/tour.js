@@ -195,7 +195,20 @@ function tick() {
     return;
   }
 
-  // 3. On screen but behind an open window. The user has to close it, and
+  // 3. The target exists but its container is closed — the user walked past
+  //    the step that opens it, which is their right: this is a walkthrough,
+  //    not a setup wizard. Nobody has to create an agent to be shown what the
+  //    description field is for. So keep the step's own explanation on screen,
+  //    highlight nothing, and let Next carry them on. Saying "close this
+  //    window" here would be advice for the opposite problem.
+  if (target && target.closest("[hidden]")) {
+    const copy = stepCopy(step, stepMode(step, tourOnboarding));
+    if (tourBody.textContent !== copy.body) tourBody.textContent = copy.body;
+    tourFrame = requestAnimationFrame(tick);
+    return;
+  }
+
+  // 4. On screen but behind an open window. The user has to close it, and
   //    nothing else on the page will tell them so — waiting out the timeout
   //    in silence is exactly how a tour comes to feel broken.
   if (target && tourOccluded(target)) {
@@ -204,7 +217,7 @@ function tick() {
     return;
   }
 
-  // 4. Genuinely missing — usually a renamed selector. Offer a way out; a tour
+  // 5. Genuinely missing — usually a renamed selector. Offer a way out; a tour
   //    that quietly stalls is the thing that makes tours feel broken.
   if (Date.now() > tourDeadline) {
     tourBody.textContent = "Can't find that on screen — skip this step?";

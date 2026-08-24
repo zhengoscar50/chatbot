@@ -462,6 +462,58 @@ console.log("\n=== tour: the guided tour engine ===");
         `advanced=${advanced} returned=${returned}`);
 }
 
+// 20. The tour is a walkthrough, not a setup wizard. Someone should be able to
+// read all eight steps without committing to anything — no agent created, no
+// document uploaded, no message sent. Reported from a real session: "the user
+// doesn't need to create a specialist agent on the spot". Entering a chatbot
+// is the one unavoidable action, and it creates nothing.
+{
+  const state = freshState(payload(1));
+  const { w, d } = await boot({ state });
+  await w.startTour();
+  await flush(15);
+
+  const reached = [];
+  for (let i = 0; i < 12; i += 1) {
+    const btn = d.getElementById("tour-next");
+    reached.push(d.getElementById("tour-progress").textContent);
+    if (btn.disabled) {
+      await enterChatbot(w, d);       // navigation only; nothing is created
+      await flush(20);
+      continue;
+    }
+    click(w, btn);
+    await flush(20);
+    if (d.getElementById("tour-progress").textContent === "8 of 8") break;
+  }
+  const end = d.getElementById("tour-progress").textContent;
+
+  check(end === "8 of 8",
+        "20. the whole tour can be walked without creating anything",
+        `ended at ${end} via ${reached.join(" ")}`);
+}
+
+// 21. A step whose target is merely NOT OPEN YET keeps its own explanation up
+// rather than telling the user to close a window. Same session: pressing Next
+// past the agent form landed on the description step, which said "Close this
+// window to carry on" — advice for the opposite problem. The description
+// lesson is the most valuable copy in the tour; it should still be readable
+// by someone who declined to create an agent.
+{
+  const state = freshState(payload(1));
+  const { w, d } = await boot({ state });
+  await enterChatbot(w, d);
+  d.getElementById("agent-list-modal").hidden = false;  // open; agent form is NOT
+  await w.startTour();
+  w.showStep(4);                                        // description
+  await flush(25);
+  const body = d.getElementById("tour-body").textContent;
+
+  check(/rout/i.test(body) && !/close this window/i.test(body),
+        "21. a not-yet-open target keeps the step's own explanation",
+        `body="${body.slice(0, 46)}"`);
+}
+
 // 11. Step 8's fallback -- the engine's own comments call this "the tour's
 // most valuable moment". The server ALWAYS sends answered_by; what varies is
 // its id, which is null for the general assistant and set for a specialist.
