@@ -143,6 +143,13 @@ function tick() {
   if (!tourRunning) return;
   const step = TOUR_STEPS[tourIndex];
 
+  // Refresh this every frame, not only on the path where the target is
+  // visible: a waiting step used to keep whatever state the button had last,
+  // so it could sit there looking clickable while advance() silently refused.
+  const upcoming = TOUR_STEPS[tourIndex + 1];
+  tourNext.disabled = !!upcoming && upcoming.surface !== currentSurface();
+  tourNext.title = tourNext.disabled ? "Do this step to continue" : "";
+
   // Completion first, before anything about visibility. Doing the thing a step
   // asks for often destroys that step's own target — clicking a chatbot card
   // hides the whole dashboard — so a completion test gated on the target still
@@ -163,13 +170,6 @@ function tick() {
     // telling the user to close a window they already closed.
     const copy = stepCopy(step, stepMode(step, tourOnboarding));
     if (tourBody.textContent !== copy.body) tourBody.textContent = copy.body;
-    // Next cannot cross to a surface the user has not reached — the target
-    // does not exist there, and advancing would only trigger the rewind below
-    // and look like a dead button. Reflect that instead of pretending.
-    const next = TOUR_STEPS[tourIndex + 1];
-    const blocked = !!next && next.surface !== currentSurface();
-    tourNext.disabled = blocked;
-    tourNext.title = blocked ? "Do this step to continue" : "";
     tourFrame = requestAnimationFrame(tick);
     return;
   }
@@ -181,7 +181,7 @@ function tick() {
   //    dashboard mid-step, most often. Rewind rather than wait forever for a
   //    control that cannot appear here.
   if (currentSurface() !== step.surface && step.surface !== "any") {
-    const back = lastStepOnSurface(currentSurface());
+    const back = stepOnSurface(currentSurface());
     if (back !== -1 && back !== tourIndex) {
       showStep(back);
       return;
@@ -229,8 +229,18 @@ function currentSurface() {
   return document.getElementById("app-view").hidden ? "dashboard" : "chat";
 }
 
-function lastStepOnSurface(surface) {
+// The step to move to when the user is somewhere the current step is not.
+// Backward first — that is the common case, someone walking back to the
+// dashboard mid-step. Then forward, because the user can also run AHEAD of the
+// tour: clicking a chatbot while step 1 is still describing the grid used to
+// strand the tour on a dashboard step forever, with Next unable to cross onto
+// the surface the user had already reached. Catching up is always better than
+// locking.
+function stepOnSurface(surface) {
   for (let i = tourIndex; i >= 0; i -= 1) {
+    if (TOUR_STEPS[i].surface === surface) return i;
+  }
+  for (let i = tourIndex + 1; i < TOUR_STEPS.length; i += 1) {
     if (TOUR_STEPS[i].surface === surface) return i;
   }
   return -1;

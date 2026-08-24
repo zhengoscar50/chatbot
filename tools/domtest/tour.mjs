@@ -514,6 +514,32 @@ console.log("\n=== tour: the guided tour engine ===");
         `body="${body.slice(0, 46)}"`);
 }
 
+// 22. The user can run AHEAD of the tour, and the tour has to catch up rather
+// than lock. Reported from a real session: clicking a chatbot while step 1 was
+// still describing the grid stranded the tour on a dashboard step forever —
+// Next could not cross onto the surface the user had already reached, and the
+// box kept explaining the dashboard to someone looking at a chatbot. The
+// surface search used to scan backward only, which finds nothing when every
+// earlier step is on the surface you just left.
+{
+  const state = freshState(payload(1));
+  const { w, d } = await boot({ state });
+  await w.startTour();
+  w.showStep(0);                 // step 1, "grid" — a dashboard step
+  await flush(15);
+  const before = d.getElementById("tour-progress").textContent;
+
+  await enterChatbot(w, d);      // jump the queue
+  await flush(30);
+  const after = d.getElementById("tour-progress").textContent;
+  const stuck = d.getElementById("tour-next").disabled;
+
+  // Lands on the first chat step (3), skipping "Go inside" — already done.
+  check(before === "1 of 8" && after === "3 of 8" && stuck === false,
+        "22. running ahead of the tour makes it catch up, not lock",
+        `before=${before} after=${after} nextDisabled=${stuck}`);
+}
+
 // 11. Step 8's fallback -- the engine's own comments call this "the tour's
 // most valuable moment". The server ALWAYS sends answered_by; what varies is
 // its id, which is null for the general assistant and set for a specialist.
