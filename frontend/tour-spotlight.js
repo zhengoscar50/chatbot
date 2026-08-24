@@ -50,7 +50,19 @@ function boxPlacement(rect, viewport, box, gap) {
     };
   }
 
-  const clampY = (y) => Math.min(positive(viewport.height - box.height), positive(y));
+  // Keep the box a gap clear of every edge, not merely inside it. Clamping to
+  // the exact edge put the box flush against the bottom of the window, where a
+  // pixel of rounding, a scrollbar, or text reflowing a line taller than the
+  // measurement is enough to shave the last row off — reported as the box
+  // getting "cut off a bit". A box that will not fit even with margins is
+  // pinned as high as it goes rather than pushed off the top.
+  const clamp = (v, span, extent) => {
+    const far = extent - span - g;
+    if (far <= g) return positive(far);
+    return Math.min(far, Math.max(g, v));
+  };
+
+  const clampY = (y) => clamp(y, box.height, viewport.height);
   const centredY = clampY(rect.y + rect.height / 2 - box.height / 2);
 
   const rightX = rect.x + rect.width + g;
@@ -70,7 +82,7 @@ function boxPlacement(rect, viewport, box, gap) {
   // box wider than the viewport). The guard stays as defence against a future
   // change to the docking threshold, but it is deliberately untested: a test
   // for it could never fail.
-  const clampX = (x) => Math.min(positive(viewport.width - box.width), positive(x));
+  const clampX = (x) => clamp(x, box.width, viewport.width);
   const centredX = clampX(rect.x + rect.width / 2 - box.width / 2);
 
   const belowY = rect.y + rect.height + g;

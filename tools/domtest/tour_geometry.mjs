@@ -129,6 +129,35 @@ console.log("\n=== a box larger than the viewport pins to the origin ===");
         "stays fully on screen whenever the box fits");
 }
 
+console.log("\n=== the box keeps clear of every edge, not merely inside it ===");
+{
+  // Clamping to the exact edge left the box flush against the bottom of the
+  // window, where a pixel of rounding or a line of text reflowing taller than
+  // the measurement shaves off the last row — reported as the box being "cut
+  // off a bit" on the explaining steps. Inside-the-viewport is not the
+  // invariant; a margin is.
+  const box = { width: 320, height: 160 };
+  const gap = 16;
+  const views = [{ width: 1000, height: 800 }, { width: 1440, height: 700 }];
+  let tight = null;
+
+  for (const view of views) {
+    for (let x = 0; x <= view.width && !tight; x += 37) {
+      for (let y = 0; y <= view.height && !tight; y += 37) {
+        const b = boxPlacement({ x, y, width: 40, height: 40 }, view, box, gap);
+        if (b.side === "docked") continue;   // docking owns its own placement
+        const clear = b.x >= gap && b.y >= gap
+          && b.x + box.width <= view.width - gap
+          && b.y + box.height <= view.height - gap;
+        if (!clear) {
+          tight = `${view.width}x${view.height} target ${x},${y} -> ${b.x},${b.y} (${b.side})`;
+        }
+      }
+    }
+  }
+  check(!tight, "the box never sits flush against an edge", tight || "");
+}
+
 const failed = results.filter((r) => !r).length;
 console.log(`\n${results.length} checks, ${results.length - failed} passed, ${failed} FAILED`);
 process.exit(failed ? 1 : 0);
