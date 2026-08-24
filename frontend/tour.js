@@ -57,9 +57,13 @@ const TOUR_DONE = {
   enter: () => !document.getElementById("app-view").hidden,
   agents: () => !document.getElementById("agent-list-modal").hidden,
   "new-agent": () => !document.getElementById("agent-modal").hidden,
-  // "description" and "knowledge" are not listed: a step that declares `opens`
-  // is finished by CLOSING that panel, handled by panelCycled below. Opening it
-  // is not the step — the step is what you do inside it.
+  // Clicking the highlighted control is what advances a step. "description" is
+  // the exception and is absent here: its instruction is to WRITE something,
+  // not to click something, so it declares `opens` and finishes when the form
+  // closes (see panelCycled). Everything else moves the moment the user does
+  // the thing the step pointed at — waiting longer reads as the tour ignoring
+  // them.
+  knowledge: () => !document.getElementById("knowledge-modal").hidden,
   ask: () => document.querySelectorAll(".row--assistant").length > 0,
 };
 

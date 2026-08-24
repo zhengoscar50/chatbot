@@ -21,14 +21,41 @@ const ALL_DONE = { steps: NOTHING_DONE.steps.map((s) => ({ ...s, done: true })) 
 
 console.log("\n=== the table itself ===");
 {
-  check(TOUR_STEPS.length === 8, "eight steps", String(TOUR_STEPS.length));
-  check(new Set(TOUR_STEPS.map((s) => s.id)).size === 8, "step ids are unique");
+  check(TOUR_STEPS.length === 10, "ten steps", String(TOUR_STEPS.length));
+  check(new Set(TOUR_STEPS.map((s) => s.id)).size === TOUR_STEPS.length,
+        "step ids are unique");
   check(TOUR_STEPS.every((s) => typeof s.target === "string" && s.target),
         "every step names a target selector");
   check(TOUR_STEPS.every((s) => typeof s.needs === "string" || s.needs === null),
         "every step declares which onboarding id it needs, or null");
   check(TOUR_STEPS.every((s) => s.doing.trim() && s.showing.trim() && s.title.trim()),
         "every step carries copy for both modes");
+}
+
+console.log("\n=== the two closing facts ===");
+{
+  // Added on request: a user should learn these exist, not have to find them.
+  const attach = TOUR_STEPS.find((x) => x.id === "attach");
+  const scope = TOUR_STEPS.find((x) => x.id === "scope");
+
+  check(!!attach && attach.target === "#attach-button",
+        "a step covers per-chat document uploads", attach && attach.target);
+  check(!!scope && scope.target === "#scope-button",
+        "a step covers excluding agents from a chat", scope && scope.target);
+
+  // The fact each one has to land. A per-chat upload that reads as permanent,
+  // or an agent limit the user thinks is global, is worse than not mentioning
+  // it: both would leave them with a confident wrong model.
+  check(/only this chat/i.test(attach.doing) && /chatbot's knowledge/i.test(attach.doing),
+        "the upload step says the document is per-chat AND can be kept");
+  check(/chat/i.test(scope.doing) && /agents/i.test(scope.doing),
+        "the scope step says the limit applies to a chat");
+
+  // Both are orientation: nothing here asks the user to change their setup.
+  check(attach.needs === null && scope.needs === null,
+        "neither closing fact demands work");
+  check(attach.surface === "chat" && scope.surface === "chat",
+        "both live inside a chatbot, where their controls are");
 }
 
 console.log("\n=== the description step is the one this tour exists for ===");

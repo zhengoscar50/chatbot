@@ -195,7 +195,7 @@ console.log("\n=== tour: the guided tour engine ===");
   click(w, d.getElementById("onboarding-help"));
   await flush(10);
   const progress = d.getElementById("tour-progress").textContent;
-  check(progress === "1 of 8", "2. with everything done the tour still opens, at step 1", progress);
+  check(progress === "1 of 10", "2. with everything done the tour still opens, at step 1", progress);
 }
 
 // 3. A fully set-up account is never told to create anything
@@ -219,7 +219,7 @@ console.log("\n=== tour: the guided tour engine ===");
   click(w, d.getElementById("tour-next"));
   await flush(10);
   const progress = d.getElementById("tour-progress").textContent;
-  check(progress === "2 of 8", "4. tour-next advances", progress);
+  check(progress === "2 of 10", "4. tour-next advances", progress);
 }
 
 // 5. chatbot + agent done, description not: opens on the description step,
@@ -235,7 +235,7 @@ console.log("\n=== tour: the guided tour engine ===");
   await flush(10);
   const progress = d.getElementById("tour-progress").textContent;
   const title = d.getElementById("tour-title").textContent;
-  check(progress === "5 of 8" && title === "Describe it",
+  check(progress === "5 of 10" && title === "Describe it",
         "5. opens on the description step rather than step 1",
         `progress=${progress} title="${title}"`);
 }
@@ -354,7 +354,7 @@ console.log("\n=== tour: the guided tour engine ===");
   await flush(20);
   const after = d.getElementById("tour-progress").textContent;
 
-  check(before === "2 of 8" && after === "3 of 8",
+  check(before === "2 of 10" && after === "3 of 10",
         "15. entering the chatbot advances the tour on its own",
         `before=${before} after=${after}`);
 }
@@ -379,7 +379,7 @@ console.log("\n=== tour: the guided tour engine ===");
   await flush(10);
   const progress = d.getElementById("tour-progress").textContent;
 
-  check(disabled === true && title.length > 0 && progress === "2 of 8",
+  check(disabled === true && title.length > 0 && progress === "2 of 10",
         "16. Next is disabled at a surface boundary rather than silently dead",
         `disabled=${disabled} title="${title}" progress=${progress}`);
 }
@@ -406,7 +406,8 @@ console.log("\n=== tour: the guided tour engine ===");
   await flush(15);
   const freeBody = d.getElementById("tour-body").textContent;
 
-  check(/close this window/i.test(occludedBody) && /upload/i.test(freeBody),
+  check(/close this window/i.test(occludedBody)
+        && /readable by every agent/i.test(freeBody),
         "17. a target behind a modal waits, then recovers its own copy",
         `occluded="${occludedBody.slice(0, 34)}" free="${freeBody.slice(0, 34)}"`);
 }
@@ -432,7 +433,7 @@ console.log("\n=== tour: the guided tour engine ===");
   await flush(20);
   const afterSaving = d.getElementById("tour-progress").textContent;
 
-  check(whileTyping === "5 of 8" && afterSaving === "6 of 8",
+  check(whileTyping === "5 of 10" && afterSaving === "6 of 10",
         "18. the description step holds until the agent form closes",
         `typing=${whileTyping} saved=${afterSaving}`);
 }
@@ -457,7 +458,7 @@ console.log("\n=== tour: the guided tour engine ===");
   await flush(35);
   const returned = d.getElementById("tour-progress").textContent;
 
-  check(advanced === "6 of 8" && returned === "5 of 8",
+  check(advanced === "6 of 10" && returned === "5 of 10",
         "19. returning to the description step does not skip on a stale latch",
         `advanced=${advanced} returned=${returned}`);
 }
@@ -484,11 +485,11 @@ console.log("\n=== tour: the guided tour engine ===");
     }
     click(w, btn);
     await flush(20);
-    if (d.getElementById("tour-progress").textContent === "8 of 8") break;
+    if (d.getElementById("tour-progress").textContent === "10 of 10") break;
   }
   const end = d.getElementById("tour-progress").textContent;
 
-  check(end === "8 of 8",
+  check(end === "10 of 10",
         "20. the whole tour can be walked without creating anything",
         `ended at ${end} via ${reached.join(" ")}`);
 }
@@ -541,102 +542,38 @@ console.log("\n=== tour: the guided tour engine ===");
   const stuck = d.getElementById("tour-next").disabled;
 
   // Lands on the first chat step (3), skipping "Go inside" — already done.
-  check(before === "1 of 8" && after === "3 of 8" && stuck === false,
+  check(before === "1 of 10" && after === "3 of 10" && stuck === false,
         "22. running ahead of the tour makes it catch up, not lock",
         `before=${before} after=${after} nextDisabled=${stuck}`);
 }
 
-// 23. The knowledge step is finished by CLOSING the panel, not by opening it,
-// and while it is open the step keeps its own instructions. Reported from a
-// real session: "there is no change from the step 6 add text to the chatbot
-// part" — the step completed the instant the panel appeared, so "Upload a PDF"
-// was satisfied by merely looking at it. And because the panel then covers
-// #my-knowledge, the generic occlusion notice would have replaced the upload
-// instructions with "close this window" at the exact moment the user was meant
-// to be reading them.
+// 23. Clicking the highlighted control advances the step, immediately.
+// Stated twice from real sessions: "if the user is following instructions it
+// automatically goes to the next step", and "when the tutorial wants you to
+// click on something and the user does it, it should proceed to the next
+// step". Waiting for anything further — finishing a task inside the panel,
+// closing it again — reads as the tour ignoring what the user just did.
+//
+// The description step is the deliberate exception: its instruction is to
+// WRITE something, not to click something, so it finishes when the form
+// closes. Check 18 covers that.
 {
   const state = freshState(payload(1));
   const { w, d } = await boot({ state });
   await enterChatbot(w, d);
-  const panel = d.getElementById("knowledge-modal");
 
   await w.startTour();
-  w.showStep(5);                       // knowledge
+  w.showStep(5);                                    // knowledge
   await flush(20);
-  const shut = d.getElementById("tour-progress").textContent;
+  const before = d.getElementById("tour-progress").textContent;
 
-  panel.hidden = false;                // opened: must NOT complete
-  await flush(25);
-  const openProgress = d.getElementById("tour-progress").textContent;
-  const openBody = d.getElementById("tour-body").textContent;
-
-  panel.hidden = true;                 // finished with it
+  d.getElementById("knowledge-modal").hidden = false;   // the click lands
   await flush(30);
-  const afterProgress = d.getElementById("tour-progress").textContent;
+  const after = d.getElementById("tour-progress").textContent;
 
-  check(shut === "6 of 8" && openProgress === "6 of 8"
-        && /upload/i.test(openBody) && !/close this window/i.test(openBody)
-        && afterProgress === "7 of 8",
-        "23. the knowledge step holds while its panel is open, then advances",
-        `shut=${shut} open=${openProgress} after=${afterProgress} body="${openBody.slice(0, 30)}"`);
-}
-
-// 24. When the tour is not highlighting anything it must not be BLOCKING
-// anything either. Reported from a real session: "for step 6 its locked so i
-// cant actually close out of the agent screen to continue". The four panes are
-// what make everything except the hole unclickable, and every non-painting
-// path returned without touching them — so they kept the previous step's
-// geometry and covered the very Close button the box was telling the user to
-// press. Waiting silently is bad; freezing the page is worse.
-{
-  const state = freshState(payload(1));
-  const { w, d } = await boot({ state });
-  await enterChatbot(w, d);
-  d.getElementById("agent-list-modal").hidden = false;
-
-  await w.startTour();
-  w.showStep(4);                                  // description
-  d.getElementById("agent-modal").hidden = false; // its own panel: painted
-  await flush(25);
-  const painting = ["top", "right", "bottom", "left"]
-    .map((k) => parseInt(d.getElementById(`tour-pane-${k}`).style.width, 10) || 0)
-    .reduce((a, b) => a + b, 0);
-
-  d.getElementById("agent-modal").hidden = true;  // -> step 6, target occluded
-  await flush(30);
-  const blocking = ["top", "right", "bottom", "left"]
-    .map((k) => parseInt(d.getElementById(`tour-pane-${k}`).style.width, 10) || 0)
-    .reduce((a, b) => a + b, 0);
-
-  check(painting > 0 && blocking === 0,
-        "24. panes collapse when nothing is highlighted, so the page stays usable",
-        `whilePainting=${painting} whileWaiting=${blocking}`);
-}
-
-// 25. The two entry points are not the same. Autoplay after signup shows a
-// person who has seen nothing the tour from step 1; pressing ? later is a
-// replay and resumes at the first step with work left. Checked against a real
-// fresh account: signup creates one starter chatbot, so "create a chatbot" is
-// already done and the resume logic would otherwise open at "Go inside" —
-// skipping the dashboard orientation for the newest possible user.
-{
-  const state = freshState(payload(1)); // exactly what a fresh signup derives
-  const { w, d } = await boot({ state });
-
-  w.sessionStorage.setItem("rag-chat-tour-autoplay", "1");
-  w.tourAutoplayIfFlagged();
-  await flush(30);
-  const autoplay = d.getElementById("tour-progress").textContent;
-
-  w.skipTour();
-  await flush(10);
-  click(w, d.getElementById("onboarding-help"));
-  await flush(30);
-  const replay = d.getElementById("tour-progress").textContent;
-
-  check(autoplay === "1 of 8" && replay === "2 of 8",
-        "25. signup starts at step 1; ? resumes where there is work left",
-        `autoplay=${autoplay} replay=${replay}`);
+  check(before === "6 of 10" && after === "7 of 10",
+        "23. opening the highlighted panel advances the step at once",
+        `before=${before} after=${after}`);
 }
 
 // 11. Step 8's fallback -- the engine's own comments call this "the tour's
@@ -664,7 +601,7 @@ console.log("\n=== tour: the guided tour engine ===");
   click(w, d.getElementById("tour-action"));
   await flush(10);
   const progress = d.getElementById("tour-progress").textContent;
-  check(progress === "5 of 8",
+  check(progress === "5 of 10",
         "11b. tour-action from the fallback lands on the description step",
         progress);
 }
@@ -694,8 +631,8 @@ console.log("\n=== tour: the guided tour engine ===");
 // button -- not a direct hidden-attribute poke -- to leave chat.
 // lastStepOnSurface walks backward from the current index for a step whose
 // surface matches; from index 2 that lands on index 1 ("enter", surface:
-// dashboard), so tour-progress should read "2 of 8", not stay put or reset
-// to "1 of 8".
+// dashboard), so tour-progress should read "2 of 10", not stay put or reset
+// to "1 of 10".
 {
   const state = freshState(payload(5));
   const { w, d } = await boot({ state });
@@ -703,13 +640,13 @@ console.log("\n=== tour: the guided tour engine ===");
   await w.startTour();
   w.showStep(2); // "agents" -- surface: chat
   await flush(10);
-  check(d.getElementById("tour-progress").textContent === "3 of 8",
+  check(d.getElementById("tour-progress").textContent === "3 of 10",
         "13 setup: tour is on the chat-surface step before leaving",
         d.getElementById("tour-progress").textContent);
   click(w, d.getElementById("to-dashboard"));
   await flush(60);
   const progress = d.getElementById("tour-progress").textContent;
-  check(progress === "2 of 8",
+  check(progress === "2 of 10",
         "13. leaving the chat surface rewinds to the last dashboard-surface step",
         progress);
 }

@@ -65,11 +65,12 @@ const TOUR_STEPS = [
     id: "knowledge",
     surface: "chat",
     target: "#my-knowledge",
-    opens: "#knowledge-modal",
     needs: "knowledge",
     title: "Give it something to read",
-    doing: "Upload a PDF. Anything here is readable by every agent in this chatbot.",
-    showing: "Documents here are readable by every agent in this chatbot.",
+    doing: "Open Chatbot knowledge. A PDF you add there is readable by every "
+         + "agent in this chatbot, including the general assistant.",
+    showing: "Documents here are readable by every agent in this chatbot, "
+           + "including the general assistant.",
   },
   {
     id: "ask",
@@ -100,6 +101,30 @@ const TOUR_STEPS = [
                 + "That almost always means an agent's description does not "
                 + "match the question.",
     fallbackAction: { label: "Check the description", stepId: "description" },
+  },
+  {
+    id: "attach",
+    surface: "chat",
+    target: "#attach-button",
+    needs: null,
+    title: "A document for one chat",
+    doing: "Attach a PDF here and only this chat can read it. It goes when the "
+         + "chat goes — unless you save it to the chatbot's knowledge, which "
+         + "the chip offers once it has uploaded.",
+    showing: "Attach a PDF here and only this chat can read it. It goes when "
+           + "the chat goes — unless you save it to the chatbot's knowledge, "
+           + "which the chip offers once it has uploaded.",
+  },
+  {
+    id: "scope",
+    surface: "chat",
+    target: "#scope-button",
+    needs: null,
+    title: "Choose who answers",
+    doing: "Limit a chat to certain agents. Worth doing when a question could "
+         + "match two specialists and you already know which one you want.",
+    showing: "Limit a chat to certain agents. Worth doing when a question could "
+           + "match two specialists and you already know which one you want.",
   },
 ];
 
