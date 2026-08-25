@@ -1,3 +1,4 @@
+from app.services.prompts import compose_system_prompt
 import pytest
 
 from app.clients.powabase_client import PowabaseAPIError
@@ -24,7 +25,14 @@ class FakeClient:
         self.updated_sessions = []
         self.fail_session_update = False
         self.deleted_probes = []
+        # What each remote agent's system_prompt currently is. resync_prompts
+        # reads this to decide whether a write is needed at all.
+        self.remote_prompts = {}
         self._n = 0
+
+    def list_agents(self):
+        return {"agents": [{"id": rid, "system_prompt": p}
+                           for rid, p in self.remote_prompts.items()]}
 
     # Powabase agent API. Throwaway model-probe agents are tracked apart from
     # real ones so they don't shift ids or pollute unrelated assertions.
@@ -548,3 +556,42 @@ def test_changing_the_effort_patches_the_remote_agent():
     AgentService(client).update(client.rows["ag-1"], {"reasoning_effort": "low"})
 
     assert client.updated_agents[-1][1]["settings"] == {"reasoning_effort": "low"}
+
+
+def test_resync_skips_agents_already_carrying_the_prompt():
+    """The whole point of making the write conditional. Startup used to PATCH
+    every agent on every boot, so ten instances scaling up meant ten full
+    rewrites of the agent table and a rolling deploy raced with itself. A
+    steady-state boot must now cost one listing and no writes at all."""
+    c = FakeClient()
+    wanted = compose_system_prompt("Chemistry", "strict")
+    c.agent_rows = [{"id": "a1", "powabase_agent_id": "r1",
+                     "instructions": "Chemistry", "grounding": "strict"}]
+    c.remote_prompts = {"r1": wanted}
+
+    assert AgentService(c).resync_prompts() == 0
+    assert c.updated_agents == []
+
+
+def test_resync_still_writes_when_the_prompt_actually_changed():
+    """The conditional must not turn the re-sync into a no-op. Editing a shared
+    clause in code has to reach agents that already exist — that is why this
+    runs at all."""
+    c = FakeClient()
+    c.agent_rows = [{"id": "a1", "powabase_agent_id": "r1",
+                     "instructions": "Chemistry", "grounding": "strict"}]
+    c.remote_prompts = {"r1": "something the code no longer produces"}
+
+    assert AgentService(c).resync_prompts() == 1
+    assert [u[0] for u in c.updated_agents] == ["r1"]
+
+
+def test_resync_writes_to_an_agent_powabase_has_never_heard_of():
+    """A local row whose remote is missing from the listing has no known
+    prompt, so it cannot be skipped — writing is the safe direction."""
+    c = FakeClient()
+    c.agent_rows = [{"id": "a1", "powabase_agent_id": "r1",
+                     "instructions": "Chemistry", "grounding": "strict"}]
+    c.remote_prompts = {}
+
+    assert AgentService(c).resync_prompts() == 1

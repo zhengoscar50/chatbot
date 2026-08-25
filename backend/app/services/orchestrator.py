@@ -95,9 +95,21 @@ def ensure_orchestrator_agent(client, model: str) -> str:
             system_prompt=ORCHESTRATOR_SYSTEM_PROMPT,
             settings={"temperature": 0},
         )["id"]
-    client.update_agent(
-        agent["id"], {"system_prompt": ORCHESTRATOR_SYSTEM_PROMPT, "model": model}
-    )
+    # Only write when something would actually change. Startup used to PATCH
+    # this shared agent unconditionally, which is fine for one server and wrong
+    # for several: each booting instance rewrote the router's model from its own
+    # environment, so a rolling deploy or an autoscale event left whichever
+    # instance booted last in charge of everyone's routing. A local dev server
+    # did the same to production, which is the constraint this project already
+    # documents.
+    #
+    # list_agents already returns system_prompt and model, so the comparison is
+    # free — no extra request to find out whether the write is needed.
+    if (agent.get("system_prompt") != ORCHESTRATOR_SYSTEM_PROMPT
+            or agent.get("model") != model):
+        client.update_agent(
+            agent["id"], {"system_prompt": ORCHESTRATOR_SYSTEM_PROMPT, "model": model}
+        )
     return agent["id"]
 
 

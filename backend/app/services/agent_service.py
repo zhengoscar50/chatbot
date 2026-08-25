@@ -179,16 +179,27 @@ class AgentService:
         with thousands of agents would want a stored prompt version instead.
         """
         updated = 0
+        # One listing tells us every remote agent's current prompt, so the loop
+        # below can compare before writing rather than PATCHing blind.
+        current = {
+            a["id"]: a.get("system_prompt")
+            for a in (self.client.list_agents().get("agents") or [])
+            if a.get("id")
+        }
         for row in self.client.list_all_agent_rows():
             remote = row.get("powabase_agent_id")
             if not remote:
                 continue
+            wanted = compose_system_prompt(
+                row.get("instructions") or "", row.get("grounding") or "strict"
+            )
+            # Skip agents already carrying this prompt. On a steady-state boot
+            # that is all of them, so the whole re-sync costs one listing and no
+            # writes — instead of one PATCH per agent, per instance, per deploy.
+            if current.get(remote) == wanted:
+                continue
             try:
-                self.client.update_agent(remote, {
-                    "system_prompt": compose_system_prompt(
-                        row.get("instructions") or "", row.get("grounding") or "strict"
-                    ),
-                })
+                self.client.update_agent(remote, {"system_prompt": wanted})
                 updated += 1
             except PowabaseAPIError:
                 logger.warning("prompt re-sync skipped agent %s", row.get("id"))

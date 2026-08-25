@@ -29,9 +29,12 @@ def ensure_general_assistant(client, model: str) -> str:
         return client.create_agent(
             GENERAL_ASSISTANT_NAME, model=model, system_prompt=prompt
         )["id"]
-    # Re-sync, so editing the instructions in code actually takes effect on a
-    # project where this agent already exists.
-    client.update_agent(agent["id"], {"system_prompt": prompt, "model": model})
+    # Re-sync so editing the instructions in code takes effect on a project
+    # where this agent already exists — but only when they differ. An
+    # unconditional write meant every booting instance rewrote this shared
+    # agent, and with more than one server that is a race rather than a resync.
+    if agent.get("system_prompt") != prompt or agent.get("model") != model:
+        client.update_agent(agent["id"], {"system_prompt": prompt, "model": model})
     return agent["id"]
 
 

@@ -58,3 +58,54 @@ def test_bootstrap_resyncs_the_prompt_on_an_existing_agent():
     agent_id, fields = c.updated[0]
     assert agent_id == "existing"
     assert OPEN_CLAUSE in fields["system_prompt"]
+
+
+class _PromptClient:
+    def __init__(self, agents):
+        self._agents = agents
+        self.updated = []
+
+    def list_agents(self):
+        return {"agents": self._agents}
+
+    def update_agent(self, agent_id, fields):
+        self.updated.append((agent_id, fields))
+
+    def create_agent(self, name, **kwargs):
+        return {"id": "new"}
+
+
+def test_general_assistant_bootstrap_writes_nothing_when_already_correct():
+    """Same shared-agent race as the orchestrator: one row, every instance
+    rewriting it on boot."""
+    from app.services.general_assistant import (
+        GENERAL_ASSISTANT_INSTRUCTIONS,
+        GENERAL_ASSISTANT_NAME,
+        ensure_general_assistant,
+    )
+    from app.services.prompts import compose_system_prompt
+
+    prompt = compose_system_prompt(GENERAL_ASSISTANT_INSTRUCTIONS, "open")
+    client = _PromptClient([{
+        "id": "ga-1", "name": GENERAL_ASSISTANT_NAME,
+        "system_prompt": prompt, "model": "gpt-5-mini",
+    }])
+
+    assert ensure_general_assistant(client, "gpt-5-mini") == "ga-1"
+    assert client.updated == []
+
+
+def test_general_assistant_bootstrap_still_resyncs_when_stale():
+    from app.services.general_assistant import (
+        GENERAL_ASSISTANT_NAME,
+        ensure_general_assistant,
+    )
+
+    client = _PromptClient([{
+        "id": "ga-1", "name": GENERAL_ASSISTANT_NAME,
+        "system_prompt": "stale", "model": "gpt-5-mini",
+    }])
+
+    ensure_general_assistant(client, "gpt-5-mini")
+
+    assert [u[0] for u in client.updated] == ["ga-1"]

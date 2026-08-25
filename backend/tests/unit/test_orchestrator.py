@@ -184,3 +184,78 @@ def test_a_missing_reason_is_tolerated():
     assert d.reason == ""
 
 
+
+
+class _PromptClient:
+    """Records writes, so a test can assert one did NOT happen."""
+
+    def __init__(self, agents):
+        self._agents = agents
+        self.updated = []
+        self.created = []
+
+    def list_agents(self):
+        return {"agents": self._agents}
+
+    def update_agent(self, agent_id, fields):
+        self.updated.append((agent_id, fields))
+
+    def create_agent(self, name, **kwargs):
+        self.created.append(name)
+        return {"id": "new"}
+
+
+def test_orchestrator_bootstrap_writes_nothing_when_already_correct():
+    """Every booting instance used to PATCH this one shared agent, re-pointing
+    the router at whatever model its own environment named. Harmless with one
+    server; with several it means the last instance to boot owns everyone's
+    routing, and a local dev server silently reconfigures production."""
+    from app.services.orchestrator import (
+        ORCHESTRATOR_AGENT_NAME,
+        ORCHESTRATOR_SYSTEM_PROMPT,
+        ensure_orchestrator_agent,
+    )
+
+    client = _PromptClient([{
+        "id": "orch-1", "name": ORCHESTRATOR_AGENT_NAME,
+        "system_prompt": ORCHESTRATOR_SYSTEM_PROMPT, "model": "gpt-5-mini",
+    }])
+
+    assert ensure_orchestrator_agent(client, "gpt-5-mini") == "orch-1"
+    assert client.updated == []
+
+
+def test_orchestrator_bootstrap_still_resyncs_a_stale_prompt():
+    """The conditional must not disable the re-sync: editing the prompt in code
+    has to reach a project where the agent already exists, or routing silently
+    stays on whatever shipped first."""
+    from app.services.orchestrator import (
+        ORCHESTRATOR_AGENT_NAME,
+        ensure_orchestrator_agent,
+    )
+
+    client = _PromptClient([{
+        "id": "orch-1", "name": ORCHESTRATOR_AGENT_NAME,
+        "system_prompt": "an old prompt", "model": "gpt-5-mini",
+    }])
+
+    ensure_orchestrator_agent(client, "gpt-5-mini")
+
+    assert [u[0] for u in client.updated] == ["orch-1"]
+
+
+def test_orchestrator_bootstrap_resyncs_a_changed_model():
+    from app.services.orchestrator import (
+        ORCHESTRATOR_AGENT_NAME,
+        ORCHESTRATOR_SYSTEM_PROMPT,
+        ensure_orchestrator_agent,
+    )
+
+    client = _PromptClient([{
+        "id": "orch-1", "name": ORCHESTRATOR_AGENT_NAME,
+        "system_prompt": ORCHESTRATOR_SYSTEM_PROMPT, "model": "claude-sonnet-5",
+    }])
+
+    ensure_orchestrator_agent(client, "gpt-5-mini")
+
+    assert client.updated[0][1]["model"] == "gpt-5-mini"
