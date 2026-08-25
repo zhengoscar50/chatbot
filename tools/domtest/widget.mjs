@@ -25,20 +25,17 @@
 //
 // 2. That same interceptor option flips on subresource loading for the whole
 //    window, which means the `<script src=".../widget.css.js">` the loader
-//    injects into <head> would ALSO really fetch. Two ways that goes wrong:
-//    serving it a 404 fires the loader's onerror, which calls host.remove()
-//    and deletes the widget outright; serving the real file makes its bare
-//    top-level `function widgetVars(){}` leak onto the HOST window (browsers
-//    do this too — it is a real, if minor, quirk of loading a second classic
-//    script into the same global scope) — which would make check 2 fail for
-//    a reason that has nothing to do with widget.js's own guard. So the
-//    interceptor answers everything except widget.js with a promise that
-//    never resolves: the CSS <script> stays perpetually in flight, its
-//    onload/onerror never fire, `host.style.display` stays "none" forever,
-//    and nothing new lands on `window`. That matches the brief's own note
-//    that "jsdom will not load the CSS script" — checks never assert on
-//    visibility (`data-open` and `frame.src` only, never getComputedStyle),
-//    so an invisible-but-present host is exactly as testable as a styled one.
+//    injects into <head> ALSO really fetches — through the same interceptor,
+//    serving this repo's real widget.css.js source, so `cssTag.onload` fires
+//    for real and the widget applies its actual styles. That used to be
+//    unsafe: widget.css.js declared `widgetVars`/`WIDGET_CSS` as bare
+//    top-level names, so loading it for real leaked a second global onto the
+//    HOST window — a fix-round-1 finding, now fixed at the source: the file
+//    is wrapped in its own IIFE and publishes one namespaced object,
+//    `window.__powabaseWidgetCSS`. So check 2 below can now assert the
+//    loader's whole real guarantee — exactly two names on window, both
+//    namespaced, nothing else — instead of a version narrowed to dodge a
+//    leak that no longer exists.
 
 import pkg from "jsdom";
 const { JSDOM, requestInterceptor } = pkg;
@@ -46,6 +43,7 @@ import { readFileSync } from "fs";
 
 const FE = "/Users/oscar/Downloads/rag-chatbot/frontend";
 const WIDGET_JS = readFileSync(`${FE}/widget.js`, "utf8");
+const WIDGET_CSS_JS = readFileSync(`${FE}/widget.css.js`, "utf8");
 
 // Two distinct fake origins: the host site the widget is pasted onto, and the
 // origin the widget script itself is served from. Keeping them different is
@@ -88,7 +86,10 @@ function makeDom() {
     if (request.url === `${WIDGET_ORIGIN}/widget.js`) {
       return new Response(WIDGET_JS, { headers: { "Content-Type": "application/javascript" } });
     }
-    // widget.css.js and anything else: stay pending forever. See file header.
+    if (request.url === `${WIDGET_ORIGIN}/widget.css.js`) {
+      return new Response(WIDGET_CSS_JS, { headers: { "Content-Type": "application/javascript" } });
+    }
+    // Anything else: stay pending forever rather than hit real network.
     return new Promise(() => {});
   });
   return new JSDOM("<!doctype html><html><body></body></html>", {
@@ -175,12 +176,19 @@ console.log("\n=== the embed widget loader ===");
         `host=${!!host} shadow=${!!shadow} tab=${!!tab} leaked-.tab=${!!d.querySelector(".tab")}`);
 }
 
-// 2. Nothing leaks onto the host page.
+// 2. Nothing leaks onto the host page. The CSS companion script loads for
+// real here (makeDom's interceptor serves it), so this proves the loader's
+// full guarantee — including the styles it injects — not a version narrowed
+// to dodge a leak that widget.css.js no longer has.
 {
   const { d, leaked } = await boot();
-  check(d.querySelectorAll("style").length === 0 && leaked.length === 1 && leaked[0] === "__powabaseWidget",
-        "2. nothing leaks onto the host page — no <style>, only __powabaseWidget added to window",
-        `styles=${d.querySelectorAll("style").length} newKeys=${JSON.stringify(leaked)}`);
+  const sortedLeaked = [...leaked].sort();
+  check(d.querySelectorAll("style").length === 0
+        && sortedLeaked.length === 2
+        && sortedLeaked[0] === "__powabaseWidget"
+        && sortedLeaked[1] === "__powabaseWidgetCSS",
+        "2. nothing leaks onto the host page — no <style>, and window gains only __powabaseWidget and __powabaseWidgetCSS",
+        `styles=${d.querySelectorAll("style").length} newKeys=${JSON.stringify(sortedLeaked)}`);
 }
 
 // 3. No session on page load.

@@ -77,10 +77,10 @@
   const cssTag = document.createElement("script");
   cssTag.src = origin + "/widget.css.js";
   cssTag.onload = function () {
+    const bundle = window.__powabaseWidgetCSS;
+    if (!bundle) { host.remove(); return; }
     const style = document.createElement("style");
-    style.textContent =
-      (typeof widgetVars === "function" ? widgetVars(accent) : "")
-      + (typeof WIDGET_CSS === "string" ? WIDGET_CSS : "");
+    style.textContent = bundle.vars(accent) + bundle.css;
     root.appendChild(style);
     host.style.display = "";
   };

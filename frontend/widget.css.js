@@ -9,6 +9,7 @@
 // property it depends on; the panel deliberately states almost nothing because
 // it only holds an iframe.
 
+(function () {
 function widgetVars(accent) {
   return `:host{--w-accent:${accent};}`;
 }
@@ -96,3 +97,10 @@ const WIDGET_CSS = `
   .panel{ transition: none; }
 }
 `;
+
+  // One namespaced object, not two bare globals. This file is injected into
+  // other people's pages by widget.js, whose whole premise is that it adds a
+  // single name to their window — a premise two loose top-level declarations
+  // quietly broke.
+  window.__powabaseWidgetCSS = { css: WIDGET_CSS, vars: widgetVars };
+})();
