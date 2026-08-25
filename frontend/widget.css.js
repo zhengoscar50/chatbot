@@ -5,8 +5,9 @@
 // collide with the host page — and nothing here escapes to touch their layout.
 //
 // Nothing inherits. A host page may set any font, colour or box-sizing on body,
-// and inherited values cross a shadow boundary, so every property the widget
-// depends on is stated explicitly.
+// and inherited values cross a shadow boundary. The tab explicitly states every
+// property it depends on; the panel deliberately states almost nothing because
+// it only holds an iframe.
 
 function widgetVars(accent) {
   return `:host{--w-accent:${accent};}`;
@@ -16,7 +17,6 @@ const WIDGET_CSS = `
 :host{
   all: initial;
   --w-bg: #ffffff;
-  --w-ink: #16171a;
   --w-line: #e3e4e8;
   --w-tab-w: 34px;
   --w-panel-w: 400px;
@@ -45,7 +45,9 @@ const WIDGET_CSS = `
   border-radius: 8px 0 0 8px;
   background: var(--w-accent);
   color: #fff;
-  font: 600 12px/1 inherit;
+  font-weight: 600;
+  font-size: 12px;
+  line-height: 1;
   letter-spacing: .08em;
   text-transform: uppercase;
   writing-mode: vertical-rl;
