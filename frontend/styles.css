@@ -321,6 +321,14 @@ body {
   transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
 }
 
+/* The UA rule for [hidden] is display:none, but the author rule above outranks
+   it, so `hidden` alone does not hide an icon button. Every .icon-btn in the
+   app carries this latent defect; guarding one instance would leave the trap
+   armed for the next. */
+.icon-btn[hidden] {
+  display: none;
+}
+
 .icon-btn:hover {
   background: var(--accent-hover);
   border-color: var(--accent-2);

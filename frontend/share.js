@@ -96,11 +96,16 @@ async function replay() {
 }
 
 async function boot() {
+  // Held busy for the whole boot: send() (the button and Enter alike) bails
+  // out on `busy`, so nothing can reach its own create-a-session branch
+  // before /info resolves, or ever, on either "unavailable" path below.
+  busy = true;
   const res = await fetch(`/s/${encodeURIComponent(TOKEN)}/info`);
   if (!res.ok) {
     statusLine.textContent = "This link isn't available.";
     input.disabled = true;
-    return;
+    document.getElementById("send").disabled = true;
+    return; // busy stays true: there is nothing here to send to.
   }
   const info = await res.json();
   document.getElementById("bot-name").textContent = info.name;
@@ -126,10 +131,12 @@ async function boot() {
       // that would happen outside the loader's bookkeeping.
       statusLine.textContent = "Chat is unavailable right now.";
       input.disabled = true;
-      return;
+      document.getElementById("send").disabled = true;
+      return; // busy stays true forever: every route into send() is closed.
     }
   }
   await replay();
+  busy = false;
 }
 
 async function send() {
