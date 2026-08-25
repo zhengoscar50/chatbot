@@ -117,18 +117,24 @@
   async function load() {
     if (loaded || loading) return;
     loading = true;
+    // The id travels in the fragment, never through postMessage: a fragment
+    // goes only to the frame we are pointing at, whereas a message would be
+    // posted to a parent whose origin the panel cannot verify.
+    const base = `${origin}/s/${encodeURIComponent(token)}?embed=1`;
     try {
       const id = await ensureSession();
-      // The id travels in the fragment, never through postMessage: a fragment
-      // goes only to the frame we are pointing at, whereas a message would be
-      // posted to a parent whose origin the panel cannot verify.
-      const base = `${origin}/s/${encodeURIComponent(token)}?embed=1`;
       // Load the page either way, so a failure shows the chat's own error
       // rather than a blank white rectangle. But only a run that actually got
       // a session counts as loaded — otherwise a single blip would leave the
       // widget dead for the rest of the visit.
       frame.src = id ? `${base}#session=${encodeURIComponent(id)}` : base;
       if (id) loaded = true;
+    } catch (err) {
+      // A network failure must not become an unhandled rejection in the
+      // HOST page's console, and must not leave the panel blank. `loaded`
+      // stays false so the next open retries; the frame still points at the
+      // base URL so the visitor sees the chat's own error instead.
+      frame.src = base;
     } finally {
       loading = false;
     }

@@ -16,6 +16,7 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.testclient import TestClient
 
 from app.api.routes import share as share_route
@@ -145,6 +146,16 @@ def client(fake, monkeypatch):
 
     app = FastAPI()
     app.include_router(share_route.router)
+    # Mirrors main.py's create_app() exactly: the widget's loader calls these
+    # routes from the HOST page's origin, so this is what makes the panel load
+    # on any real third-party site instead of a blank rectangle.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type"],
+    )
     app.dependency_overrides[get_powabase_client] = lambda: fake
     app.dependency_overrides[get_share_service] = lambda: ShareService(fake)
     app.dependency_overrides[get_session_service] = lambda: SessionService(fake)
@@ -279,7 +290,7 @@ def test_transcript_replays_a_visitors_own_conversation(client, fake):
 
     assert [m["role"] for m in body["messages"]] == ["user", "assistant"]
     assert body["messages"][1]["content"] == "hello"
-    assert body["messages"][1]["answered_by"] == {"name": "Chem tutor"}
+    assert body["messages"][1]["answered_by"] == {"id": None, "name": "Chem tutor"}
 
 
 def test_transcript_refuses_a_session_from_another_chatbot(client):
@@ -323,3 +334,60 @@ def test_transcript_redacts_filenames_the_live_answer_also_hides(client, fake):
     assert "src-1" not in str(turn["citations"])
     # The excerpt is what makes an answer credible and is deliberately kept.
     assert "revenue rose 4%" in str(turn["citations"])
+
+
+# --- CORS -------------------------------------------------------------
+#
+# The widget's loader runs on the HOST page's origin and calls these routes,
+# so every request it makes is cross-origin by definition. Without CORS
+# headers the browser discards the response even though the server did the
+# work — a session row gets created and then orphaned, and the visitor sees
+# a blank panel forever.
+
+def test_a_cross_origin_get_is_answered_with_an_allow_origin_header(client, fake):
+    fake.messages.append({"session_id": "v1", "role": "user", "content": "hi",
+                          "citations": [], "answered_by_name": None})
+    res = client.get(
+        "/s/tok/session/v1/messages",
+        headers={"Origin": "https://example.com"},
+    )
+    assert res.status_code == 200
+    assert res.headers["access-control-allow-origin"] == "*"
+
+
+def test_a_content_type_preflight_for_chat_is_allowed(client):
+    """The widget's own POSTs never send anything but Content-Type, so this
+    is the preflight that must succeed for the widget to work at all."""
+    res = client.options(
+        "/s/tok/chat",
+        headers={
+            "Origin": "https://example.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert res.status_code == 200
+    assert res.headers["access-control-allow-origin"] == "*"
+
+
+def test_an_authorization_preflight_is_refused(client):
+    """THE test: proves the restriction is load-bearing, not decorative. The
+    authenticated (non-share) routes need Authorization; if a cross-origin
+    page could preflight it successfully here, this app-wide CORS config
+    would just as well let a hostile page attach a stolen bearer token to
+    those routes. Starlette answers a disallowed preflight header with 400
+    and a body naming the failure — not a 403/404 — so that is what this
+    asserts on, rather than guessing at a status code.
+    """
+    res = client.options(
+        "/s/tok/chat",
+        headers={
+            "Origin": "https://example.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization",
+        },
+    )
+    assert res.status_code == 400
+    assert "headers" in res.text.lower()
+    allowed = res.headers.get("access-control-allow-headers", "")
+    assert "authorization" not in allowed.lower()

@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -143,6 +144,29 @@ class RevalidatingStatics(StaticFiles):
 def create_app() -> FastAPI:
     app = FastAPI(title="RAG Chatbot on Powabase", version="1.0.0", lifespan=lifespan)
     register_exception_handlers(app)
+    # The widget's loader runs on the HOST page's origin and calls this API, so
+    # every one of its requests is cross-origin. Without these headers the
+    # browser discards the responses and the panel never loads — while the
+    # requests still reach the server, leaving orphaned sessions behind.
+    #
+    # Any origin is correct here: the point of a share link is that any site may
+    # embed it, and every /s/ route is already gated by an unguessable token and
+    # a daily cap.
+    #
+    # allow_headers is the part that keeps this safe app-wide. The authenticated
+    # routes need an Authorization header; a cross-origin page cannot send one
+    # unless it is allowed here, so their preflight fails and they stay
+    # unreachable from other origins. The public routes need only Content-Type.
+    # allow_credentials stays False for the same reason it is safe to: this app
+    # authenticates with bearer headers, never cookies, so there is no ambient
+    # authority for a hostile page to ride.
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["GET", "POST", "OPTIONS"],
+        allow_headers=["Content-Type"],
+    )
     app.include_router(health_router)
     app.include_router(ingest_router)
     app.include_router(chat_router)

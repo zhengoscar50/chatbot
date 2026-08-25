@@ -114,7 +114,10 @@ async def public_transcript(
             "role": row.get("role"),
             "content": content,
             "citations": citations,
-            "answered_by": {"name": name} if name else None,
+            # id is always None here, deliberately, matching the live path
+            # above: it is an internal identifier a stranger has no business
+            # holding, never an omission to fill in later.
+            "answered_by": {"id": None, "name": name} if name else None,
         })
     return {"messages": out}
 
