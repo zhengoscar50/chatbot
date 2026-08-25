@@ -253,3 +253,73 @@ def test_an_upload_field_is_rejected(client):
     res = client.post("/s/tok/chat",
                       json={"session_id": "v1", "query": "hi", "chatbot_id": "cb-other"})
     assert res.status_code == 422
+
+
+# --- GET /s/{token}/session/{session_id}/messages -------------------------
+#
+# The brief for this suite sketches a `build_app()` helper returning
+# `(app, fakes)` with `fakes.chatbots.rows` / `fakes.sessions.rows` /
+# `fakes.messages.rows`. This file has no such helper — it uses the
+# `client`/`fake` fixtures above, backed by one FakeClient whose `messages` is
+# a flat list filtered by `session_id` (see `list_messages`), and whose
+# `sessions` fixture already includes exactly the three cases this endpoint
+# needs to distinguish: `v1` (visitor's own, shared, cb-shared), `owner-1`
+# (owner's private chat, cb-shared) and `other-1` (shared, but cb-other).
+# Adapted to that existing shape rather than inventing a parallel one; no new
+# fake infrastructure was needed since `list_messages` already does what
+# `MessageStore.transcript` needs.
+
+def test_transcript_replays_a_visitors_own_conversation(client, fake):
+    fake.messages.append({"session_id": "v1", "role": "user", "content": "hi",
+                          "citations": [], "answered_by_name": None})
+    fake.messages.append({"session_id": "v1", "role": "assistant", "content": "hello",
+                          "citations": [], "answered_by_name": "Chem tutor"})
+
+    body = client.get("/s/tok/session/v1/messages").json()
+
+    assert [m["role"] for m in body["messages"]] == ["user", "assistant"]
+    assert body["messages"][1]["content"] == "hello"
+    assert body["messages"][1]["answered_by"] == {"name": "Chem tutor"}
+
+
+def test_transcript_refuses_a_session_from_another_chatbot(client):
+    """Enumeration guard. A visitor holding one chatbot's token must not be
+    able to read a conversation belonging to a different chatbot."""
+    assert client.get("/s/tok/session/other-1/messages").status_code == 404
+
+
+def test_transcript_refuses_the_owners_private_chat(client):
+    """The owner's own chats live in this same chatbot. Membership alone is not
+    enough — this is the check public_chat already makes, and the reason it
+    makes it."""
+    assert client.get("/s/tok/session/owner-1/messages").status_code == 404
+
+
+def test_transcript_is_404_not_403_for_a_session_that_does_not_exist(client):
+    """403 would confirm the session exists, which is exactly what an
+    enumeration attempt wants to learn."""
+    assert client.get("/s/tok/session/nope/messages").status_code == 404
+
+
+def test_transcript_redacts_filenames_the_live_answer_also_hides(client, fake):
+    """The check worth writing first. Rows are stored UNREDACTED — share.py
+    redacts the response after answer_turn has written the row — so replaying
+    them raw hands back the document names the live path stripped. The same
+    answer would be secret when given and public when read back."""
+    fake.messages.append({
+        "session_id": "v1",
+        "role": "assistant",
+        "content": "According to Q3-finances.pdf, revenue rose.",
+        "citations": [{"source_name": "Q3-finances.pdf", "source_id": "src-1",
+                       "text_excerpt": "revenue rose 4%"}],
+        "answered_by_name": "Analyst",
+    })
+
+    body = client.get("/s/tok/session/v1/messages").json()
+    turn = body["messages"][0]
+
+    assert "Q3-finances.pdf" not in turn["content"]
+    assert "Q3-finances.pdf" not in str(turn["citations"])
+    assert "src-1" not in str(turn["citations"])
+    # The excerpt is what makes an answer credible and is deliberately kept.
+    assert "revenue rose 4%" in str(turn["citations"])

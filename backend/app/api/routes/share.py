@@ -75,6 +75,50 @@ async def public_session(
     return {"session_id": created["id"]}
 
 
+@router.get("/{token}/session/{session_id}/messages")
+async def public_transcript(
+    token: str,
+    session_id: str,
+    share: ShareService = Depends(get_share_service),
+    sessions: SessionService = Depends(get_session_service),
+    messages: MessageStore = Depends(get_message_store),
+):
+    """A visitor's own conversation, replayed so the widget can resume it.
+
+    The same BOTH-conditions check public_chat makes, for the same reason: the
+    owner's private chats live in this chatbot too, so membership alone would
+    let a visitor name one and read it.
+
+    404 on every failure, never 403 — a 403 confirms the session exists, which
+    is the one fact an enumeration attempt is after.
+    """
+    chatbot = await run_in_threadpool(_chatbot_or_404, share, token)
+    session_row = await run_in_threadpool(sessions.get, session_id)
+    if (session_row is None
+            or session_row.get("chatbot_id") != chatbot["id"]
+            or not session_row.get("shared")):
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+
+    rows = await run_in_threadpool(messages.transcript, session_id)
+    out = []
+    for row in rows:
+        content = row.get("content") or ""
+        citations = row.get("citations") or []
+        # Stored rows are unredacted: share.py redacts the RESPONSE, after
+        # answer_turn has already written the row. Replaying raw would hand
+        # back the filenames the live answer stripped.
+        if row.get("role") == "assistant":
+            content, citations = redact_turn(content, citations)
+        name = row.get("answered_by_name")
+        out.append({
+            "role": row.get("role"),
+            "content": content,
+            "citations": citations,
+            "answered_by": {"name": name} if name else None,
+        })
+    return {"messages": out}
+
+
 @router.post("/{token}/chat", response_model=ChatResponse)
 async def public_chat(
     token: str,
