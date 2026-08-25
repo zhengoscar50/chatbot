@@ -213,3 +213,23 @@ def test_used_today_is_stale_across_a_date_change(client, auth, bots):
 def test_reading_another_users_share_state_is_not_found(client, auth, other_chatbot):
     res = client.get(f"/chatbots/{other_chatbot}/share", headers=auth)
     assert res.status_code == 404
+
+
+def test_share_response_offers_the_widget_snippet_too(client, auth, my_chatbot, share):
+    """Both snippets, because they are for different situations: the iframe for
+    somebody who wants to place a rectangle themselves, the script tag for
+    somebody who wants a tab on the edge of their page."""
+    share.token = "tok"
+    body = client.post(f"/chatbots/{my_chatbot}/share", headers=auth).json()
+
+    assert '<iframe' in body["embed"]
+    assert '<script' in body["widget"]
+    assert 'data-token="tok"' in body["widget"]
+    assert "/widget.js" in body["widget"]
+
+
+def test_an_unshared_chatbot_offers_neither_snippet(client, auth, my_chatbot):
+    body = client.get(f"/chatbots/{my_chatbot}/share", headers=auth).json()
+
+    assert body["embed"] is None
+    assert body["widget"] is None

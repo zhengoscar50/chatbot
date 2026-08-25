@@ -106,6 +106,12 @@ def _share_response(request: Request, row: dict) -> ShareResponse:
         f'<iframe src="{url}" width="420" height="640" style="border:0"></iframe>'
         if token else None
     )
+    # The other way to embed: a tab on the edge of the page instead of a
+    # rectangle in the middle of it. Same token, same public page underneath.
+    widget = (
+        f'<script src="{base}/widget.js" data-token="{token}" async></script>'
+        if token else None
+    )
     # A count from an earlier date is stale, not zero-but-forgotten: only
     # `consume` applies today's reset when it writes, so a read-only response
     # must apply the same reset itself or report yesterday's total as today's.
@@ -113,7 +119,7 @@ def _share_response(request: Request, row: dict) -> ShareResponse:
     if str(row.get("share_used_date") or "") != date.today().isoformat():
         used_today = 0
     return ShareResponse(
-        token=token, url=url, embed=embed,
+        token=token, url=url, embed=embed, widget=widget,
         daily_limit=int(row.get("share_daily_limit") or 0),
         used_today=used_today,
     )

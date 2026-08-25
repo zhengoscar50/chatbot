@@ -42,11 +42,14 @@ async function openShare(bot) {
 function setShareFields(state, usageText) {
   const url = (state && state.url) || "";
   const embed = (state && state.embed) || "";
+  const widget = (state && state.widget) || "";
   document.getElementById("share-url").value = url;
   document.getElementById("share-embed").value = embed;
+  document.getElementById("share-widget").value = widget;
   document.getElementById("share-usage").textContent = usageText;
   document.getElementById("share-copy").disabled = !url;
   document.getElementById("share-embed-copy").disabled = !embed;
+  document.getElementById("share-widget-copy").disabled = !widget;
 }
 
 async function refreshShare() {
@@ -99,7 +102,8 @@ function wireShare() {
   // The confirmation lands on the button itself, not on #share-usage — that
   // line is showing "N / limit used today", and "Copied." replacing it would
   // hide the usage count until the modal is reopened.
-  [["share-copy", "share-url"], ["share-embed-copy", "share-embed"]].forEach(
+  [["share-copy", "share-url"], ["share-embed-copy", "share-embed"],
+   ["share-widget-copy", "share-widget"]].forEach(
     ([button, field]) => {
       const btn = document.getElementById(button);
       const original = btn.textContent;
