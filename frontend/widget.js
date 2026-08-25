@@ -44,9 +44,13 @@
   let sessionId = read(KEY_SESSION);
   let open = false;
   let loaded = false;
+  let loading = false;
 
   const host = document.createElement("div");
   host.setAttribute("data-powabase-widget", "");
+  // Nothing is shown until the stylesheet lands: an unstyled tab in a
+  // stranger's layout for even a moment is worse than a slightly later one.
+  host.style.display = "none";
   const root = host.attachShadow({ mode: "open" });
 
   const wrap = document.createElement("div");
@@ -78,11 +82,12 @@
       (typeof widgetVars === "function" ? widgetVars(accent) : "")
       + (typeof WIDGET_CSS === "string" ? WIDGET_CSS : "");
     root.appendChild(style);
+    host.style.display = "";
   };
+  cssTag.onerror = function () { host.remove(); };
   document.head.appendChild(cssTag);
 
   root.appendChild(wrap);
-  document.body.appendChild(host);
 
   // The session is created on FIRST OPEN, never on page load: a visitor who
   // never clicks should leave no empty conversation in the owner's data.
@@ -110,14 +115,23 @@
   }
 
   async function load() {
-    if (loaded) return;
-    loaded = true;
-    const id = await ensureSession();
-    // The id travels in the fragment, never through postMessage: a fragment
-    // goes only to the frame we are pointing at, whereas a message would be
-    // posted to a parent whose origin the panel cannot verify.
-    const base = `${origin}/s/${encodeURIComponent(token)}?embed=1`;
-    frame.src = id ? `${base}#session=${encodeURIComponent(id)}` : base;
+    if (loaded || loading) return;
+    loading = true;
+    try {
+      const id = await ensureSession();
+      // The id travels in the fragment, never through postMessage: a fragment
+      // goes only to the frame we are pointing at, whereas a message would be
+      // posted to a parent whose origin the panel cannot verify.
+      const base = `${origin}/s/${encodeURIComponent(token)}?embed=1`;
+      // Load the page either way, so a failure shows the chat's own error
+      // rather than a blank white rectangle. But only a run that actually got
+      // a session counts as loaded — otherwise a single blip would leave the
+      // widget dead for the rest of the visit.
+      frame.src = id ? `${base}#session=${encodeURIComponent(id)}` : base;
+      if (id) loaded = true;
+    } finally {
+      loading = false;
+    }
   }
 
   function setOpen(next) {
@@ -140,5 +154,13 @@
     if (data.type === "close") setOpen(false);
   });
 
-  if (read(KEY_OPEN) === "1") setOpen(true);
+  // async on the script tag means "don't block the parser", not "wait for
+  // body" — a host pasting the tag in <head> can run this before <body>
+  // exists, so defer mounting until it does.
+  function mount() {
+    document.body.appendChild(host);
+    if (read(KEY_OPEN) === "1") setOpen(true);
+  }
+  if (document.body) mount();
+  else document.addEventListener("DOMContentLoaded", mount);
 })();
