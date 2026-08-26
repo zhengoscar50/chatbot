@@ -52,6 +52,25 @@ function bubble(role, text) {
   return el;
 }
 
+// An excerpt is a raw chunk of the source document: up to 300 characters, with
+// newlines, and usually opening on a markdown heading like "# EMPLOYEE
+// HANDBOOK". Dropped into a paragraph as-is that renders as literal hash marks
+// and a run-on wall of text — in the 360px widget card it buries the answer it
+// is supposed to support.
+//
+// This is a quote, not a document, so the markdown is noise rather than
+// meaning: flatten it to one line of plain prose and let CSS decide how much
+// fits. Deliberately not the markdown renderer — headings and lists inside a
+// citation chip would fight the layout rather than help it.
+function excerptText(raw) {
+  return String(raw || "")
+    .replace(/^\s*#{1,6}\s+/gm, "")     // heading markers, any line
+    .replace(/^\s*[-*+]\s+/gm, "")      // list bullets
+    .replace(/[*_`]/g, "")               // emphasis and code ticks
+    .replace(/\s+/g, " ")                // newlines and runs of space
+    .trim();
+}
+
 function citations(list) {
   if (!list || !list.length) return;
   const box = document.createElement("div");
@@ -59,8 +78,12 @@ function citations(list) {
   list.forEach((c) => {
     const item = document.createElement("p");
     item.className = "citation";
+    const marker = document.createElement("span");
+    marker.className = "citation__marker";
     // source_name is already "Source 1" — the server redacts filenames.
-    item.textContent = `[${c.key}] ${c.source_name}: ${c.text_excerpt}`;
+    marker.textContent = `[${c.key}] ${c.source_name}`;
+    item.appendChild(marker);
+    item.appendChild(document.createTextNode(" " + excerptText(c.text_excerpt)));
     box.appendChild(item);
   });
   thread.appendChild(box);

@@ -1480,7 +1480,9 @@ body {
 
 .citations {
   max-width: 48rem;
-  margin: -0.75rem auto 1.25rem;
+  /* No `auto` side margins: they centre the block, which reads fine at 48rem
+     and leaves citations visibly adrift from the message in a narrow card. */
+  margin: -0.75rem 0 1.25rem;
 }
 
 .citation {
@@ -1491,6 +1493,19 @@ body {
   background: var(--accent-surface);
   border: 1px solid var(--accent-border);
   border-radius: 0.5rem;
+  /* A citation supports an answer; it must not bury it. Excerpts run to 300
+     characters, which is six or seven lines in the embedded card, and several
+     citations then push the answer off screen entirely. Three lines is enough
+     to see the quote is real, which is the whole job of showing it. */
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.citation__marker {
+  color: var(--accent);
+  font-weight: 600;
 }
 
 /* Getting-started checklist. Shows itself while steps remain; the header's
