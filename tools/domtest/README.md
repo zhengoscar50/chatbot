@@ -15,7 +15,7 @@ node run.mjs         # 48 checks: boot, cards, navigation, resume, menus, CRUD, 
 node scope.mjs       # 14 checks: per-chat agent exclusion, end to end
 node onboarding.mjs  # 24 checks: the getting-started panel, its Help toggle, both hint modes, and malformed /onboarding bodies
 node tour.mjs         # 10 checks: the guided tour engine — open/skip/escape, replay position, and the rAF-leak guard
-node widget.mjs  # 14 checks: the embed widget loader, its shadow root, session ownership and message origin checks
+node widget.mjs  # 16 checks: the embed widget loader — shadow root, session ownership, message origin, and the launcher glyph
 ```
 
 Both exit non-zero on failure and print a per-check line.

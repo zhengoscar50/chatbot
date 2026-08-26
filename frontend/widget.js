@@ -22,7 +22,7 @@
   const origin = new URL(script.src, location.href).origin;
   const token = script.getAttribute("data-token") || "";
   const side = script.getAttribute("data-side") === "left" ? "left" : "right";
-  const label = script.getAttribute("data-label") || "Ask";
+  const label = script.getAttribute("data-label") || "Chat with us";
   const accent = script.getAttribute("data-accent") || "#3e6ae1";
   if (!token) return;
 
@@ -46,6 +46,25 @@
   let loaded = false;
   let loading = false;
 
+  // One <svg> per state. Both live in the button and CSS shows whichever the
+  // open state calls for, so toggling never rebuilds DOM on someone's page.
+  function tabIcon(cls, d) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("class", cls);
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    svg.setAttribute("aria-hidden", "true");
+    const path = document.createElementNS(ns, "path");
+    path.setAttribute("d", d);
+    svg.appendChild(path);
+    return svg;
+  }
+
   const host = document.createElement("div");
   host.setAttribute("data-powabase-widget", "");
   // Nothing is shown until the stylesheet lands: an unstyled tab in a
@@ -60,7 +79,19 @@
   const tab = document.createElement("button");
   tab.type = "button";
   tab.className = "tab";
-  tab.textContent = label;
+  // A glyph, not text: the launcher is a 52px circle in the corner and there is
+  // no room for a word in it. `data-label` becomes the accessible name instead,
+  // so the button still announces itself to a screen reader.
+  //
+  // Built with createElementNS and appendChild rather than innerHTML — this runs
+  // inside somebody else's page, and a widget that assembles markup from a
+  // string is one careless change away from doing it with a value it was given.
+  tab.appendChild(tabIcon(
+    "ico-chat",
+    "M21 11.5a8.4 8.4 0 0 1-8.5 8.3 8.8 8.8 0 0 1-3.9-.9L3 21l1.9-5.4A8.2 8.2 0 0 1 4 11.5 8.4 8.4 0 0 1 12.5 3 8.4 8.4 0 0 1 21 11.5z"
+  ));
+  tab.appendChild(tabIcon("ico-close", "M18 6 6 18M6 6l12 12"));
+  tab.setAttribute("aria-label", label);
   tab.setAttribute("aria-expanded", "false");
 
   const panel = document.createElement("div");

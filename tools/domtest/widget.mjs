@@ -338,6 +338,46 @@ console.log("\n=== the embed widget loader ===");
         `count=${d.querySelectorAll("[data-powabase-widget]").length}`);
 }
 
+// 14. The launcher is a glyph, not a word. It is a 52px circle in the corner
+// with no room for text, so its accessible name has to come from aria-label —
+// otherwise a screen reader announces an empty button. Both glyphs live in the
+// button at once and CSS shows whichever the open state calls for, so toggling
+// never rebuilds DOM inside somebody else's page.
+{
+  const dom = makeDom();
+  const w = dom.window, d = w.document;
+  w.fetch = makeFetch([]);
+  paste(d);
+  await flush();
+  const tab = d.querySelector("[data-powabase-widget]").shadowRoot.querySelector(".tab");
+  const svgs = [...tab.querySelectorAll("svg")];
+  const ns = "http://www.w3.org/2000/svg";
+
+  check(tab.textContent.trim() === ""
+        && (tab.getAttribute("aria-label") || "").length > 0
+        && svgs.length === 2
+        && svgs.every((el) => el.namespaceURI === ns)
+        && svgs.every((el) => el.getAttribute("aria-hidden") === "true"),
+        "14. the launcher is an aria-labelled button holding two hidden glyphs",
+        `text="${tab.textContent.trim()}" label="${tab.getAttribute("aria-label")}" svgs=${svgs.length}`);
+}
+
+// 15. The glyph swap is pure CSS, so jsdom cannot observe it — it has no
+// cascade for this and getComputedStyle reports nothing useful. Read the
+// stylesheet statically instead, the way run.mjs Section L audits the [hidden]
+// cascade. Without these rules the button shows both glyphs at once, and no
+// runtime assertion here would ever notice.
+{
+  const css = readFileSync(`${FE}/widget.css.js`, "utf8");
+  const hidesChat = /\.wrap\[data-open\]\s+\.tab\s+\.ico-chat\s*\{[^}]*display:\s*none/.test(css);
+  const showsClose = /\.wrap\[data-open\]\s+\.tab\s+\.ico-close\s*\{[^}]*display:\s*block/.test(css);
+  const closeHiddenByDefault = /\.tab\s+\.ico-close\s*\{[^}]*display:\s*none/.test(css);
+
+  check(hidesChat && showsClose && closeHiddenByDefault,
+        "15. the stylesheet swaps the glyph on open, and hides close by default",
+        `hidesChat=${hidesChat} showsClose=${showsClose} closeDefault=${closeHiddenByDefault}`);
+}
+
 // =====================================================================
 const bad = results.filter((r) => !r.ok);
 console.log("\n" + "=".repeat(72));

@@ -19,82 +19,100 @@ const WIDGET_CSS = `
   all: initial;
   --w-bg: #ffffff;
   --w-line: #e3e4e8;
-  --w-tab-w: 34px;
-  --w-panel-w: 400px;
+  --w-bubble: 52px;
+  --w-card-w: 360px;
+  --w-card-h: 520px;
+  --w-edge: 20px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 *{box-sizing:border-box;}
 
+/* Anchored to a corner, stacked bottom-up: the card sits above the bubble it
+   opens from, which is what makes the two read as one object rather than a
+   panel that happened to appear. */
 .wrap{
   position: fixed;
-  top: 0;
-  bottom: 0;
+  bottom: var(--w-edge);
   z-index: 2147483000;   /* below the max, so a host modal can still win */
   display: flex;
-  align-items: center;
-  pointer-events: none;  /* the gap between tab and panel stays clickable */
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 12px;
+  pointer-events: none;  /* only the bubble and card take clicks */
 }
-.wrap[data-side="right"]{ right: 0; flex-direction: row; }
-.wrap[data-side="left"]{ left: 0; flex-direction: row-reverse; }
+.wrap[data-side="right"]{ right: var(--w-edge); }
+.wrap[data-side="left"]{ left: var(--w-edge); align-items: flex-start; }
 
 .tab{
   pointer-events: auto;
+  order: 2;              /* always beneath the card, whichever way they stack */
   flex: none;
-  width: var(--w-tab-w);
-  padding: 14px 0;
+  width: var(--w-bubble);
+  height: var(--w-bubble);
+  padding: 0;
   border: 0;
-  border-radius: 8px 0 0 8px;
+  border-radius: 50%;
   background: var(--w-accent);
   color: #fff;
-  font-weight: 600;
-  font-size: 12px;
-  line-height: 1;
-  letter-spacing: .08em;
-  text-transform: uppercase;
-  writing-mode: vertical-rl;
   cursor: pointer;
-  box-shadow: 0 2px 14px rgba(0,0,0,.18);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 16px rgba(0,0,0,.24);
+  transition: transform 160ms ease;
 }
-.wrap[data-side="left"] .tab{ border-radius: 0 8px 8px 0; transform: rotate(180deg); }
-.tab:focus-visible{ outline: 2px solid #fff; outline-offset: -4px; }
+.tab:hover{ transform: scale(1.06); }
+.tab:focus-visible{ outline: 2px solid #fff; outline-offset: -5px; }
+.tab svg{ width: 24px; height: 24px; display: block; }
+
+/* The glyph swaps rather than the button disappearing. The bubble stays put
+   and becomes the close control, so there is one thing to press either way. */
+.tab .ico-close{ display: none; }
+.wrap[data-open] .tab .ico-chat{ display: none; }
+.wrap[data-open] .tab .ico-close{ display: block; }
 
 .panel{
   pointer-events: auto;
-  width: var(--w-panel-w);
-  max-width: 100vw;
-  height: 100%;
+  order: 1;
+  width: var(--w-card-w);
+  max-width: calc(100vw - (var(--w-edge) * 2));
+  height: var(--w-card-h);
+  /* Never taller than the room left above the bubble. */
+  max-height: calc(100vh - var(--w-bubble) - (var(--w-edge) * 2) - 24px);
   background: var(--w-bg);
-  border-left: 1px solid var(--w-line);
-  box-shadow: -8px 0 30px rgba(0,0,0,.18);
-  transform: translateX(100%);
-  transition: transform 220ms ease;
+  border: 1px solid var(--w-line);
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 12px 40px rgba(0,0,0,.22);
+  transform-origin: bottom right;
+  transform: scale(.94) translateY(8px);
+  opacity: 0;
+  visibility: hidden;
+  transition: transform 160ms ease, opacity 160ms ease, visibility 0s linear 160ms;
 }
-.wrap[data-side="left"] .panel{
-  border-left: 0;
-  border-right: 1px solid var(--w-line);
-  box-shadow: 8px 0 30px rgba(0,0,0,.18);
-  transform: translateX(-100%);
+.wrap[data-side="left"] .panel{ transform-origin: bottom left; }
+
+.wrap[data-open] .panel{
+  transform: scale(1) translateY(0);
+  opacity: 1;
+  visibility: visible;
+  transition: transform 160ms ease, opacity 160ms ease, visibility 0s;
 }
-.wrap[data-open] .panel{ transform: translateX(0); }
 
 .panel iframe{ display:block; width:100%; height:100%; border:0; }
 
 @media (max-width: 640px){
-  :host{ --w-panel-w: 100vw; }
-  .wrap{ align-items: flex-end; }
-  .tab{
-    writing-mode: horizontal-tb;
-    width: auto;
-    padding: 10px 16px;
-    margin: 0 0 16px 0;
-    border-radius: 999px;
+  :host{ --w-edge: 12px; --w-card-h: 70vh; }
+  .panel{
+    /* Near-full-width, deliberately not edge to edge: a card that fills the
+       screen stops reading as a widget on someone's page and starts reading
+       as an app that took it over. */
+    width: calc(100vw - (var(--w-edge) * 2));
   }
-  .wrap[data-side="left"] .tab{ transform: none; border-radius: 999px; }
-  .wrap[data-open] .tab{ display: none; }  /* a full-width panel owns the screen */
 }
 
 @media (prefers-reduced-motion: reduce){
-  .panel{ transition: none; }
+  .tab, .panel{ transition: none; }
 }
 `;
 
