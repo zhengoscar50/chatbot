@@ -471,3 +471,50 @@ def test_there_is_no_public_promote_route():
               if hasattr(r, "path") and r.path.startswith("/s/")]
 
     assert not any("promote" in p for p in public), public
+
+
+def _status(client, session_id, source_id="src-1"):
+    return client.get(f"/s/tok/upload/{source_id}?session_id={session_id}")
+
+
+def test_upload_status_refuses_another_chatbots_session(client):
+    assert _status(client, "other-1").status_code == 404
+
+
+def test_upload_status_refuses_the_owners_private_chat(client):
+    assert _status(client, "owner-1").status_code == 404
+
+
+def test_upload_status_does_not_consume_the_allowance(client, fake):
+    """A poll is not work. Charging for it would let a slow extraction spend the
+    owner's whole daily cap before the document it is waiting on ever became
+    answerable — and the visitor polls once every few seconds."""
+    before = fake.chatbots["cb-shared"]["share_used_today"]
+
+    for _ in range(5):
+        _status(client, "v1")
+
+    assert fake.chatbots["cb-shared"]["share_used_today"] == before
+
+
+def test_indexed_but_unrecorded_still_reports_processing(client, fake):
+    """The check this endpoint exists for. A source indexed in the shared
+    scratch KB is not yet answerable in THIS chat: indexing happens first and
+    recording on the session second, and only the recording puts it in
+    retrieval scope. Saying "ready" in between tells the visitor a document is
+    usable while it still answers "I don't know"."""
+    fake.indexed.append(("scratch-kb", "src-9"))
+    fake.sessions["v1"].pop("source_ids", None)
+
+    body = _status(client, "v1", "src-9").json()
+
+    assert body["status"] == "processing"
+
+
+def test_indexed_and_recorded_reports_ready(client, fake):
+    fake.indexed.append(("scratch-kb", "src-9"))
+    fake.sessions["v1"]["source_ids"] = ["src-9"]
+
+    body = _status(client, "v1", "src-9").json()
+
+    assert body["status"] == "indexed"

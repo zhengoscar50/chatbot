@@ -154,14 +154,65 @@ function wireAttach() {
         state.textContent = body.detail || "Daily limit reached.";
         return;
       }
-      // 202: extraction and indexing continue after the response. Saying
-      // "ready" here would be a lie the visitor could act on by asking about a
-      // document that is not searchable yet.
-      state.textContent = res.ok ? "added to this chat" : "couldn't add that";
+      if (!res.ok) {
+        state.textContent = "couldn't add that";
+        return;
+      }
+      // 202: extraction and indexing continue after the response, so the
+      // document is not answerable yet. Poll until it is, rather than claiming
+      // it is ready and letting the visitor ask about a document the retrieval
+      // step cannot see.
+      const body = await res.json().catch(() => ({}));
+      state.textContent = "reading it…";
+      if (body.source_id) watchUpload(body.source_id, state);
     } catch (err) {
       state.textContent = "couldn't add that";
     }
   });
+}
+
+// Follow one upload until it is answerable in this chat, or plainly is not.
+//
+// `pollToken` exists because a visitor can attach a second file while the
+// first is still indexing: without it the older poll would keep writing its
+// status over the newer file's. Compared by identity, not equality, so a
+// reset also silently retires whatever was in flight.
+let pollToken = null;
+
+async function watchUpload(sourceId, state) {
+  const mine = {};
+  pollToken = mine;
+  const deadline = Date.now() + 120000;
+
+  while (pollToken === mine && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 2500));
+    if (pollToken !== mine) return;
+    try {
+      const res = await fetch(
+        `/s/${encodeURIComponent(TOKEN)}/upload/${encodeURIComponent(sourceId)}`
+        + `?session_id=${encodeURIComponent(sessionId)}`
+      );
+      if (!res.ok) continue;          // transient: keep watching
+      const body = await res.json();
+      if (pollToken !== mine) return;
+      if (body.status === "indexed") {
+        state.textContent = "ready — ask about it";
+        return;
+      }
+      if (body.status === "failed") {
+        state.textContent = body.detail || "couldn't read that file";
+        return;
+      }
+    } catch (err) {
+      // A blip is not a failure. The deadline below is what ends this.
+      continue;
+    }
+  }
+  if (pollToken === mine) {
+    // Say what is true: it is still working, and we stopped watching. Claiming
+    // failure would be as wrong as claiming success.
+    state.textContent = "still processing — try asking in a moment";
+  }
 }
 
 async function boot() {
@@ -189,6 +240,10 @@ async function boot() {
     wireAttach();
 
     document.getElementById("embed-reset").addEventListener("click", () => {
+      // Retire any upload still being watched: its chip belongs to the
+      // conversation being thrown away, and a late poll would otherwise write
+      // "ready" over the fresh one's empty state.
+      pollToken = null;
       // The loader owns the session, so it has to be the one to throw it away.
       // Clearing it here would leave the loader still holding the old id and
       // this page quietly making a new one — two owners of one conversation,

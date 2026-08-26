@@ -32,7 +32,7 @@ from app.services.scratch_kb import get_scratch_kb_id
 from app.services.session_service import SessionService, get_session_service
 from app.core.config import get_settings
 from app.services.share_service import ShareService, get_share_service, redact_turn
-from app.services.ingest_service import IngestService
+from app.services.ingest_service import IngestService, source_status
 from app.api.routes.ingest import _run_finish
 
 router = APIRouter(prefix="/s", tags=["share"])
@@ -185,6 +185,54 @@ async def public_upload(
     return JSONResponse(
         status_code=202, content={"source_id": source_id, "status": "processing"}
     )
+
+
+@router.get("/{token}/upload/{source_id}")
+async def public_upload_status(
+    token: str,
+    source_id: str,
+    session_id: str,
+    client: PowabaseClient = Depends(get_powabase_client),
+    share: ShareService = Depends(get_share_service),
+    sessions: SessionService = Depends(get_session_service),
+    scratch_kb_id: str = Depends(get_scratch_kb_id),
+):
+    """How far along a visitor's own attachment is.
+
+    Deliberately does NOT consume the daily allowance. This is a poll, not
+    work: charging for it would let a slow extraction spend the owner's whole
+    cap before the document it is waiting on ever became answerable.
+
+    Same both-conditions check as the rest of this file, so a visitor cannot
+    watch a source attached to somebody else's conversation.
+
+    The last clause is the one that matters. Indexed in the shared scratch KB
+    is not yet answerable HERE: the upload is indexed first and recorded on the
+    chat second, and only the recording puts it in retrieval scope. Reporting
+    "ready" in between would tell the visitor a document is usable while it
+    still answers "I don't know" — and if the recording never happens, that is
+    a permanent lie rather than a momentary one.
+    """
+    chatbot = await run_in_threadpool(_chatbot_or_404, share, token)
+
+    session_row = await run_in_threadpool(sessions.get, session_id)
+    if (session_row is None
+            or session_row.get("chatbot_id") != chatbot["id"]
+            or not session_row.get("shared")):
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+
+    kb_ids = [scratch_kb_id, session_row.get("kb_id"), session_row.get("kb_full_id")]
+    try:
+        status, detail = await run_in_threadpool(
+            source_status, client, source_id, kb_ids
+        )
+    except PowabaseAPIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    if status == "indexed" and source_id not in (session_row.get("source_ids") or []):
+        status, detail = "processing", None
+
+    return {"source_id": source_id, "status": status, "detail": detail}
 
 
 @router.post("/{token}/chat", response_model=ChatResponse)
