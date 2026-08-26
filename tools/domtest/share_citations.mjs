@@ -5,6 +5,7 @@
 // widget card) is a layout problem no harness here can see, but the text
 // transform underneath it can be pinned exactly.
 import { readFileSync } from "fs";
+import { JSDOM } from "jsdom";
 
 const FE = "/Users/oscar/Downloads/rag-chatbot/frontend";
 const results = [];
@@ -69,6 +70,56 @@ const REAL = "# EMPLOYEE HANDBOOK – LEAVE AND BENEFITS\n\n## Leave\nNew employ
   check(excerptText(long).length > 300,
         "truncation is left to CSS, not baked into the text",
         `${excerptText(long).length} chars`);
+}
+
+console.log("\n=== share citations: one row per document ===");
+{
+  // Powabase returns a citation per retrieved PASSAGE. Taken from the live
+  // project: one real turn carried seven, every one of them from the same PDF
+  // and every one labelled "Source 1" after redaction. Rendered ungrouped that
+  // reads as seven sources and is really one.
+  const dom = new JSDOM(readFileSync(`${FE}/share.html`, "utf8"),
+                        { runScripts: "outside-only", url: "http://localhost/s/tok" });
+  const w = dom.window, d = w.document;
+  w.eval(readFileSync(`${FE}/markdown.js`, "utf8"));
+  const src = readFileSync(`${FE}/share.js`, "utf8");
+  const cut = (name) => {
+    const i = src.indexOf(`function ${name}(`);
+    return src.slice(i, src.indexOf("\n}\n", i) + 2);
+  };
+  w.eval(`${cut("excerptText")}\n${cut("citations")}\nvar thread=document.getElementById("thread");`);
+
+  const seven = Array.from({ length: 7 }, (_, i) => ({
+    key: i + 1, source_name: "Source 1", text_excerpt: `passage ${i + 1}`,
+  }));
+  w.eval(`citations(${JSON.stringify(seven)})`);
+  const rows = [...d.querySelectorAll(".citation")];
+
+  check(rows.length === 1,
+        "seven passages of one document render as one row", `${rows.length} rows`);
+  check(/\[1\]\[2\]\[3\]\[4\]\[5\]\[6\]\[7\]/.test(rows[0].textContent),
+        "every marker is still findable from the prose",
+        rows[0].textContent.slice(0, 30));
+  check(/7 passages/.test(rows[0].textContent),
+        "the row says how many passages it stands for");
+
+  // Two genuinely different documents must stay two rows — otherwise the fix
+  // would hide real breadth instead of collapsing false breadth.
+  const two = [
+    { key: 1, source_name: "Source 1", text_excerpt: "a" },
+    { key: 2, source_name: "Source 2", text_excerpt: "b" },
+  ];
+  w.eval(`thread.innerHTML = ""; citations(${JSON.stringify(two)})`);
+  check(d.querySelectorAll(".citation").length === 2,
+        "two different documents still render as two rows",
+        `${d.querySelectorAll(".citation").length} rows`);
+
+  // A single citation gets no count suffix: "· 1 passages" is both wrong and
+  // noise, and 32 of the 38 live turns carry exactly one.
+  w.eval(`thread.innerHTML = ""; citations(${JSON.stringify([two[0]])})`);
+  check(!/passages/.test(d.querySelector(".citation").textContent),
+        "a lone citation carries no passage count",
+        d.querySelector(".citation").textContent.slice(0, 30));
 }
 
 const failed = results.filter((r) => !r).length;

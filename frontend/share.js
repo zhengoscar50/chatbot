@@ -75,17 +75,41 @@ function citations(list) {
   if (!list || !list.length) return;
   const box = document.createElement("div");
   box.className = "citations";
-  list.forEach((c) => {
+
+  // One row per document, not per retrieved chunk. Powabase returns a citation
+  // for every passage it matched, so an answer drawing on seven parts of one
+  // PDF arrived as seven entries all reading "Source 1" — which looks like
+  // seven sources and is really one. dedupeCitations already solved this for
+  // the account app and lives in markdown.js, which this page loads; the
+  // grouping was simply never applied here.
+  dedupeCitations(list).forEach((group) => {
     const item = document.createElement("p");
     item.className = "citation";
+
     const marker = document.createElement("span");
     marker.className = "citation__marker";
-    // source_name is already "Source 1" — the server redacts filenames.
-    marker.textContent = `[${c.key}] ${c.source_name}`;
+    // Every marker the group covers, so a reader following "[3]" in the prose
+    // can still find the row it belongs to.
+    marker.textContent = group.markers.map((m) => `[${m}]`).join("") + " " + group.name;
     item.appendChild(marker);
-    item.appendChild(document.createTextNode(" " + excerptText(c.text_excerpt)));
+
+    if (group.count > 1) {
+      const count = document.createElement("span");
+      count.className = "citation__count";
+      count.textContent = ` · ${group.count} passages`;
+      item.appendChild(count);
+    }
+
+    // The excerpt stays visible rather than becoming a tooltip as it is in the
+    // account app: on a public page it is the proof the answer came from a
+    // document rather than the model's memory, and a tooltip does not exist on
+    // a touch screen.
+    const text = excerptText(group.excerpt);
+    if (text) item.appendChild(document.createTextNode(" " + text));
+
     box.appendChild(item);
   });
+
   thread.appendChild(box);
 }
 

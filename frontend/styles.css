@@ -1508,6 +1508,10 @@ body {
   font-weight: 600;
 }
 
+.citation__count {
+  opacity: 0.75;
+}
+
 /* Getting-started checklist. Shows itself while steps remain; the header's
    Help button reopens it afterwards as a reference. */
 .onboard {
