@@ -378,6 +378,71 @@ console.log("\n=== the embed widget loader ===");
         `hidesChat=${hidesChat} showsClose=${showsClose} closeDefault=${closeHiddenByDefault}`);
 }
 
+// 16. `reset` discards the stored session and starts a clean one. It joins
+// `close` and `ready` as the third message the panel may send, and it has to be
+// the LOADER that acts on it: the loader holds the stored id, so a panel that
+// reset itself would leave that id behind and the two would disagree about
+// which conversation is current — the split ownership this design exists to
+// prevent. Carries no secret, which is why it is safe to send over postMessage
+// at all.
+{
+  const dom = makeDom();
+  const w = dom.window, d = w.document;
+  const calls = [];
+  w.fetch = makeFetch(calls);
+  w.localStorage.setItem("powabase-widget:tok1:session", "old-session");
+  paste(d);
+  await flush();
+
+  const root = d.querySelector("[data-powabase-widget]").shadowRoot;
+  root.querySelector(".tab").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  await flush();
+  const before = root.querySelector("iframe").src;
+
+  w.dispatchEvent(new w.MessageEvent("message", {
+    origin: WIDGET_ORIGIN, data: { source: "powabase-widget", type: "reset" },
+  }));
+  await flush();
+  const after = root.querySelector("iframe").src;
+  const stored = w.localStorage.getItem("powabase-widget:tok1:session");
+
+  check(before.includes("old-session")
+        && !after.includes("old-session")
+        && stored !== "old-session",
+        "16. reset discards the stored session and loads a fresh one",
+        `before=${before.slice(-24)} after=${after.slice(-24)} stored=${stored}`);
+}
+
+// 16b. Reset drops the stored id BEFORE trying to make a new one, so a failure
+// leaves no stale id behind. Without that ordering the discard is invisible —
+// a successful reset overwrites the key anyway — and the only case that can
+// tell the difference is this one: the visitor asked to start over, the new
+// session could not be created, and the next page load must not silently
+// resume the conversation they just discarded.
+{
+  const dom = makeDom();
+  const w = dom.window, d = w.document;
+  w.fetch = makeFetch([]);
+  w.localStorage.setItem("powabase-widget:tok1:session", "old-session");
+  paste(d);
+  await flush();
+  const root = d.querySelector("[data-powabase-widget]").shadowRoot;
+  root.querySelector(".tab").dispatchEvent(new w.MouseEvent("click", { bubbles: true }));
+  await flush();
+
+  // Every request fails from here on: the reset cannot mint a replacement.
+  w.fetch = async () => ({ ok: false, status: 500, json: async () => ({}) });
+  w.dispatchEvent(new w.MessageEvent("message", {
+    origin: WIDGET_ORIGIN, data: { source: "powabase-widget", type: "reset" },
+  }));
+  await flush();
+
+  const stored = w.localStorage.getItem("powabase-widget:tok1:session");
+  check(stored === null,
+        "16b. a reset that cannot mint a new session leaves no stale id",
+        `stored=${stored}`);
+}
+
 // =====================================================================
 const bad = results.filter((r) => !r.ok);
 console.log("\n" + "=".repeat(72));

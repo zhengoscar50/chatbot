@@ -72,6 +72,33 @@ class FakeClient:
         self.citations = []
         self.answer = "the answer"
         self.answered = []
+        self.uploaded = []
+        self.indexed = []
+
+    # --- IngestService ------------------------------------------------
+    # Only what a visitor upload touches. The background finisher runs after
+    # the response, so a test asserting on the cap never reaches indexing.
+    def upload_source(self, filename, content):
+        self.uploaded.append(filename)
+        return {"id": f"src-{len(self.uploaded)}"}
+
+    # The finisher runs as a background task, which TestClient executes inside
+    # the request. These let it complete quietly so a test about the cap is not
+    # really a test about indexing.
+    def get_source(self, source_id):
+        return {"id": source_id, "extraction_status": "extracted",
+                "auto_metadata": {"char_count": 10}}
+
+    def add_source_to_kb(self, kb_id, source_id):
+        self.indexed.append((kb_id, source_id))
+        return source_id
+
+    def list_kb_sources(self, kb_id):
+        return {"items": [{"source_id": sid, "index_status": "indexed"}
+                          for _, sid in self.indexed]}
+
+    def update_session_row(self, session_id, fields):
+        self.sessions.setdefault(session_id, {}).update(fields)
 
     # --- ShareService -------------------------------------------------
     def get_chatbot_by_share_token(self, token):
@@ -391,3 +418,56 @@ def test_an_authorization_preflight_is_refused(client):
     assert "headers" in res.text.lower()
     allowed = res.headers.get("access-control-allow-headers", "")
     assert "authorization" not in allowed.lower()
+
+
+def _upload(client, session_id):
+    return client.post(
+        "/s/tok/upload",
+        data={"session_id": session_id},
+        files={"file": ("notes.pdf", b"%PDF-1.4 fake", "application/pdf")},
+    )
+
+
+def test_upload_refuses_a_session_from_another_chatbot(client):
+    """Same enumeration guard as the transcript route. A visitor holding one
+    chatbot's token must not attach a file to a conversation belonging to a
+    different chatbot."""
+    assert _upload(client, "other-1").status_code == 404
+
+
+def test_upload_refuses_the_owners_private_chat(client):
+    """The owner's own chats live in this same chatbot. Without the `shared`
+    check a stranger could attach a document to the owner's private
+    conversation — and it would then be retrievable inside it."""
+    assert _upload(client, "owner-1").status_code == 404
+
+
+def test_upload_consumes_the_daily_allowance(client, fake):
+    """Extraction and embedding are the expensive half of a share link. A cap
+    that bounds messages but leaves uploads unlimited guards the cheap half
+    only."""
+    before = fake.chatbots["cb-shared"]["share_used_today"]
+
+    _upload(client, "v1")
+
+    assert fake.chatbots["cb-shared"]["share_used_today"] == before + 1
+
+
+def test_upload_is_refused_once_the_cap_is_spent(client, fake):
+    fake.chatbots["cb-shared"]["share_daily_limit"] = 0
+
+    assert _upload(client, "v1").status_code == 429
+
+
+def test_there_is_no_public_promote_route():
+    """The account app can promote a chat upload into the chatbot's permanent
+    knowledge. A stranger on someone else's website must never reach that: it
+    would write into the owner's knowledge base for every future conversation.
+    Asserted against the assembled app, because a route added later would
+    otherwise inherit the /s prefix silently."""
+    from app.main import create_app
+
+    public = [r.path for r in create_app().routes
+              if hasattr(r, "path") and r.path.startswith("/s/")]
+
+    assert not any("promote" in p for p in public), public

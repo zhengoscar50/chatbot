@@ -171,6 +171,22 @@
     }
   }
 
+  // Throw the conversation away and start a clean one. The loader does this,
+  // not the panel, because the loader is what holds the stored id — a panel
+  // that reset itself would leave that id behind and the two would disagree
+  // about which conversation is current.
+  //
+  // The old conversation is not deleted from the owner's data; the visitor
+  // simply gets a fresh one. Saying otherwise would promise an erasure this
+  // cannot deliver.
+  async function resetConversation() {
+    sessionId = null;
+    drop(KEY_SESSION);
+    loaded = false;
+    frame.src = "about:blank";   // drop the old transcript before the new load
+    await load();
+  }
+
   function setOpen(next) {
     open = next;
     if (open) wrap.setAttribute("data-open", "");
@@ -189,6 +205,7 @@
     const data = event.data;
     if (!data || data.source !== "powabase-widget") return;
     if (data.type === "close") setOpen(false);
+    if (data.type === "reset") resetConversation();
   });
 
   // async on the script tag means "don't block the parser", not "wait for

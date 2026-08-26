@@ -72,10 +72,19 @@ conversations nobody had.
 
 ### The message protocol
 
-Two messages, both from panel to loader:
+Three messages, all from panel to loader:
 
 - `{ source: "powabase-widget", type: "ready" }`
 - `{ source: "powabase-widget", type: "close" }`
+- `{ source: "powabase-widget", type: "reset" }`
+
+`reset` was added when the panel gained a "start a new conversation" control.
+It has to travel this way for the same reason the loader owns the session at
+all: the loader holds the stored id, so a panel that reset itself would leave
+that id behind and the two would then disagree about which conversation is
+current. Like the other two it carries nothing worth stealing — it says only
+"throw mine away", and any page that can send it could equally close the panel
+or reload it.
 
 The loader ignores any message whose `event.origin` is not the origin of its
 own `<script src>`, and any message without that exact `source` field. Both
@@ -164,6 +173,12 @@ window.
 
 ## What this does not do
 
+- Deleting a visitor's transcript from the owner's data. "New conversation"
+  gives the visitor a clean slate; the old rows stay. Promising an erasure this
+  cannot deliver would be worse than not offering one.
+- Any way for a visitor to promote an attachment into the chatbot's permanent
+  knowledge. The account app offers that; a stranger on someone else's website
+  must not have it.
 - Theming beyond a single accent colour.
 - Unread badges, proactive messages, "we're away" states.
 - More than one widget on a page.

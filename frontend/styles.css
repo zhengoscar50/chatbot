@@ -1418,8 +1418,14 @@ body {
    the public page appends messages straight into .thread rather than
    wrapping them in the authenticated app's .row/.content structure. */
 .share-head {
+  /* Positioning context for .embed-actions, which floats over this header. */
+  position: relative;
   flex: none;
   padding: 1rem 1.25rem;
+  /* After the shorthand, not before: `padding` resets every side, so a
+     padding-right declared above it would be silently overwritten. Keeps a
+     long chatbot name from running under the controls. */
+  padding-right: 5rem;
   border-bottom: 1px solid var(--border);
 }
 
@@ -1698,4 +1704,30 @@ body {
   .tour__pane {
     transition: none;
   }
+}
+
+
+/* The embedded panel's controls, top-right of the card.
+   They sit over the header rather than in its flow: the header is the
+   chatbot's name and description, and a control tucked inline beside prose is
+   somewhere the eye does not go looking for a way out. */
+.embed-actions {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.6rem;
+  display: flex;
+  gap: 0.35rem;
+  z-index: 2;
+}
+
+.embed-actions[hidden] {
+  display: none;
+}
+
+.embed-actions .icon-btn {
+  width: 1.9rem;
+  height: 1.9rem;
+  font-size: 1rem;
+  line-height: 1;
+  background: var(--bg);
 }

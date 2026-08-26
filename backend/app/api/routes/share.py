@@ -7,8 +7,9 @@ difference is how a guessed token gets confirmed.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi import (APIRouter, BackgroundTasks, Depends, File, Form,
+                     HTTPException, UploadFile)
+from fastapi.responses import FileResponse, JSONResponse
 from starlette.concurrency import run_in_threadpool
 
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient, get_powabase_client
@@ -29,7 +30,10 @@ from app.services.message_store import MessageStore, get_message_store
 from app.services.orchestrator import get_orchestrator_agent_id
 from app.services.scratch_kb import get_scratch_kb_id
 from app.services.session_service import SessionService, get_session_service
+from app.core.config import get_settings
 from app.services.share_service import ShareService, get_share_service, redact_turn
+from app.services.ingest_service import IngestService
+from app.api.routes.ingest import _run_finish
 
 router = APIRouter(prefix="/s", tags=["share"])
 
@@ -120,6 +124,67 @@ async def public_transcript(
             "answered_by": {"id": None, "name": name} if name else None,
         })
     return {"messages": out}
+
+
+@router.post("/{token}/upload")
+async def public_upload(
+    token: str,
+    background_tasks: BackgroundTasks,
+    session_id: str = Form(...),
+    file: UploadFile = File(...),
+    client: PowabaseClient = Depends(get_powabase_client),
+    share: ShareService = Depends(get_share_service),
+    sessions: SessionService = Depends(get_session_service),
+    scratch_kb_id: str = Depends(get_scratch_kb_id),
+):
+    """A document a visitor attaches to their own conversation, and only theirs.
+
+    Same double check as public_chat, for the same reason: the owner's private
+    chats live in this chatbot, and membership alone would let a visitor attach
+    a file to one of them.
+
+    It goes into the shared scratch KB recorded against this session, which is
+    what scopes retrieval back to this conversation — exactly what the
+    authenticated path does, reusing its finisher rather than a second copy.
+
+    There is deliberately no way to promote it. In the account app that chip
+    writes a file into the chatbot's permanent knowledge; a stranger on someone
+    else's website must never be able to do that.
+
+    An upload consumes one unit of the daily allowance. The cap exists to bound
+    what a share link costs its owner, and extraction plus embedding is the
+    expensive operation — capping messages while leaving this unlimited would
+    guard the cheap half only.
+    """
+    chatbot = await run_in_threadpool(_chatbot_or_404, share, token)
+
+    session_row = await run_in_threadpool(sessions.get, session_id)
+    if (session_row is None
+            or session_row.get("chatbot_id") != chatbot["id"]
+            or not session_row.get("shared")):
+        raise HTTPException(status_code=404, detail=NOT_FOUND)
+
+    if not await run_in_threadpool(share.consume, chatbot):
+        raise HTTPException(status_code=429, detail=CAP_REACHED)
+
+    content = await file.read()
+    settings = get_settings()
+    service = IngestService(
+        client,
+        poll_interval=settings.poll_interval_seconds,
+        max_wait=settings.ingest_background_max_wait_seconds,
+    )
+    try:
+        source_id = await run_in_threadpool(service.start, file.filename, content)
+    except PowabaseAPIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    background_tasks.add_task(
+        _run_finish, service, sessions, session_row, source_id, scratch_kb_id
+    )
+    return JSONResponse(
+        status_code=202, content={"source_id": source_id, "status": "processing"}
+    )
 
 
 @router.post("/{token}/chat", response_model=ChatResponse)

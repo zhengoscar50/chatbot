@@ -12,13 +12,20 @@
         <header class="share-head">
           <h1 id="bot-name"></h1>
           <p id="bot-desc"></p>
-          <button type="button" id="embed-close" class="icon-btn" aria-label="Close chat" hidden>×</button>
+          <div class="embed-actions" id="embed-actions" hidden>
+            <button type="button" id="embed-reset" class="icon-btn" title="Start a new conversation" aria-label="Start a new conversation">⟲</button>
+            <button type="button" id="embed-close" class="icon-btn" title="Close" aria-label="Close chat">×</button>
+          </div>
         </header>
 
         <main class="thread" id="thread" aria-live="polite"></main>
 
         <footer class="composer-wrap">
-          <p class="share-status" id="status"></p>
+          <div class="attachment-chip" id="share-chip" hidden>
+              <span id="share-chip-name"></span>
+              <span class="attachment-chip__status" id="share-chip-status"></span>
+            </div>
+            <p class="share-status" id="status"></p>
           <div class="composer">
             <input
               type="text"
@@ -28,7 +35,9 @@
               aria-label="Message"
               autocomplete="off"
             />
-            <button type="button" id="send" class="icon-btn icon-btn--accent" aria-label="Send message">
+            <button type="button" id="share-attach" class="icon-btn" title="Attach a PDF" aria-label="Attach a PDF" hidden>📎</button>
+              <input type="file" id="share-file" accept="application/pdf" hidden />
+              <button type="button" id="send" class="icon-btn icon-btn--accent" aria-label="Send message">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <path d="M12 19V5M5 12l7-7 7 7" />
               </svg>

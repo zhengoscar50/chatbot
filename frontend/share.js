@@ -95,6 +95,52 @@ async function replay() {
   });
 }
 
+// Attaching a PDF to this conversation only. It goes to the same per-session
+// scratch store the account app uses, so it is readable here and nowhere else.
+//
+// There is deliberately no "save to chatbot knowledge" control, which the
+// account app does offer: that writes into the owner's permanent knowledge for
+// every future conversation, and a stranger on somebody else's website has no
+// business doing it.
+function wireAttach() {
+  const button = document.getElementById("share-attach");
+  const picker = document.getElementById("share-file");
+  const chip = document.getElementById("share-chip");
+  const name = document.getElementById("share-chip-name");
+  const state = document.getElementById("share-chip-status");
+
+  button.addEventListener("click", () => picker.click());
+
+  picker.addEventListener("change", async () => {
+    const file = picker.files && picker.files[0];
+    if (!file || !sessionId) return;
+    picker.value = "";               // so the same file can be picked again
+    chip.hidden = false;
+    name.textContent = file.name;
+    state.textContent = "uploading…";
+
+    const form = new FormData();
+    form.append("session_id", sessionId);
+    form.append("file", file);
+    try {
+      const res = await fetch(`/s/${encodeURIComponent(TOKEN)}/upload`, {
+        method: "POST", body: form,
+      });
+      if (res.status === 429) {
+        const body = await res.json().catch(() => ({}));
+        state.textContent = body.detail || "Daily limit reached.";
+        return;
+      }
+      // 202: extraction and indexing continue after the response. Saying
+      // "ready" here would be a lie the visitor could act on by asking about a
+      // document that is not searchable yet.
+      state.textContent = res.ok ? "added to this chat" : "couldn't add that";
+    } catch (err) {
+      state.textContent = "couldn't add that";
+    }
+  });
+}
+
 async function boot() {
   // Held busy for the whole boot: send() (the button and Enter alike) bails
   // out on `busy`, so nothing can reach its own create-a-session branch
@@ -115,8 +161,19 @@ async function boot() {
   }
 
   if (EMBEDDED) {
+    document.getElementById("embed-actions").hidden = false;
+    document.getElementById("share-attach").hidden = false;
+    wireAttach();
+
+    document.getElementById("embed-reset").addEventListener("click", () => {
+      // The loader owns the session, so it has to be the one to throw it away.
+      // Clearing it here would leave the loader still holding the old id and
+      // this page quietly making a new one — two owners of one conversation,
+      // which is the split this whole design exists to avoid.
+      parent.postMessage({ source: "powabase-widget", type: "reset" }, "*");
+    });
+
     const close = document.getElementById("embed-close");
-    close.hidden = false;
     close.addEventListener("click", () => {
       // The only two messages that cross the frame boundary are this and
       // "ready". No session id is ever posted out: the parent's origin cannot
