@@ -6,6 +6,7 @@ from app.api.deps import get_current_user
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient, get_powabase_client
 from app.core.config import get_settings
 from app.models.schemas import IngestResponse, IngestStatusResponse
+from app.services.uploads import read_upload_capped
 from app.services.ingest_service import (
     AttentionRequiredError,
     ExtractionFailedError,
@@ -58,8 +59,8 @@ async def ingest_file(
     sessions: SessionService = Depends(get_session_service),
     scratch_kb_id: str = Depends(get_scratch_kb_id),
 ):
-    content = await file.read()
     settings = get_settings()
+    content = await read_upload_capped(file, settings.max_upload_bytes)
     row = await run_in_threadpool(sessions.get_owned_session, session_id, user["id"])
     if row is None:
         raise HTTPException(status_code=404, detail="Session not found")

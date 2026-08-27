@@ -30,6 +30,7 @@ from app.services.message_store import MessageStore, get_message_store
 from app.services.orchestrator import get_orchestrator_agent_id
 from app.services.scratch_kb import get_scratch_kb_id
 from app.services.session_service import SessionService, get_session_service
+from app.services.uploads import read_upload_capped
 from app.core.config import get_settings
 from app.services.share_service import ShareService, get_share_service, redact_turn
 from app.services.ingest_service import IngestService, source_status
@@ -164,11 +165,16 @@ async def public_upload(
             or not session_row.get("shared")):
         raise HTTPException(status_code=404, detail=NOT_FOUND)
 
+    settings = get_settings()
+    # Size first, then the cap. Reading is what this route is protecting
+    # against, so it has to be bounded before anything else — and a visitor
+    # whose file is refused should not also lose one of the day's messages for
+    # a document that was never accepted.
+    content = await read_upload_capped(file, settings.max_upload_bytes)
+
     if not await run_in_threadpool(share.consume, chatbot):
         raise HTTPException(status_code=429, detail=CAP_REACHED)
 
-    content = await file.read()
-    settings = get_settings()
     service = IngestService(
         client,
         poll_interval=settings.poll_interval_seconds,

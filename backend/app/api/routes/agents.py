@@ -26,6 +26,7 @@ from app.models.schemas import (
 from app.services.agent_service import AgentService, ModelRejectedError, get_agent_service
 from app.services.chatbot_service import ChatbotService, get_chatbot_service
 from app.services.context_budget import clamp_context_tokens, max_context_for
+from app.services.uploads import read_upload_capped
 from app.services.reasoning import supports_effort
 from app.services.ingest_service import (
     AttentionRequiredError,
@@ -228,7 +229,7 @@ async def train_agent(
     if row is None:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    content = await file.read()
+    content = await read_upload_capped(file, settings.max_upload_bytes)
     # Backgrounded, with the long budget, exactly like a chat upload. Training
     # used to block the request and wait only `ingest_max_wait_seconds` (60s),
     # so a large document could not be trained at all: a 350k-character PDF

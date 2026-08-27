@@ -23,6 +23,7 @@ from app.api.deps import get_current_user
 from app.clients.powabase_client import PowabaseAPIError, PowabaseClient, get_powabase_client
 from app.core.config import get_settings
 from app.models.schemas import IngestResponse, IngestStatusResponse
+from app.services.uploads import read_upload_capped
 from app.services.ingest_service import (
     AttentionRequiredError,
     ExtractionFailedError,
@@ -75,7 +76,7 @@ async def train_chatbot_knowledge(
     chatbot = await run_in_threadpool(chatbots.get_owned, chatbot_id, user["id"])
     if chatbot is None:
         raise HTTPException(status_code=404, detail="Chatbot not found")
-    content = await file.read()
+    content = await read_upload_capped(file, settings.max_upload_bytes)
     service = IngestService(
         client, None,
         poll_interval=settings.poll_interval_seconds,

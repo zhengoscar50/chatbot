@@ -96,6 +96,7 @@ def build_app(service=None, client=None, chatbots=None):
         ingest_max_wait_seconds=1,
         ingest_background_max_wait_seconds=600,
         full_document_max_chars=120000,
+        max_upload_bytes=10 * 1024 * 1024,
     )
     return app
 

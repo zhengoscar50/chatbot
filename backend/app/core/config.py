@@ -22,6 +22,9 @@ class Settings(BaseSettings):
     poll_interval_seconds: float = 2.0
     ingest_max_wait_seconds: float = 60.0
     ingest_background_max_wait_seconds: int = 600
+    # 10 MB. Generous for a document, and small enough that a stranger on an
+    # embedding site cannot exhaust the server's memory with one request.
+    max_upload_bytes: int = 10 * 1024 * 1024
     orchestrator_model: str = "gpt-4o-mini"
     default_agent_model: str = "gpt-4o-mini"
     general_assistant_model: str = "gpt-4o-mini"

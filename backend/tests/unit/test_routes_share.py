@@ -459,6 +459,38 @@ def test_upload_is_refused_once_the_cap_is_spent(client, fake):
     assert _upload(client, "v1").status_code == 429
 
 
+def test_an_oversized_upload_is_refused_without_spending_the_allowance(
+    client, fake, monkeypatch
+):
+    """A refused file must not cost the visitor one of the day's messages.
+
+    The order matters and is easy to reverse by accident: `share.consume`
+    debits the allowance, so reading the file has to be bounded *before* it,
+    or a stranger uploading a file too large to accept still burns the
+    owner's quota for a document that was never stored.
+
+    `public_upload` reads settings directly rather than through the injected
+    dependency, so the limit is patched on the route module — a small limit
+    keeps the request body tiny instead of shipping 10 MB through the test.
+    """
+    real = share_route.get_settings()
+    monkeypatch.setattr(
+        share_route, "get_settings",
+        lambda: SimpleNamespace(
+            max_upload_bytes=8,
+            poll_interval_seconds=real.poll_interval_seconds,
+            ingest_background_max_wait_seconds=real.ingest_background_max_wait_seconds,
+        ),
+    )
+    before = fake.chatbots["cb-shared"]["share_used_today"]
+
+    res = _upload(client, "v1")
+
+    assert res.status_code == 413
+    assert "too large" in res.json()["detail"].lower()
+    assert fake.chatbots["cb-shared"]["share_used_today"] == before
+
+
 def test_there_is_no_public_promote_route():
     """The account app can promote a chat upload into the chatbot's permanent
     knowledge. A stranger on someone else's website must never reach that: it

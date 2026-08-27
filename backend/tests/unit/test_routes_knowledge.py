@@ -119,6 +119,7 @@ def build_app(kb=None, client=None, chatbots=None):
         poll_interval_seconds=0.01,
         ingest_background_max_wait_seconds=600,
         full_document_max_chars=120000,
+        max_upload_bytes=10 * 1024 * 1024,
     )
     return app
 
