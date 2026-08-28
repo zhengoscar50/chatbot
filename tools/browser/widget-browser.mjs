@@ -142,10 +142,33 @@ console.log("\n=== opening the panel ===");
 
   // THE shadow-boundary check. The host sets `iframe { border: 6px dashed red
   // !important }`; if that reaches the widget's iframe, the boundary leaked.
-  const leaked = /red|rgb\(255, 0, 0\)/.test(panel.border || "")
-                 || /dashed/.test(panel.border || "");
-  check(!leaked, "the host's `iframe { border: 6px dashed red !important }` did NOT reach it",
+  const looksLeaked = (b) => /red|rgb\(255, 0, 0\)/.test(b || "") || /dashed/.test(b || "");
+  check(!looksLeaked(panel.border),
+        "the host's `iframe { border: 6px dashed red !important }` did NOT reach it",
         panel.border);
+
+  // Negative control, run every time rather than once by hand: a check that
+  // cannot fail is worth nothing, and this is the one the shadow root exists
+  // for. Put the host's own rule INSIDE the shadow root — where it genuinely
+  // does apply — and the reading must flip. Then take it away again.
+  const underLeak = await inShadow(p, (root) => {
+    const st = document.createElement("style");
+    st.id = "negative-control";
+    st.textContent = "iframe { border: 6px dashed red !important }";
+    root.appendChild(st);
+    const cs = getComputedStyle(root.querySelector("iframe"));
+    return cs.borderTopWidth + " " + cs.borderTopStyle + " " + cs.borderTopColor;
+  });
+  check(looksLeaked(underLeak),
+        "and that check is not vacuous — a simulated leak DOES trip it", underLeak);
+
+  const restored = await inShadow(p, (root) => {
+    root.getElementById?.("negative-control")?.remove();
+    root.querySelector("#negative-control")?.remove();
+    const cs = getComputedStyle(root.querySelector("iframe"));
+    return cs.borderTopWidth + " " + cs.borderTopStyle + " " + cs.borderTopColor;
+  });
+  check(!looksLeaked(restored), "the control is removed again afterwards", restored);
 }
 
 console.log("\n=== the conversation inside the panel ===");

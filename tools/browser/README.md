@@ -39,7 +39,8 @@ the whole time. It is also why the × button is still not covered here.
 ## The one that matters
 
 The host page sets `iframe { border: 6px dashed red !important }`. Inside the
-shadow root that must compute to `0px none`. This is negative-controlled: put
-the same rule inside the shadow root and the check reads
-`6px dashed rgb(255, 0, 0)` and fails — so a pass means the boundary held,
-rather than the assertion being unfalsifiable.
+shadow root that must compute to `0px none`. The harness negative-controls this **on every run**, rather than leaving it as
+a claim: it injects the same rule inside the shadow root, asserts the reading
+flips to `6px dashed rgb(255, 0, 0)`, then removes it and asserts it flips
+back. So a pass means the boundary held, rather than the assertion being one
+that could never fail.

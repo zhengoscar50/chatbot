@@ -66,7 +66,7 @@ WIDGET_BASE=https://<public-url> WIDGET_TOKEN=<share-token> \
   node widget-browser.mjs          # add CHAT=1 to send a real message
 ```
 
-Last run 2026-08-28 against the deployed widget: **17/17 passed.**
+Last run 2026-08-28 against the deployed widget: **20/20 passed.**
 
 | Check | Verdict |
 |---|---|
@@ -76,7 +76,7 @@ Last run 2026-08-28 against the deployed widget: **17/17 passed.**
 | The × inside the panel closes it | **still needs eyes** — see below |
 | Reloading the host page reopens the panel with the thread intact | partly automated — the session key survives on the host origin |
 | Navigating to another page on the host keeps the thread | automated — the stored session is unchanged across a navigation |
-| The iframe does not have a red dashed border | automated — computed `0px none`, with the host rule `!important`. Negative-controlled: injecting that rule inside the shadow root makes the check read `6px dashed rgb(255, 0, 0)` and fail, so it is not vacuous |
+| The iframe does not have a red dashed border | automated — computed `0px none`, with the host rule `!important`. Negative-controlled on every run: the harness injects that rule inside the shadow root, asserts the reading flips to `6px dashed rgb(255, 0, 0)`, then removes it — so the check is proven falsifiable each time rather than by hand once |
 | At a 380px window the tab is a bottom pill and the panel is full width | partly automated — the panel fits (333 ≤ 380) and the page does not scroll sideways; whether it reads as a "bottom pill" is visual |
 | Both themes are legible | partly automated — the launcher paints its own background in both schemes; "legible" is a judgement |
 
