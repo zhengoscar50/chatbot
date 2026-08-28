@@ -17,6 +17,9 @@ class PowabaseAPIError(Exception):
 
 
 class PowabaseClient:
+    # Set at startup by whatever needs to know a knowledge base changed.
+    on_kb_write = None
+
     def __init__(self, base_url: str, service_role_key: str):
         headers = {
             "apikey": service_role_key,
@@ -85,10 +88,20 @@ class PowabaseClient:
         return response.json()
 
     def add_source_to_kb(self, kb_id: str, source_id: str) -> dict:
+        """Make a document answerable from this knowledge base.
+
+        The `on_kb_write` hook fires here rather than at the call sites because
+        this method IS the only way a document becomes answerable. Anything
+        caching what a knowledge base contains can subscribe and be certain no
+        caller bypassed it — which for the filename redaction is the whole
+        correctness argument, since a stale cache there is a leak.
+        """
         response = self._client.post(
             f"/api/knowledge-bases/{kb_id}/sources", json={"source_id": source_id}
         )
         self._raise_for_status(response)
+        if self.on_kb_write is not None:
+            self.on_kb_write(kb_id)
         return response.json()
 
     def list_kb_sources(self, kb_id: str) -> dict:

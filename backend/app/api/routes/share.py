@@ -33,12 +33,24 @@ from app.services.session_service import SessionService, get_session_service
 from app.services.uploads import read_upload_capped
 from app.core.config import get_settings
 from app.services.share_service import ShareService, get_share_service, redact_turn
+from app.services.source_names import (
+    SourceNameIndex,
+    get_source_names,
+    knowledge_kb_ids,
+)
 from app.services.ingest_service import IngestService, source_status
 from app.api.routes.ingest import _run_finish
 
 router = APIRouter(prefix="/s", tags=["share"])
 
 NOT_FOUND = "Not found"
+
+
+def _known_document_names(source_names, chatbot_kb, agents, chatbot) -> frozenset:
+    """Every document name in this chatbot's knowledge, for prose redaction."""
+    return source_names.names_for(
+        knowledge_kb_ids(chatbot_kb.kb_ids(chatbot), agents.list(chatbot["id"]))
+    )
 CAP_REACHED = "This demo has reached its limit for today — try again tomorrow."
 
 
@@ -87,6 +99,9 @@ async def public_transcript(
     share: ShareService = Depends(get_share_service),
     sessions: SessionService = Depends(get_session_service),
     messages: MessageStore = Depends(get_message_store),
+    agents: AgentService = Depends(get_agent_service),
+    chatbot_kb: ChatbotKbService = Depends(get_chatbot_kb_service),
+    source_names: SourceNameIndex = Depends(get_source_names),
 ):
     """A visitor's own conversation, replayed so the widget can resume it.
 
@@ -105,6 +120,10 @@ async def public_transcript(
         raise HTTPException(status_code=404, detail=NOT_FOUND)
 
     rows = await run_in_threadpool(messages.transcript, session_id)
+    # Same names the live answer was redacted against, so a replay cannot show
+    # a filename the original response stripped.
+    known = await run_in_threadpool(_known_document_names,
+                                    source_names, chatbot_kb, agents, chatbot)
     out = []
     for row in rows:
         content = row.get("content") or ""
@@ -113,7 +132,7 @@ async def public_transcript(
         # answer_turn has already written the row. Replaying raw would hand
         # back the filenames the live answer stripped.
         if row.get("role") == "assistant":
-            content, citations = redact_turn(content, citations)
+            content, citations = redact_turn(content, citations, known)
         name = row.get("answered_by_name")
         out.append({
             "role": row.get("role"),
@@ -254,6 +273,7 @@ async def public_chat(
     scratch_kb_id: str = Depends(get_scratch_kb_id),
     orchestrator_agent_id: str = Depends(get_orchestrator_agent_id),
     general_assistant_id: str = Depends(get_general_assistant_id),
+    source_names: SourceNameIndex = Depends(get_source_names),
     settings=Depends(get_settings),
 ):
     chatbot = await run_in_threadpool(_chatbot_or_404, share, token)
@@ -289,8 +309,14 @@ async def public_chat(
     # Redact on the way out: markers and excerpts, never a filename, and never
     # the internal agent id. The answer text is redacted too — the prompts
     # tell every agent to cite its sources, so its prose can name a document
-    # by itself; redact_turn closes that for a name the model just cited.
-    redacted_answer, redacted_citations = redact_turn(result.answer, result.citations)
+    # by itself. Labels handle a name the model just cited; the chatbot's own
+    # document names handle one it named WITHOUT citing, which no label can
+    # reach. The name lookups are cached per knowledge base, so the added cost
+    # of this is the single agent read below.
+    known = await run_in_threadpool(_known_document_names,
+                                    source_names, chatbot_kb, agents, chatbot)
+    redacted_answer, redacted_citations = redact_turn(
+        result.answer, result.citations, known)
     return ChatResponse(
         answer=redacted_answer,
         citations=redacted_citations,

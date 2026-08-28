@@ -29,6 +29,7 @@ from app.services.retrieval import reranker_retrieval_config
 from app.services.scratch_kb import ensure_scratch_kb
 from app.services.session_service import SessionService
 from app.services.share_service import ShareService
+from app.services.source_names import SourceNameIndex
 
 
 @asynccontextmanager
@@ -72,6 +73,13 @@ async def lifespan(app: FastAPI):
             client, reranker_config, scratch_kb_id
         )
         app.state.share_service = ShareService(client)
+        # The filename redaction on the public path reads this. Subscribing it
+        # to the client's KB writes is what keeps it exact: a document becomes
+        # answerable only through add_source_to_kb, so no upload path can add
+        # one the index then fails to re-read.
+        source_names = SourceNameIndex(client)
+        client.on_kb_write = source_names.invalidate
+        app.state.source_names = source_names
         yield
     finally:
         client.close()

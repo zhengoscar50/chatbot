@@ -4,6 +4,8 @@ from __future__ import annotations
 import secrets
 from datetime import date
 
+from app.services.source_names import redact_names_in_prose
+
 from fastapi import Request
 
 # 32 bytes of urlsafe randomness. The link is unlisted rather than secret, but
@@ -84,21 +86,23 @@ def redact_citations(citations: list) -> list:
     return out
 
 
-def redact_turn(answer: str, citations: list) -> tuple:
+def redact_turn(answer: str, citations: list, known_names=()) -> tuple:
     """Answer and citations as a stranger may see them, redacted together.
 
     They share one label map on purpose: if the prose says "Q3.pdf" and the
     citation list calls that document "Source 2", the answer must say
     "Source 2" as well, or the two disagree in front of the visitor.
 
-    This closes the COMMON case — a filename the model mentions because it
-    just cited it. It cannot close the general one: a model may name a
-    document it did not cite this turn, and no post-processing here can know
-    that name. That needs a design of its own.
+    `known_names` closes the case labels cannot: a model naming a document it
+    did NOT cite this turn. Nothing in that turn identifies such a name as one
+    to hide, so the chatbot's own document names are passed in from
+    SourceNameIndex and scrubbed from the prose afterwards.
     """
     redacted_citations = redact_citations(citations)
     if not redacted_citations:
-        return answer, redacted_citations
+        # No labels to apply, but the prose may still name a document.
+        return redact_names_in_prose(answer, known_names) if isinstance(answer, str) \
+            else answer, redacted_citations
 
     # Build the same identity->label map redact_citations just used, so the
     # answer's replacements agree with the citation list's labels.
@@ -110,7 +114,7 @@ def redact_turn(answer: str, citations: list) -> tuple:
         if source_name:
             label_by_name[str(source_name)] = redacted["source_name"]
 
-    if not label_by_name or not isinstance(answer, str):
+    if not isinstance(answer, str):
         return answer, redacted_citations
 
     # Longest name first: "report.pdf" inside "annual_report.pdf" must not
@@ -119,7 +123,10 @@ def redact_turn(answer: str, citations: list) -> tuple:
     for name in sorted(label_by_name, key=len, reverse=True):
         redacted_answer = redacted_answer.replace(name, label_by_name[name])
 
-    return redacted_answer, redacted_citations
+    # Then anything the labels could not reach. This runs even when the turn
+    # cited nothing at all — an answer with no citations is exactly where an
+    # uncited filename hides.
+    return redact_names_in_prose(redacted_answer, known_names), redacted_citations
 
 
 class ShareService:

@@ -31,6 +31,7 @@ from app.services.orchestrator import Decision, OrchestratorService, get_orchest
 from app.services.scratch_kb import get_scratch_kb_id
 from app.services.session_service import get_session_service, SessionService
 from app.services.share_service import get_share_service, ShareService
+from app.services.source_names import SourceNameIndex, get_source_names
 
 SPECIALIST = {
     "id": "ag-1", "name": "Chem tutor", "powabase_agent_id": "pa-1",
@@ -189,8 +190,12 @@ def client(fake, monkeypatch):
     app.dependency_overrides[get_agent_service] = lambda: AgentService(fake)
     app.dependency_overrides[get_message_store] = lambda: MessageStore(fake)
     app.dependency_overrides[get_chatbot_kb_service] = lambda: SimpleNamespace(
-        kb_ids=lambda row: []
+        kb_ids=lambda row: getattr(fake, "chatbot_kb_ids", [])
     )
+    # Real index over the same fake client, so the filename redaction on this
+    # path is exercised rather than stubbed away: these tests are where a leak
+    # would show up.
+    app.dependency_overrides[get_source_names] = lambda: SourceNameIndex(fake)
     app.dependency_overrides[get_scratch_kb_id] = lambda: "scratch-kb"
     app.dependency_overrides[get_orchestrator_agent_id] = lambda: "orch-1"
     app.dependency_overrides[get_general_assistant_id] = lambda: "general-1"
@@ -550,3 +555,83 @@ def test_indexed_and_recorded_reports_ready(client, fake):
     body = _status(client, "v1", "src-9").json()
 
     assert body["status"] == "indexed"
+
+
+# --- filenames the model names WITHOUT citing them -------------------------
+#
+# redact_turn maps a filename to "Source 2" only when that document was cited
+# on the same turn. The prompts tell every agent to cite its sources, so its
+# prose talks about documents by name — and an answer that names one without
+# citing it walks straight past the labels. These drive the public route with
+# a chatbot whose knowledge really does hold that document.
+
+
+@pytest.fixture
+def bot_with_documents(fake):
+    """Give the chatbot a knowledge base whose documents have real names.
+
+    The default fake returns sources with an id and no name, which makes the
+    filename redaction silently inert — a test written against that fake
+    passes whether or not the redaction exists.
+    """
+    def install(*names):
+        fake.list_kb_sources = lambda kb_id: {
+            "items": [{"source_id": n, "source_name": n,
+                       "index_status": "indexed"} for n in names]
+        }
+        fake.chatbot_kb_ids = ["kb-1"]
+    return install
+
+
+def answer_for(client, fake, text, citations=()):
+    fake.answer = text
+    fake.citations = list(citations)
+    return client.post("/s/tok/chat",
+                       json={"session_id": "v1", "query": "hi"}).json()
+
+
+def test_a_filename_named_but_not_cited_is_kept_from_the_visitor(
+    client, fake, bot_with_documents
+):
+    """The leak the labels cannot reach: this turn cites nothing at all, so
+    nothing in it identifies "Q3-financials.pdf" as a name to hide."""
+    bot_with_documents("Q3-financials.pdf")
+
+    body = answer_for(client, fake, "According to Q3-financials.pdf, revenue rose.")
+
+    assert "Q3-financials" not in body["answer"]
+    assert "a document" in body["answer"]
+
+
+def test_an_ordinary_word_is_not_mangled_by_a_similarly_named_document(
+    client, fake, bot_with_documents
+):
+    """The failure that would be worse than the leak: it happens on every turn
+    and the visitor reads it."""
+    bot_with_documents("Pricing.pdf")
+
+    body = answer_for(client, fake, "Our pricing depends on volume.")
+
+    assert body["answer"] == "Our pricing depends on volume."
+
+
+def test_a_cited_document_and_an_uncited_one_are_both_hidden(
+    client, fake, bot_with_documents
+):
+    """The path where both redactions run. The cited document becomes a label;
+    the one merely mentioned has no label to become, and is removed by name.
+    Written because a turn that cites NOTHING exercises a different branch of
+    redact_turn, and the branch taken when citations exist was untested."""
+    bot_with_documents("Q3-financials.pdf", "internal_roadmap_2026.docx")
+
+    body = answer_for(
+        client, fake,
+        "Per Q3-financials.pdf revenue rose, and internal_roadmap_2026.docx agrees.",
+        citations=[{"key": 1, "source_id": "s1",
+                    "source_name": "Q3-financials.pdf", "text_excerpt": "rose"}],
+    )
+
+    assert "Q3-financials" not in body["answer"]
+    assert "internal_roadmap_2026" not in body["answer"]
+    assert "Source 1" in body["answer"]      # the cited one became a label
+    assert "a document" in body["answer"]    # the uncited one did not
