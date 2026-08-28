@@ -19,7 +19,8 @@
 import { JSDOM, VirtualConsole } from "jsdom";
 import { readFileSync } from "fs";
 
-const FE = "/Users/oscar/Downloads/rag-chatbot/frontend";
+// Overridden by run-all.sh so the harness is not tied to one machine.
+const FE = process.env.RAGCHAT_FE || "/Users/oscar/Downloads/rag-chatbot/frontend";
 const results = [];
 let consoleErrors = [];
 

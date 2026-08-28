@@ -41,7 +41,8 @@ import pkg from "jsdom";
 const { JSDOM, requestInterceptor } = pkg;
 import { readFileSync } from "fs";
 
-const FE = "/Users/oscar/Downloads/rag-chatbot/frontend";
+// Overridden by run-all.sh so the harness is not tied to one machine.
+const FE = process.env.RAGCHAT_FE || "/Users/oscar/Downloads/rag-chatbot/frontend";
 const WIDGET_JS = readFileSync(`${FE}/widget.js`, "utf8");
 const WIDGET_CSS_JS = readFileSync(`${FE}/widget.css.js`, "utf8");
 

@@ -209,7 +209,23 @@ built from `request.base_url`, and uvicorn honours the `X-Forwarded-Proto` and
 `Host` headers `cloudflared` sends from localhost, so the new hostname and
 `https://` appear in the snippets on their own.
 
-## 6. Updating
+## 6. Before you deploy
+
+```bash
+./deploy/preflight.sh https://<current-public-url>
+```
+
+Backend tests, all 227 DOM checks, uncommitted work, unpushed commits, and —
+given a URL — whether what is CURRENTLY deployed still answers. Exits non-zero
+if anything is wrong.
+
+The last check is the point. Twice a fully green suite sat over something that
+could not run at all: a missing CORS middleware, and a server left on stale
+code after a deploy that reported success. Both were found by a person using
+the app. Unit tests answer "is the logic right", never "does the thing that was
+just committed actually run".
+
+## 7. Updating
 
 ```bash
 cd ~/rag-chatbot

@@ -4,8 +4,22 @@ Loads the real `index.html`, `styles.css` and all eight scripts into jsdom,
 stubs the backend, and drives the UI. Written after the dashboard shipped with
 three bugs that every static check passed and a person spotted immediately.
 
-**Not part of any test suite, and deliberately not wired into one.** The repo has
-no dependency manifest and keeps none, so jsdom is installed *outside* it:
+**Not part of any test suite.** The repo has no dependency manifest and keeps
+none, so jsdom is installed *outside* it. Run everything with:
+
+```bash
+./run-all.sh            # all 11 scripts, 227 checks
+./run-all.sh inbox      # just one
+```
+
+It creates the harness in `~/.cache/ragchat-domtest` on first use, installing
+jsdom if it is missing, and exits non-zero if any check fails. This used to be
+a hand-made directory in `/tmp`, which meant the checks guarding the entire
+frontend vanished on the next reboot and nothing said so — you found out by not
+running them. Override the location with `RAGCHAT_DOMTEST_HOME`, and the
+frontend it reads with `RAGCHAT_FE`.
+
+To run a script by hand instead:
 
 ```bash
 mkdir -p /tmp/domtest && cd /tmp/domtest
