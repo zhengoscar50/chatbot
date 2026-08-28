@@ -18,6 +18,7 @@ node tour.mjs         # 10 checks: the guided tour engine — open/skip/escape, 
 node share_citations.mjs  # 17 checks: the share page normalises a citation excerpt for display
 node widget.mjs  # 16 checks: the embed widget loader — shadow root, session ownership, message origin, and the launcher glyph
 node inbox.mjs   # 30 checks: the owner's inbox — listing, reading a transcript, empty/failure states, and no bleed between chatbots
+node snippet.mjs # 9 checks: the embed snippet parsed AS HTML — that it is one script tag, and that its onerror speaks when the host stops resolving
 ```
 
 Both exit non-zero on failure and print a per-check line.

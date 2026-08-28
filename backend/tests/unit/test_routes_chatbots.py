@@ -371,3 +371,45 @@ def test_the_inbox_is_capped_at_one_page_of_conversations():
 
     assert len(rows) == INBOX_LIMIT
     assert len(msgs.asked_for) == INBOX_LIMIT
+
+
+# --- the embed snippets ----------------------------------------------------
+
+
+def snippet_for(host="https://chat.example.com/", token="tok"):
+    from app.api.routes.chatbots import _share_response
+    from types import SimpleNamespace
+
+    return _share_response(
+        SimpleNamespace(base_url=host),
+        {"share_token": token, "share_daily_limit": 100},
+    )
+
+
+def test_the_widget_snippet_reports_a_host_that_stops_resolving():
+    """The one failure nothing else can speak for. If widget.js does not load,
+    none of the widget's code runs, so there is nothing left on the page to
+    notice — the message has to be in the snippet itself, on the embedding
+    site. It names the address that failed, because the person reading that
+    console is usually not the person who owns the chatbot."""
+    widget = snippet_for().widget
+
+    assert "onerror=" in widget
+    assert "chat.example.com" in widget
+    assert "re-copy the embed snippet" in widget
+
+
+def test_a_hostile_host_header_cannot_break_out_of_the_snippet():
+    """base_url comes from the Host header, which the client sets, and it is
+    interpolated into an HTML attribute the owner is invited to paste onto
+    another site."""
+    widget = snippet_for(host='https://evil"onload="alert(1)/').widget
+
+    assert '"onload="alert(1)' not in widget
+    assert "&quot;" in widget
+
+
+def test_snippets_are_absent_entirely_when_sharing_is_off():
+    off = snippet_for(token=None)
+
+    assert off.widget is None and off.embed is None and off.url is None

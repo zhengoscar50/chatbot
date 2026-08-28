@@ -124,6 +124,26 @@ journalctl -u cloudflared | grep -oE 'https://[a-z0-9-]+\.trycloudflare\.com' | 
 Cloudflare offers no uptime guarantee for quick tunnels. Fine for a demo link
 you re-send; use a named tunnel below if you need it to stay put.
 
+Nothing reports that move on its own — the service is healthy, the app is
+healthy, and the only broken thing is a page you do not own. `tunnel-status.sh`
+is what notices:
+
+```bash
+~/rag-chatbot/deploy/tunnel-status.sh
+```
+
+It prints the current URL, checks the app actually answers *through* it rather
+than only on localhost, and compares against the last URL it saw. Exit status
+is 0 unchanged, 3 moved, 1 broken — so `--quiet` works from cron:
+
+```
+*/30 * * * * ~/rag-chatbot/deploy/tunnel-status.sh --quiet || logger -t tunnel "demo URL moved or broken"
+```
+
+It reads only the CURRENT run's journal entries. The journal keeps every URL
+this box has ever been given, so taking the last one overall would report a
+hostname from three restarts ago as though it were live.
+
 ### Named tunnel (stable hostname)
 
 In the Cloudflare dashboard: **Zero Trust → Networks → Tunnels → Create a

@@ -1,5 +1,6 @@
 """Chatbots: a user's separate assistants, each owning its own agents and chats."""
 from datetime import date
+from html import escape
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
@@ -103,7 +104,10 @@ async def delete_chatbot(
 
 def _share_response(request: Request, row: dict) -> ShareResponse:
     token = row.get("share_token")
-    base = str(request.base_url).rstrip("/")
+    # Escaped because both land inside HTML attributes in the snippets below.
+    # base_url derives from the Host header, which is the client's to set.
+    base = escape(str(request.base_url).rstrip("/"), quote=True)
+    token = escape(token, quote=True) if token else token
     url = f"{base}/s/{token}" if token else None
     embed = (
         f'<iframe src="{url}" width="420" height="640" style="border:0"></iframe>'
@@ -111,8 +115,18 @@ def _share_response(request: Request, row: dict) -> ShareResponse:
     )
     # The other way to embed: a tab on the edge of the page instead of a
     # rectangle in the middle of it. Same token, same public page underneath.
+    #
+    # The onerror is the only thing that can speak when this host stops
+    # resolving. If the script itself does not load, none of the widget's code
+    # runs — there is nothing on the page left to notice or report it — so the
+    # message has to live in the snippet on the embedding site. It goes to the
+    # console rather than the page: a broken chatbot must not put a banner in
+    # front of somebody else's visitors.
     widget = (
-        f'<script src="{base}/widget.js" data-token="{token}" async></script>'
+        f'<script src="{base}/widget.js" data-token="{token}" async '
+        f'''onerror="console.error(\'Chat widget: could not load from {base} . '''
+        f'''If that address has changed, re-copy the embed snippet from your '''
+        f'''dashboard.\')"></script>'''
         if token else None
     )
     # A count from an earlier date is stale, not zero-but-forgotten: only
