@@ -19,6 +19,7 @@ function wireDashboard() {
   document.getElementById("dashboard-logout").addEventListener("click", doLogout);
   document.addEventListener("click", closeAllCardMenus);
   wireShare();
+  wireInbox();
   wireOnboarding();
 }
 
@@ -362,6 +363,7 @@ function renderCard({ bot, agents: roster, chats, share, visitors }) {
     event.stopPropagation();   // a click on the menu's own border must not fall through to the card
   });
   [["Share", () => openShare(bot)],
+   ["Inbox", () => openInbox(bot)],
    ["Rename", () => renameChatbot(bot)],
    ["Delete", () => deleteChatbotFromDashboard(bot)]].forEach(([text, run]) => {
     const b = document.createElement("button");

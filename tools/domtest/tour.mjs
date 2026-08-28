@@ -155,7 +155,7 @@ async function boot({ state } = {}) {
 
   for (const f of ["theme.js", "markdown.js", "agents.js", "knowledge.js",
                    "scope.js", "chatbots.js", "onboarding.js", "tour-spotlight.js",
-                   "tour-steps.js", "tour.js", "dashboard.js", "app.js"]) {
+                   "tour-steps.js", "tour.js", "inbox.js", "dashboard.js", "app.js"]) {
     const el = w.document.createElement("script");
     el.textContent = readFileSync(`${FE}/${f}`, "utf8");
     w.document.body.appendChild(el);

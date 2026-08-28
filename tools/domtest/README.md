@@ -17,6 +17,7 @@ node onboarding.mjs  # 24 checks: the getting-started panel, its Help toggle, bo
 node tour.mjs         # 10 checks: the guided tour engine — open/skip/escape, replay position, and the rAF-leak guard
 node share_citations.mjs  # 17 checks: the share page normalises a citation excerpt for display
 node widget.mjs  # 16 checks: the embed widget loader — shadow root, session ownership, message origin, and the launcher glyph
+node inbox.mjs   # 30 checks: the owner's inbox — listing, reading a transcript, empty/failure states, and no bleed between chatbots
 ```
 
 Both exit non-zero on failure and print a per-check line.

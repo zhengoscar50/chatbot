@@ -187,6 +187,20 @@
       </div>
     </div>
 
+    <div id="inbox-modal" class="modal" hidden>
+      <div class="modal-card modal-card--wide">
+        <h2>Inbox</h2>
+        <p class="inbox-sub">Conversations people have had with your shared chatbot.</p>
+        <div class="inbox">
+          <div class="inbox-list" id="inbox-list"></div>
+          <div class="inbox-reader" id="inbox-reader"></div>
+        </div>
+        <div class="modal-actions">
+          <button type="button" id="inbox-close">Close</button>
+        </div>
+      </div>
+    </div>
+
     <div id="agent-modal" class="modal" hidden>
       <form id="agent-form" class="modal-card">
         <h2 id="agent-modal-title">New agent</h2>
@@ -270,6 +284,7 @@
     <script src="/tour-spotlight.js"></script>
     <script src="/tour-steps.js"></script>
     <script src="/tour.js"></script>
+    <script src="/inbox.js"></script>
     <script src="/dashboard.js"></script>
     <script src="/app.js"></script>
   </body>

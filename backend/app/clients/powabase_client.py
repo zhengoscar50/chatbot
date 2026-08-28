@@ -496,6 +496,30 @@ class PowabaseClient:
         self._raise_for_status(response)
         return response.json()
 
+    def messages_for_sessions(self, session_ids: list) -> list:
+        """Every message belonging to any of these sessions, oldest first.
+
+        One `in.()` query rather than one per session, and no query at all for
+        an empty list — a chatbot nobody has messaged is exactly the one whose
+        owner is most likely to open the inbox.
+
+        PostgREST cannot return "the first row of each group", so this fetches
+        the listed sessions' messages and lets the caller fold them. The
+        caller bounds the cost by limiting how many sessions it lists.
+        """
+        if not session_ids:
+            return []
+        response = self._client.get(
+            "/rest/v1/messages",
+            params={
+                "session_id": f"in.({','.join(session_ids)})",
+                "select": "session_id,role,text,created_at",
+                "order": "created_at.asc",
+            },
+        )
+        self._raise_for_status(response)
+        return response.json()
+
     def has_specialist_answer(self, session_ids: list) -> bool:
         """Whether any of these chats has a turn a SPECIALIST agent answered.
 

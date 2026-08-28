@@ -10,14 +10,17 @@ from app.models.schemas import (
     ChatbotCreateRequest,
     ChatbotResponse,
     ChatbotUpdateRequest,
+    InboxConversation,
     ShareResponse,
 )
 from app.services.agent_service import AgentService, get_agent_service
+from app.clients.powabase_client import PowabaseClient, get_powabase_client
 from app.services.chatbot_service import (
     ChatbotService,
     LastChatbotError,
     get_chatbot_service,
 )
+from app.services.inbox import conversations
 from app.services.session_service import SessionService, get_session_service
 from app.services.share_service import ShareService, get_share_service
 
@@ -171,3 +174,39 @@ async def share_state(
     if row is None:
         raise HTTPException(status_code=404, detail="Chatbot not found")
     return _share_response(request, row)
+
+
+# How many conversations the inbox shows. The messages behind them are fetched
+# in one batched query, so this is what bounds that query's size.
+INBOX_LIMIT = 50
+
+
+@router.get("/{chatbot_id}/inbox", response_model=list[InboxConversation])
+async def inbox(
+    chatbot_id: str,
+    user: dict = Depends(get_current_user),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
+    sessions: SessionService = Depends(get_session_service),
+    client: PowabaseClient = Depends(get_powabase_client),
+):
+    """Every conversation visitors have had with this chatbot's share link.
+
+    `shared=True` is the whole access story on the listing side. Visitor
+    sessions and the owner's own chats live in one table and are told apart
+    only by that flag, so passing it is what keeps the owner's private
+    conversations out of a view whose entire purpose is conversations they did
+    not have. Reading one of these transcripts reuses
+    GET /sessions/{id}/messages, which is already owner-scoped: visitor
+    sessions carry the owner's own owner_id.
+    """
+    if await run_in_threadpool(chatbots.get_owned, chatbot_id, user["id"]) is None:
+        raise HTTPException(status_code=404, detail="Chatbot not found")
+    try:
+        rows = await run_in_threadpool(sessions.list, chatbot_id, shared=True)
+        rows = rows[:INBOX_LIMIT]
+        messages = await run_in_threadpool(
+            client.messages_for_sessions, [r["id"] for r in rows]
+        )
+    except PowabaseAPIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return conversations(rows, messages)

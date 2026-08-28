@@ -1750,3 +1750,113 @@ body {
   line-height: 1;
   background: var(--bg);
 }
+
+/* --- Inbox ---------------------------------------------------------------
+   The owner reading visitor conversations. Two panes: the list of
+   conversations, and the transcript of whichever one is selected.
+   Everything here is read-only — there is deliberately no composer. */
+
+.modal-card--wide {
+  width: min(56rem, 100%);
+}
+
+.inbox-sub {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.inbox {
+  display: grid;
+  grid-template-columns: minmax(0, 18rem) minmax(0, 1fr);
+  gap: 0.75rem;
+  min-height: 24rem;
+  /* The panes scroll independently; the modal card must not grow with a long
+     transcript, or the Close button walks off the bottom of the screen. */
+  height: min(60vh, 34rem);
+}
+
+.inbox-list,
+.inbox-reader {
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-subtle);
+}
+
+.inbox-list {
+  display: flex;
+  flex-direction: column;
+  padding: 0.35rem;
+  gap: 0.25rem;
+}
+
+.inbox-reader {
+  padding: 0.9rem;
+}
+
+.inbox-note {
+  margin: 0;
+  padding: 0.75rem;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+
+.inbox-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.inbox-item:hover {
+  background: var(--accent-hover);
+}
+
+.inbox-item--active {
+  background: var(--accent-surface);
+  border-color: var(--accent-border);
+}
+
+.inbox-item__preview {
+  /* Two lines, then ellipsis: enough to recognise the question, bounded so one
+     rambling visitor cannot push the rest of the list off the pane. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.9rem;
+}
+
+.inbox-item__preview--empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.inbox-item__meta {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+@media (max-width: 40rem) {
+  .inbox {
+    grid-template-columns: minmax(0, 1fr);
+    height: auto;
+  }
+
+  .inbox-list {
+    max-height: 12rem;
+  }
+
+  .inbox-reader {
+    max-height: 22rem;
+  }
+}

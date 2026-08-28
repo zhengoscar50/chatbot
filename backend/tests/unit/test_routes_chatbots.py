@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.api.deps import get_current_user
 from app.api.routes.chatbots import router
+from app.clients.powabase_client import get_powabase_client
 from app.services.agent_service import get_agent_service
 from app.services.chatbot_service import ChatbotService, LastChatbotError, get_chatbot_service
 from app.services.session_service import get_session_service
@@ -56,14 +57,43 @@ class FakeShare:
         self.disabled.append(chatbot_id)
 
 
-def build_app(bots, share=None):
+class FakeSessions:
+    """Sessions for one chatbot, holding BOTH the owner's private chats and
+    visitors' shared ones — because telling those apart is the inbox's whole
+    access story, and a fake carrying only shared rows could not fail the test
+    that checks it."""
+
+    def __init__(self, rows=None):
+        self.rows = list(rows or [])
+
+    def list(self, chatbot_id, shared=False):
+        return [
+            {"id": r["id"], "name": r.get("name", "New chat"),
+             "updated_at": r.get("updated_at")}
+            for r in self.rows
+            if r["chatbot_id"] == chatbot_id and bool(r.get("shared")) == shared
+        ]
+
+
+class FakeMessageClient:
+    def __init__(self, rows=None):
+        self.rows = list(rows or [])
+        self.asked_for = None
+
+    def messages_for_sessions(self, session_ids):
+        self.asked_for = list(session_ids)
+        return [m for m in self.rows if m["session_id"] in set(session_ids)]
+
+
+def build_app(bots, share=None, sessions=None, client=None):
     app = FastAPI()
     app.include_router(router)
     app.dependency_overrides[get_current_user] = lambda: {"id": "o1", "username": "alice"}
     app.dependency_overrides[get_chatbot_service] = lambda: bots
     app.dependency_overrides[get_agent_service] = lambda: SimpleNamespace()
-    app.dependency_overrides[get_session_service] = lambda: SimpleNamespace()
+    app.dependency_overrides[get_session_service] = lambda: sessions or SimpleNamespace()
     app.dependency_overrides[get_share_service] = lambda: share or FakeShare()
+    app.dependency_overrides[get_powabase_client] = lambda: client or FakeMessageClient()
     return app
 
 
@@ -233,3 +263,111 @@ def test_an_unshared_chatbot_offers_neither_snippet(client, auth, my_chatbot):
 
     assert body["embed"] is None
     assert body["widget"] is None
+
+
+# --- GET /chatbots/{id}/inbox ---------------------------------------------
+
+BOT = {"id": "cb1", "owner_id": "o1", "name": "Support"}
+
+
+def inbox_app(session_rows, message_rows=(), bots=None):
+    sessions = FakeSessions(session_rows)
+    msgs = FakeMessageClient(message_rows)
+    app = build_app(bots or FakeChatbots([BOT]), sessions=sessions, client=msgs)
+    return TestClient(app), msgs
+
+
+def test_the_inbox_never_shows_the_owners_own_chats():
+    """The guard this endpoint exists to hold. Visitor sessions and the owner's
+    private chats sit in one table separated only by `shared`, so listing
+    without that filter quietly turns an inbox of visitor conversations into a
+    dump of the owner's own. Asserted by absence, because that failure looks
+    like extra rows rather than an error."""
+    client, _ = inbox_app([
+        {"id": "visitor-1", "chatbot_id": "cb1", "shared": True},
+        {"id": "my-private-chat", "chatbot_id": "cb1", "shared": False},
+    ])
+
+    ids = [r["id"] for r in client.get("/chatbots/cb1/inbox").json()]
+
+    assert ids == ["visitor-1"]
+    assert "my-private-chat" not in ids
+
+
+def test_the_inbox_only_covers_the_chatbot_asked_for():
+    client, _ = inbox_app([
+        {"id": "mine", "chatbot_id": "cb1", "shared": True},
+        {"id": "other-bot", "chatbot_id": "cb2", "shared": True},
+    ])
+
+    assert [r["id"] for r in client.get("/chatbots/cb1/inbox").json()] == ["mine"]
+
+
+def test_another_users_chatbot_is_not_found():
+    """Ownership is checked before anything is read, so a stranger cannot use
+    this to discover that a chatbot exists."""
+    client, msgs = inbox_app(
+        [{"id": "v1", "chatbot_id": "cb-theirs", "shared": True}],
+        bots=FakeChatbots([{"id": "cb-theirs", "owner_id": "someone-else",
+                            "name": "Theirs"}]),
+    )
+
+    assert client.get("/chatbots/cb-theirs/inbox").status_code == 404
+    assert msgs.asked_for is None
+
+
+def test_rows_carry_the_visitors_first_question():
+    client, _ = inbox_app(
+        [{"id": "v1", "chatbot_id": "cb1", "shared": True}],
+        [{"session_id": "v1", "role": "assistant", "text": "Hi!",
+          "created_at": "2026-08-27T10:00:00Z"},
+         {"session_id": "v1", "role": "user", "text": "are you open sundays",
+          "created_at": "2026-08-27T10:00:05Z"}],
+    )
+
+    row = client.get("/chatbots/cb1/inbox").json()[0]
+
+    assert row["preview"] == "are you open sundays"
+    assert row["message_count"] == 2
+
+
+def test_messages_are_fetched_only_for_the_listed_sessions():
+    """One batched query, and it must be scoped to the rows actually being
+    shown — asking for the owner's private session ids would pull transcripts
+    the inbox then has no reason to hold."""
+    client, msgs = inbox_app([
+        {"id": "v1", "chatbot_id": "cb1", "shared": True},
+        {"id": "private", "chatbot_id": "cb1", "shared": False},
+    ])
+
+    client.get("/chatbots/cb1/inbox")
+
+    assert msgs.asked_for == ["v1"]
+
+
+def test_a_chatbot_nobody_has_messaged_returns_an_empty_list():
+    client, msgs = inbox_app([])
+
+    res = client.get("/chatbots/cb1/inbox")
+
+    assert res.status_code == 200
+    assert res.json() == []
+    assert msgs.asked_for == []
+
+
+def test_the_inbox_is_capped_at_one_page_of_conversations():
+    """The cap is what bounds the batched message query: without it, a chatbot
+    with thousands of visitor sessions asks for every message ever sent to it
+    in a single request."""
+    from app.api.routes.chatbots import INBOX_LIMIT
+
+    client, msgs = inbox_app([
+        {"id": f"v{n}", "chatbot_id": "cb1", "shared": True,
+         "updated_at": f"2026-08-27T{n // 60:02d}:{n % 60:02d}:00Z"}
+        for n in range(INBOX_LIMIT + 10)
+    ])
+
+    rows = client.get("/chatbots/cb1/inbox").json()
+
+    assert len(rows) == INBOX_LIMIT
+    assert len(msgs.asked_for) == INBOX_LIMIT
