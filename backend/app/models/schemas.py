@@ -79,6 +79,16 @@ class SessionSummary(BaseModel):
     excluded_agent_ids: list = []
 
 
+class InboxConversation(BaseModel):
+    """One visitor conversation as it appears in the owner's inbox."""
+    id: str
+    # The visitor's first question. Every shared session carries the same
+    # default name, so this is what tells one row from another.
+    preview: str = ""
+    message_count: int = 0
+    last_message_at: Optional[str] = None
+
+
 class ChatMessage(BaseModel):
     role: str
     text: str
