@@ -1860,3 +1860,46 @@ body {
     max-height: 22rem;
   }
 }
+
+.inbox-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+
+.inbox-row .inbox-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.inbox-delete {
+  flex: 0 0 auto;
+  align-self: center;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text-muted);
+  font-size: 1.05rem;
+  line-height: 1;
+  cursor: pointer;
+  /* Hidden until the row is hovered or the control itself is focused, so a
+     destructive button is not sitting under the pointer on every row — but
+     never hidden from the keyboard, which is why focus-visible is here. */
+  opacity: 0;
+}
+
+.inbox-row:hover .inbox-delete,
+.inbox-delete:focus-visible {
+  opacity: 1;
+}
+
+.inbox-delete:hover {
+  color: var(--error);
+  border-color: var(--error);
+}
+
+@media (hover: none) {
+  /* No hover to reveal it on a touch screen. */
+  .inbox-delete { opacity: 1; }
+}

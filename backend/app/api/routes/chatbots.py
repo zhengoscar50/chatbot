@@ -224,3 +224,62 @@ async def inbox(
     except PowabaseAPIError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return conversations(rows, messages)
+
+
+@router.delete("/{chatbot_id}/inbox/{session_id}", status_code=204)
+async def delete_inbox_conversation(
+    chatbot_id: str,
+    session_id: str,
+    user: dict = Depends(get_current_user),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
+    sessions: SessionService = Depends(get_session_service),
+):
+    """Delete one visitor conversation, permanently.
+
+    Three conditions, not one. Ownership of the chatbot is the outer gate; the
+    session must belong to THIS chatbot; and it must be `shared`. That last
+    check is what stops this route reaching the owner's own private chats,
+    which live in the same table and are told apart only by that flag — a
+    delete route that could reach them would be worse than having none.
+
+    The messages go with it: messages.session_id is ON DELETE CASCADE, and
+    SessionService.delete also takes the chat's scratch KB and unlinks its
+    uploads.
+    """
+    if await run_in_threadpool(chatbots.get_owned, chatbot_id, user["id"]) is None:
+        raise HTTPException(status_code=404, detail="Chatbot not found")
+    row = await run_in_threadpool(sessions.get, session_id)
+    if (row is None
+            or row.get("chatbot_id") != chatbot_id
+            or not row.get("shared")):
+        raise HTTPException(status_code=404, detail="Conversation not found")
+    try:
+        await run_in_threadpool(sessions.delete, session_id)
+    except PowabaseAPIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+@router.delete("/{chatbot_id}/inbox")
+async def clear_inbox(
+    chatbot_id: str,
+    user: dict = Depends(get_current_user),
+    chatbots: ChatbotService = Depends(get_chatbot_service),
+    sessions: SessionService = Depends(get_session_service),
+):
+    """Delete every visitor conversation for this chatbot.
+
+    Scoped by `shared=True` for the same reason the listing is: without it this
+    would delete the owner's own chats in this chatbot too. Deletion is not
+    capped the way the listing is — a cap there bounds one query, whereas
+    stopping halfway through a purge would leave the owner believing data was
+    gone when it was not.
+    """
+    if await run_in_threadpool(chatbots.get_owned, chatbot_id, user["id"]) is None:
+        raise HTTPException(status_code=404, detail="Chatbot not found")
+    try:
+        rows = await run_in_threadpool(sessions.list, chatbot_id, shared=True)
+        for row in rows:
+            await run_in_threadpool(sessions.delete, row["id"])
+    except PowabaseAPIError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    return {"deleted": len(rows)}

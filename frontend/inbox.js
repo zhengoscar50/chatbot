@@ -51,11 +51,19 @@ function paintInboxList(rows) {
   if (rows.length === 0) {
     setInboxNote(inboxList, "No one has used your share link yet.");
     setInboxNote(inboxReader, "");
+    document.getElementById("inbox-clear").hidden = true;
     return;
   }
   setInboxNote(inboxReader, "Pick a conversation to read it.");
 
+  document.getElementById("inbox-clear").hidden = false;
+
   rows.forEach((row) => {
+    // A row is a container, not a button: the delete control lives inside it,
+    // and a button nested in a button is invalid and does not receive clicks.
+    const wrap = document.createElement("div");
+    wrap.className = "inbox-row";
+
     const item = document.createElement("button");
     item.type = "button";
     item.className = "inbox-item";
@@ -76,7 +84,17 @@ function paintInboxList(rows) {
 
     item.append(preview, meta);
     item.addEventListener("click", () => selectConversation(item, row.id));
-    inboxList.appendChild(item);
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "inbox-delete";
+    del.title = "Delete this conversation";
+    del.setAttribute("aria-label", "Delete this conversation");
+    del.textContent = "×";
+    del.addEventListener("click", () => deleteConversation(row));
+
+    wrap.append(item, del);
+    inboxList.appendChild(wrap);
   });
 }
 
@@ -144,6 +162,43 @@ function conversationRow(m) {
   return row;
 }
 
+// Deletion is permanent — the messages go with the conversation, because
+// messages.session_id is ON DELETE CASCADE. Both paths confirm first, and both
+// name what is about to go rather than asking "are you sure?".
+async function deleteConversation(row) {
+  const label = row.preview ? `"${row.preview}"` : "this conversation";
+  if (!confirm(`Delete ${label}? This cannot be undone.`)) return;
+
+  const res = await authFetch(
+    `/chatbots/${encodeURIComponent(inboxBot.id)}/inbox/${encodeURIComponent(row.id)}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    setInboxNote(inboxReader, "Could not delete that conversation.");
+    return;
+  }
+  // Re-read rather than splicing the row out: the list is server-ordered, and
+  // a local edit would drift from it the moment anything else changed.
+  setInboxNote(inboxReader, "Conversation deleted.");
+  await loadInbox();
+}
+
+async function clearInbox() {
+  const count = inboxList.querySelectorAll(".inbox-item").length;
+  if (!confirm(
+    `Delete all ${count} ${count === 1 ? "conversation" : "conversations"} for `
+    + `this chatbot? This cannot be undone.`)) return;
+
+  const res = await authFetch(
+    `/chatbots/${encodeURIComponent(inboxBot.id)}/inbox`, { method: "DELETE" });
+  if (!res.ok) {
+    setInboxNote(inboxReader, "Could not delete those conversations.");
+    return;
+  }
+  setInboxNote(inboxReader, "");
+  await loadInbox();
+}
+
 function relativeTime(iso) {
   if (!iso) return "unknown";
   const then = Date.parse(iso);
@@ -160,4 +215,5 @@ function wireInbox() {
   document.getElementById("inbox-close").addEventListener("click", () => {
     inboxModal.hidden = true;
   });
+  document.getElementById("inbox-clear").addEventListener("click", clearInbox);
 }

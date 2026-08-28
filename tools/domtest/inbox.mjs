@@ -33,11 +33,23 @@ function makeServer(state) {
     if (path === "/onboarding") return json(200, { steps: [], complete: true });
 
     const inbox = path.match(/^\/chatbots\/([^/]+)\/inbox$/);
-    if (inbox) {
+    if (inbox && method === "GET") {
       state.inboxCalls.push(inbox[1]);
       if (state.slowMs) await new Promise((r) => setTimeout(r, state.slowMs));
       if (state.inboxStatus !== 200) return json(state.inboxStatus, { detail: "nope" });
       return json(200, state.inboxRows);
+    }
+    const del = path.match(/^\/chatbots\/([^/]+)\/inbox\/([^/]+)$/);
+    if (del && method === "DELETE") {
+      state.deleted.push(del[2]);
+      state.inboxRows = state.inboxRows.filter((r) => r.id !== del[2]);
+      return json(204, null);
+    }
+    if (path.match(/^\/chatbots\/([^/]+)\/inbox$/) && method === "DELETE") {
+      state.cleared += 1;
+      const n = state.inboxRows.length;
+      state.inboxRows = [];
+      return json(200, { deleted: n });
     }
     const msgs = path.match(/^\/sessions\/([^/]+)\/messages$/);
     if (msgs) {
@@ -57,6 +69,8 @@ function baseState() {
     messageCalls: [],
     inboxStatus: 200,
     slowMs: 0,
+    deleted: [],
+    cleared: 0,
   };
 }
 
@@ -74,7 +88,8 @@ async function boot(state) {
   w.fetch = makeServer(state);
   w.localStorage.setItem("rag-chat-token", "t");
   w.localStorage.setItem("rag-chat-username", "oscar");
-  w.confirm = () => true;
+  w.confirmed = [];
+  w.confirm = (msg) => { w.confirmed.push(msg); return w.confirmAnswer !== false; };
   w.prompt = () => null;
 
   for (const f of ["theme.js", "markdown.js", "agents.js", "knowledge.js", "scope.js", "chatbots.js", "onboarding.js", "tour-spotlight.js", "tour-steps.js", "tour.js", "inbox.js", "dashboard.js", "app.js"]) {
@@ -223,6 +238,70 @@ console.log("\n=== it does not leak between chatbots ===");
   check(!$(d, "#inbox-list").textContent.includes("alpha question"),
         "nor after it resolves");
   check(state.inboxCalls.join(",") === "cb-a,cb-b", "each open asks for its own chatbot", state.inboxCalls.join(","));
+}
+
+console.log("\n=== deleting a conversation ===");
+{
+  const state = baseState();
+  state.inboxRows = [
+    { id: "v1", preview: "do you ship to canada", message_count: 2, last_message_at: new Date().toISOString() },
+    { id: "v2", preview: "second question", message_count: 1, last_message_at: new Date().toISOString() },
+  ];
+  const { w, d } = await boot(state);
+  await openInboxPanel(w, d);
+
+  check($$(d, ".inbox-delete").length === 2, "every row offers a delete control");
+
+  // Declining must not delete. This is the check that matters: a confirm that
+  // is asked but not obeyed is worse than no confirm at all.
+  w.confirmAnswer = false;
+  click(w, $$(d, ".inbox-delete")[0]);
+  await flush(10);
+  check(state.deleted.length === 0, "declining the confirmation deletes nothing");
+  check($$(d, ".inbox-item").length === 2, "and the row stays");
+
+  w.confirmAnswer = true;
+  w.confirmed = [];
+  click(w, $$(d, ".inbox-delete")[0]);
+  await flush(15);
+
+  check(state.deleted.join(",") === "v1", "confirming deletes that conversation", state.deleted.join(","));
+  check(/do you ship to canada/.test(w.confirmed[0] || ""),
+        "the prompt names what is about to go");
+  check(/cannot be undone/.test(w.confirmed[0] || ""), "and says it is permanent");
+  check($$(d, ".inbox-item").length === 1, "the list re-reads from the server");
+  check(!$(d, "#inbox-list").textContent.includes("do you ship to canada"),
+        "and the deleted conversation is gone from it");
+}
+
+console.log("\n=== deleting everything ===");
+{
+  const state = baseState();
+  state.inboxRows = [
+    { id: "v1", preview: "one", message_count: 1, last_message_at: new Date().toISOString() },
+    { id: "v2", preview: "two", message_count: 1, last_message_at: new Date().toISOString() },
+  ];
+  const { w, d } = await boot(state);
+  await openInboxPanel(w, d);
+
+  check(!$(d, "#inbox-clear").hidden, "Delete all is offered when there are conversations");
+
+  w.confirmAnswer = false;
+  click(w, $(d, "#inbox-clear"));
+  await flush(10);
+  check(state.cleared === 0, "declining the confirmation clears nothing");
+
+  w.confirmAnswer = true;
+  w.confirmed = [];
+  click(w, $(d, "#inbox-clear"));
+  await flush(15);
+
+  check(state.cleared === 1, "confirming clears the inbox");
+  check(/all 2 conversations/.test(w.confirmed[0] || ""),
+        "the prompt says how many are going", w.confirmed[0]);
+  check($(d, "#inbox-list").textContent.includes("No one has used your share link yet"),
+        "the empty state comes back");
+  check($(d, "#inbox-clear").hidden, "and Delete all is withdrawn when nothing is left");
 }
 
 console.log("\n=== closing ===");

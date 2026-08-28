@@ -8,7 +8,7 @@ three bugs that every static check passed and a person spotted immediately.
 none, so jsdom is installed *outside* it. Run everything with:
 
 ```bash
-./run-all.sh            # all 11 scripts, 227 checks
+./run-all.sh            # all 11 scripts, 241 checks
 ./run-all.sh inbox      # just one
 ```
 
@@ -31,7 +31,7 @@ node onboarding.mjs  # 24 checks: the getting-started panel, its Help toggle, bo
 node tour.mjs         # 10 checks: the guided tour engine — open/skip/escape, replay position, and the rAF-leak guard
 node share_citations.mjs  # 17 checks: the share page normalises a citation excerpt for display
 node widget.mjs  # 16 checks: the embed widget loader — shadow root, session ownership, message origin, and the launcher glyph
-node inbox.mjs   # 30 checks: the owner's inbox — listing, reading a transcript, empty/failure states, and no bleed between chatbots
+node inbox.mjs   # 44 checks: the owner's inbox — listing, reading a transcript, empty/failure states, no bleed between chatbots, and both delete paths with their confirmations
 node snippet.mjs # 9 checks: the embed snippet parsed AS HTML — that it is one script tag, and that its onerror speaks when the host stops resolving
 ```
 

@@ -66,6 +66,14 @@ class FakeSessions:
     def __init__(self, rows=None):
         self.rows = list(rows or [])
 
+    def get(self, session_id):
+        return next((r for r in self.rows if r["id"] == session_id), None)
+
+    def delete(self, session_id):
+        before = len(self.rows)
+        self.rows = [r for r in self.rows if r["id"] != session_id]
+        return len(self.rows) != before
+
     def list(self, chatbot_id, shared=False):
         return [
             {"id": r["id"], "name": r.get("name", "New chat"),
@@ -413,3 +421,85 @@ def test_snippets_are_absent_entirely_when_sharing_is_off():
     off = snippet_for(token=None)
 
     assert off.widget is None and off.embed is None and off.url is None
+
+
+# --- deleting visitor conversations ----------------------------------------
+
+
+def test_deleting_a_conversation_removes_it():
+    sessions = FakeSessions([{"id": "v1", "chatbot_id": "cb1", "shared": True}])
+    client = TestClient(build_app(FakeChatbots([BOT]), sessions=sessions))
+
+    assert client.delete("/chatbots/cb1/inbox/v1").status_code == 204
+    assert sessions.rows == []
+
+
+def test_this_route_cannot_reach_the_owners_private_chats():
+    """The guard that matters most. Visitor and owner sessions live in one
+    table separated only by `shared`, so a delete route missing that check
+    would let the inbox destroy the owner's own conversations — worse than
+    having no delete at all. Asserted on the row surviving, not on the status
+    code, because a route that 404s and deletes anyway would still pass a
+    status-only check."""
+    sessions = FakeSessions([{"id": "mine", "chatbot_id": "cb1", "shared": False}])
+    client = TestClient(build_app(FakeChatbots([BOT]), sessions=sessions))
+
+    res = client.delete("/chatbots/cb1/inbox/mine")
+
+    assert res.status_code == 404
+    assert [r["id"] for r in sessions.rows] == ["mine"]
+
+
+def test_a_conversation_from_another_chatbot_is_not_deletable_here():
+    sessions = FakeSessions([{"id": "v1", "chatbot_id": "cb2", "shared": True}])
+    client = TestClient(build_app(FakeChatbots([BOT]), sessions=sessions))
+
+    res = client.delete("/chatbots/cb1/inbox/v1")
+
+    assert res.status_code == 404
+    assert len(sessions.rows) == 1
+
+
+def test_another_users_chatbot_cannot_be_purged():
+    sessions = FakeSessions([{"id": "v1", "chatbot_id": "cb-theirs", "shared": True}])
+    bots = FakeChatbots([{"id": "cb-theirs", "owner_id": "someone-else", "name": "T"}])
+    client = TestClient(build_app(bots, sessions=sessions))
+
+    assert client.delete("/chatbots/cb-theirs/inbox/v1").status_code == 404
+    assert client.delete("/chatbots/cb-theirs/inbox").status_code == 404
+    assert len(sessions.rows) == 1
+
+
+def test_clearing_the_inbox_deletes_every_visitor_conversation():
+    sessions = FakeSessions([
+        {"id": "v1", "chatbot_id": "cb1", "shared": True},
+        {"id": "v2", "chatbot_id": "cb1", "shared": True},
+    ])
+    client = TestClient(build_app(FakeChatbots([BOT]), sessions=sessions))
+
+    res = client.delete("/chatbots/cb1/inbox")
+
+    assert res.json() == {"deleted": 2}
+    assert sessions.rows == []
+
+
+def test_clearing_the_inbox_spares_the_owners_own_chats():
+    """The same flag, on the bulk path. This is where getting it wrong costs
+    the most, because it takes everything at once."""
+    sessions = FakeSessions([
+        {"id": "visitor", "chatbot_id": "cb1", "shared": True},
+        {"id": "mine", "chatbot_id": "cb1", "shared": False},
+        {"id": "other-bot", "chatbot_id": "cb2", "shared": True},
+    ])
+    client = TestClient(build_app(FakeChatbots([BOT]), sessions=sessions))
+
+    client.delete("/chatbots/cb1/inbox")
+
+    assert sorted(r["id"] for r in sessions.rows) == ["mine", "other-bot"]
+
+
+def test_clearing_an_empty_inbox_is_harmless():
+    sessions = FakeSessions([])
+    client = TestClient(build_app(FakeChatbots([BOT]), sessions=sessions))
+
+    assert client.delete("/chatbots/cb1/inbox").json() == {"deleted": 0}

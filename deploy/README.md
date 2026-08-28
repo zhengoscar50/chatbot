@@ -215,7 +215,7 @@ built from `request.base_url`, and uvicorn honours the `X-Forwarded-Proto` and
 ./deploy/preflight.sh https://<current-public-url>
 ```
 
-Backend tests, all 227 DOM checks, uncommitted work, unpushed commits, and —
+Backend tests, all 241 DOM checks, uncommitted work, unpushed commits, and —
 given a URL — whether what is CURRENTLY deployed still answers. Exits non-zero
 if anything is wrong.
 
