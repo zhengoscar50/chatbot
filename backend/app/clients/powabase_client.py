@@ -526,7 +526,7 @@ class PowabaseClient:
             "/rest/v1/messages",
             params={
                 "session_id": f"in.({','.join(session_ids)})",
-                "select": "session_id,role,text,created_at",
+                "select": "session_id,role,content,created_at",
                 "order": "created_at.asc",
             },
         )

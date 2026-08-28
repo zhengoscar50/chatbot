@@ -6,7 +6,10 @@ def session(sid, updated="2026-08-27T10:00:00Z"):
 
 
 def msg(sid, role, text, at):
-    return {"session_id": sid, "role": role, "text": text, "created_at": at}
+    # `content` is the column name in migrations/006_own_the_transcript.sql.
+    # An earlier version of this fake said `text`, which is a column that does
+    # not exist — the tests passed and the live route returned 502.
+    return {"session_id": sid, "role": role, "content": text, "created_at": at}
 
 
 def test_the_preview_is_the_visitors_first_question():

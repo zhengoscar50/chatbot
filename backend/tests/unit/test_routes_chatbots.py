@@ -327,9 +327,10 @@ def test_another_users_chatbot_is_not_found():
 def test_rows_carry_the_visitors_first_question():
     client, _ = inbox_app(
         [{"id": "v1", "chatbot_id": "cb1", "shared": True}],
-        [{"session_id": "v1", "role": "assistant", "text": "Hi!",
+        # `content`, the real column name — see migrations/006.
+        [{"session_id": "v1", "role": "assistant", "content": "Hi!",
           "created_at": "2026-08-27T10:00:00Z"},
-         {"session_id": "v1", "role": "user", "text": "are you open sundays",
+         {"session_id": "v1", "role": "user", "content": "are you open sundays",
           "created_at": "2026-08-27T10:00:05Z"}],
     )
 

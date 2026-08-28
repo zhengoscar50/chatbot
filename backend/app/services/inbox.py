@@ -51,7 +51,7 @@ def conversations(session_rows: list, message_rows: list) -> list:
         last_at = mine[-1].get("created_at") if mine else s.get("updated_at")
         rows.append({
             "id": s["id"],
-            "preview": _preview(first_question.get("text")) if first_question else "",
+            "preview": _preview(first_question.get("content")) if first_question else "",
             "message_count": len(mine),
             "last_message_at": last_at,
         })
