@@ -144,7 +144,50 @@ sudo systemctl enable --now cloudflared
 ```
 
 Back in the dashboard, add a **public hostname** for the tunnel pointing at
-`http://localhost:8000`. That hostname is your shareable URL.
+`http://localhost:8000`. That hostname is your shareable URL. Without this
+mapping the tunnel connects and routes nothing — a healthy `cloudflared` and a
+404 for every request is what a missing public hostname looks like.
+
+### Switching a box that already runs the quick tunnel
+
+The steps above assume a fresh box. Migrating an existing one differs in two
+ways that are easy to get wrong.
+
+**`cloudflared` is already installed.** Skip the download and the
+`mv /usr/bin/cloudflared` line; check with `which cloudflared`, which should
+already print `/usr/local/bin/cloudflared`.
+
+**Both variants install to the same unit name.** `cloudflared-quick.service`
+is copied to `/etc/systemd/system/cloudflared.service`, and so is the named
+one — so copying the file replaces the quick tunnel's definition, but
+`systemctl enable --now` will NOT pick it up: `--now` starts a unit that is
+stopped and does nothing to one already running. The box keeps serving the old
+quick tunnel, from the old definition, until it is restarted explicitly:
+
+```bash
+which cloudflared        # expect /usr/local/bin/cloudflared; skip the install if so
+
+echo 'TUNNEL_TOKEN=<paste-token>' | sudo tee /home/ubuntu/.cloudflared.env
+sudo chmod 600 /home/ubuntu/.cloudflared.env
+sudo chown ubuntu:ubuntu /home/ubuntu/.cloudflared.env
+
+sudo cp ~/rag-chatbot/deploy/cloudflared.service /etc/systemd/system/cloudflared.service
+sudo systemctl daemon-reload
+sudo systemctl restart cloudflared          # restart, NOT enable --now
+systemctl show cloudflared -p ExecStart --value | grep -q -- --url \
+  && echo "STILL THE QUICK TUNNEL" || echo "named tunnel active"
+```
+
+**Every embed already pasted on someone else's site breaks once**, and this is
+the last time. Those snippets carry the old `trycloudflare.com` host, which
+stops resolving; the share *token* is unchanged, so re-copying the snippet from
+**Share** on the chatbot card is the whole fix. After this switch the hostname
+survives restarts and reboots, which is the point of doing it.
+
+The app needs no configuration for any of this: share and embed snippets are
+built from `request.base_url`, and uvicorn honours the `X-Forwarded-Proto` and
+`Host` headers `cloudflared` sends from localhost, so the new hostname and
+`https://` appear in the snippets on their own.
 
 ## 6. Updating
 
