@@ -66,7 +66,7 @@ WIDGET_BASE=https://<public-url> WIDGET_TOKEN=<share-token> \
   node widget-browser.mjs          # add CHAT=1 to send a real message
 ```
 
-Last run 2026-08-28 against the deployed widget: **20/20 passed.**
+Last run 2026-08-28 against the deployed widget: **19/19 passed** (20 counting the one left for a human).
 
 | Check | Verdict |
 |---|---|
