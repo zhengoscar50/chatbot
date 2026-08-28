@@ -9,8 +9,9 @@ hostile CSS is the only real test of that boundary.
 
 That is not a gap to be embarrassed about; it is the nature of a cross-origin,
 shadow-DOM widget. But it means **the checks below are the only evidence the
-widget actually works on someone else's site**, and until a person fills them
-in, the honest status is "built, not verified".
+widget actually works on someone else's site**. Most of them are now covered by
+a real-browser harness (see below); the remainder are judgements about motion
+and appearance that no assertion settles.
 
 ## How to run it
 
@@ -50,20 +51,46 @@ print([x for x in r if x.get('share_token')])"
 
 ## The checks
 
-Fill in the verdict column by actually looking. Leave a row blank rather than
-guessing — a blank row is information; a guessed tick is not.
+Most of these are no longer manual. `tools/browser/widget-browser.mjs` drives
+the installed Chrome against a hostile host page embedding the **deployed**
+widget — a different scheme, host and port, which is a real origin split
+rather than the same-machine one this document originally described. It also
+never starts a local backend, which matters here: local and deployed share one
+Powabase project, so booting the app locally rewrites the live demo's
+orchestrator.
 
-| Check | Why no test can reach it | Verdict |
-|---|---|---|
-| The tab is visible on the right edge and is not 30px tall | jsdom has no layout; this is the hostile-CSS check | |
-| Clicking slides the panel out rather than snapping | No layout, no transitions | |
-| The chat inside works — ask something, get an answer | Real cross-origin fetch | |
-| The × inside the panel closes it | Real postMessage across real origins | |
-| Reloading the host page reopens the panel with the thread intact | Real storage, real transcript endpoint | |
-| Navigating to another page on the host keeps the thread | The reason persistence exists | |
-| The iframe does not have a red dashed border | Proves host CSS did not reach inside the shadow root | |
-| At a 380px window the tab is a bottom pill and the panel is full width | Layout | |
-| Both themes are legible | Colour rendering | |
+```bash
+cd tools/browser
+WIDGET_BASE=https://<public-url> WIDGET_TOKEN=<share-token> \
+  CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
+  node widget-browser.mjs          # add CHAT=1 to send a real message
+```
+
+Last run 2026-08-28 against the deployed widget: **17/17 passed.**
+
+| Check | Verdict |
+|---|---|
+| The tab is visible on the right edge and is not 30px tall | automated — 52×52, at right:20 bottom:20, despite the host's `button { all: unset !important; font-size: 30px !important }` |
+| Clicking slides the panel out rather than snapping | **still needs eyes** — the harness confirms the panel reaches 358×518, but "slides rather than snaps" is a judgement about motion |
+| The chat inside works — ask something, get an answer | automated (`CHAT=1`) — answered "Hello! I'm here and ready to help…" |
+| The × inside the panel closes it | **still needs eyes** — see below |
+| Reloading the host page reopens the panel with the thread intact | partly automated — the session key survives on the host origin |
+| Navigating to another page on the host keeps the thread | automated — the stored session is unchanged across a navigation |
+| The iframe does not have a red dashed border | automated — computed `0px none`, with the host rule `!important`. Negative-controlled: injecting that rule inside the shadow root makes the check read `6px dashed rgb(255, 0, 0)` and fail, so it is not vacuous |
+| At a 380px window the tab is a bottom pill and the panel is full width | partly automated — the panel fits (333 ≤ 380) and the page does not scroll sideways; whether it reads as a "bottom pill" is visual |
+| Both themes are legible | partly automated — the launcher paints its own background in both schemes; "legible" is a judgement |
+
+## What the browser harness still cannot settle
+
+- **Anything about motion.** Whether the panel slides or snaps, and whether
+  the transition is the right length, are judgements about how it feels.
+- **The × button.** Clicking it needs viewport coordinates, and the panel is a
+  cross-origin iframe inside a shadow root, where that maths does not land on
+  the element — the same reason the harness sends chat messages by dispatching
+  inside the frame rather than clicking. The close path IS covered by the
+  jsdom checks at the postMessage level; what is unverified is the click
+  itself in a real browser.
+- **Whether any of it looks good.** Contrast is measurable; "reads well" is not.
 
 ## Verified without a browser
 
