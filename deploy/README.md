@@ -225,6 +225,26 @@ code after a deploy that reported success. Both were found by a person using
 the app. Unit tests answer "is the logic right", never "does the thing that was
 just committed actually run".
 
+It is still not enough on its own. A 401 from an auth-gated route looks the
+same whether the query behind it works or not — which is how the inbox shipped
+selecting a column that does not exist. For that, run the smoke test **on the
+box**, where the credentials and the database are:
+
+```bash
+cd ~/rag-chatbot/backend && set -a && . ./.env && set +a
+.venv/bin/python ../deploy/smoke.py --token <a-chatbot-share-token>
+```
+
+It mints a real token with the app's own secret, creates a visitor conversation
+through the public route, reads it back through the authenticated inbox, checks
+the delete guards refuse the owner's private chats, then deletes what it made
+and confirms it is gone. It touches no data it did not create, and cleans up
+even when a check fails partway.
+
+Verified against the real failure: reintroduce the `text`/`content` column
+mistake and it reports `HTTP 502 column messages.text does not exist` and exits
+non-zero, where the offline suite stays green.
+
 ## 7. Updating
 
 ```bash
