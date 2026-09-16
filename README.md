@@ -12,8 +12,12 @@ conversation can move between specialists and every turn records who answered
 it. Retrieval is attached per question rather than configured on the agent.
 
 **Status:** a working demo, not a hardened product. Single-worker by design,
-the admin gate is demo-grade (see §7), and agents are private to their creator
-with no sharing. Read the scope notes before running it for anyone else.
+the admin gate is demo-grade (see §7). Chatbots can be shared by unlisted link
+or embedded as a widget on other sites; agents themselves stay private to their
+creator. Read the scope notes before running it for anyone else.
+
+**Picking this up cold?** [`docs/handoff.md`](docs/handoff.md) has how to verify
+it, the known issues, and the traps that already cost time once.
 
 Requires Python 3.9+. Licensed under the [MIT License](LICENSE).
 
